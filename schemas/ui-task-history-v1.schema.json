@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/ui-task-history-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "iterations"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "iterations": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/iteration" }
+    }
+  },
+  "$defs": {
+    "gitCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$", "maxLength": 40 },
+    "repositoryPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*\\.\\.)[^\\\\\\0]+$"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "pattern": "^https://[^@/?#]+(?:/[^?#]*)?(?:\\?[^#]*)?(?:#.*)?$",
+      "maxLength": 2048
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "evidence", "verified"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "evidence": {
+          "enum": [
+            "configured-profile",
+            "authenticated-host",
+            "authenticated-provider",
+            "self-asserted",
+            "self-asserted-git-metadata",
+            "git-signature"
+          ]
+        },
+        "verified": { "type": "boolean" }
+      }
+    },
+    "artifactAction": {
+      "enum": ["open-as-executed", "open-current", "compare"]
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "commit", "sha", "url", "availability", "actions", "identities"],
+      "properties": {
+        "path": { "$ref": "#/$defs/repositoryPath" },
+        "commit": { "$ref": "#/$defs/gitCommit" },
+        "sha": { "$ref": "#/$defs/gitCommit" },
+        "url": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/httpsUrl" }
+          ]
+        },
+        "availability": {
+          "enum": ["available", "missing-at-commit", "unavailable", "unsupported-scheme"]
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/artifactAction" }
+        },
+        "identities": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/identity" }
+        }
+      }
+    },
+    "iteration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "outcome", "artifactRefs"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "maxLength": 128
+        },
+        "outcome": {
+          "enum": ["completed", "partial", "failed", "cancelled", "blocked", "superseded"]
+        },
+        "artifactRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/artifactRef" }
+        }
+      }
+    }
+  }
+}

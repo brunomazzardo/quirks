@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/ui-campaign-summary-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "items"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "items": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[A-Za-z0-9._-]{1,128}$", "maxLength": 135 },
+    "dateTime": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["campaignId", "repositoryId", "state", "taskCount"],
+      "properties": {
+        "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "repositoryId": { "$ref": "#/$defs/digest" },
+        "state": {
+          "enum": [
+            "draft", "preflight", "awaiting_approval", "running", "paused", "blocked",
+            "final_review", "landing", "hold", "complete", "cancelled"
+          ]
+        },
+        "taskCount": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "startedAt": { "$ref": "#/$defs/dateTime" },
+        "finishedAt": { "$ref": "#/$defs/dateTime" },
+        "spend": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 31536000000 }
+        },
+        "outcome": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    }
+  }
+}
