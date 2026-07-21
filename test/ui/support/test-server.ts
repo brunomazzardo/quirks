@@ -4,6 +4,7 @@ import { loadProjectContext } from "../../../src/project/config.js";
 import { createLoopbackAuthority } from "../../../src/ui/authority.js";
 import { InMemoryApprovalTokenStore } from "../../../src/ui/approval/token-store.js";
 import { InMemoryViewerSessionStore } from "../../../src/ui/auth/viewer-session-store.js";
+import { loadClientBundle } from "../../../src/ui/shell.js";
 import { createUiServer } from "../../../src/ui/server.js";
 import { FakeApprovalWritePort } from "./fake-approval-write.js";
 import { fakePreflightPort } from "./fake-preflight.js";
@@ -24,6 +25,7 @@ export async function createTestUiServer(options?: {
   repositoryId?: string;
   campaigns?: Record<string, TestCampaign>;
   now?: string;
+  clientScript?: string;
 }): Promise<TestUiServer> {
   const authority = await createLoopbackAuthority();
   const repositoryId = options?.repositoryId ?? "repo-1";
@@ -41,6 +43,7 @@ export async function createTestUiServer(options?: {
     }
   };
   const projectRoot = path.resolve("test/fixtures/json-project");
+  const clientScript = options?.clientScript ?? (await loadClientBundle());
   const server = await createUiServer({
     authority,
     repositoryId,
@@ -50,6 +53,7 @@ export async function createTestUiServer(options?: {
     getCampaign: (campaignId) => campaigns.get(campaignId),
     getProjectContext: () => loadProjectContext(projectRoot, { mode: "inspection" }),
     preflightRead: fakePreflightPort(),
+    clientScript,
     onRead: () => {
       readPortCalls += 1;
     },

@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { CampaignStatus } from "../campaign/types.js";
 import { QuirksError } from "../core/errors.js";
@@ -11,10 +10,9 @@ import { createLoopbackAuthority } from "./authority.js";
 import { InMemoryViewerSessionStore } from "./auth/viewer-session-store.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
-import { createResponseNonce } from "./security/nonce.js";
-import { escapeAttribute } from "./security/escape.js";
+import { loadClientBundle } from "./shell.js";
 import { createUiServer } from "./server.js";
-import { routeUiRequest, type CampaignRecord, type UiRouterOptions } from "./router.js";
+import { type CampaignRecord, type UiRouterOptions } from "./router.js";
 
 function createInMemoryApprovalPort(
   store: InMemoryApprovalTokenStore,
@@ -83,11 +81,6 @@ function defaultStateDir(): string {
   return resolveAppPaths("placeholder").root;
 }
 
-function renderShell(nonce: string, clientScript: string): string {
-  const safeNonce = escapeAttribute(nonce);
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Quirks</title></head><body><div id="app"></div><script nonce="${safeNonce}">${clientScript}</script></body></html>`;
-}
-
 function shellRouteFor(status: CampaignStatus, campaignId: string): string {
   return status === "awaiting_approval" ? `/preflight/${campaignId}` : `/campaigns/${campaignId}`;
 }
@@ -97,15 +90,6 @@ function buildLaunchUrl(authority: string, route: string, viewerToken: string, a
     ? `viewToken=${encodeURIComponent(viewerToken)}&approvalToken=${encodeURIComponent(approvalToken)}`
     : `viewToken=${encodeURIComponent(viewerToken)}`;
   return `${authority}${route}#${fragment}`;
-}
-
-async function loadClientScript(): Promise<string> {
-  const bundlePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../ui/client.bundle.js");
-  try {
-    return await readFile(bundlePath, "utf8");
-  } catch {
-    return "";
-  }
 }
 
 async function resolveCampaignFromState(stateDir: string, campaignId: string): Promise<ResolvedCampaign | undefined> {
@@ -204,7 +188,7 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
   }
 
   const authority = await createLoopbackAuthority();
-  const clientScript = await loadClientScript();
+  const clientScript = await loadClientBundle();
   const campaigns = new Map<string, CampaignRecord>([
     [input.campaignId, { repositoryId: campaign.repositoryId, envelopeDigest: campaign.envelopeDigest }],
   ]);
@@ -215,26 +199,9 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
     approval: ports.approval,
     getCampaign: (campaignId) => campaigns.get(campaignId),
     now: getNow,
+    clientScript,
   };
-  const server = await createUiServer({
-    authority,
-    handler: async (req, res) => {
-      const url = new URL(req.url ?? "/", authority.origin);
-      if (url.pathname.startsWith("/api/")) {
-        await routeUiRequest(req, res, routerOptions);
-        return;
-      }
-      if (req.method !== "GET") {
-        res.statusCode = 405;
-        res.end();
-        return;
-      }
-      const nonce = createResponseNonce();
-      res.statusCode = 200;
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.end(renderShell(nonce, clientScript));
-    },
-  });
+  const server = await createUiServer(routerOptions);
 
   const launchUrl = buildLaunchUrl(
     authority.baseUrl,

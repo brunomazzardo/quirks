@@ -24,10 +24,11 @@ const hasRouter = (options: LegacyHandlerOptions | UiRouterOptions): options is 
 
 export async function createUiServer(options: LegacyHandlerOptions | UiRouterOptions): Promise<UiServer> {
   const server = createServer(async (req, res) => {
-    applySecurityHeaders(res, { nonce: createResponseNonce() });
+    const nonce = createResponseNonce();
+    applySecurityHeaders(res, { nonce });
     try {
       assertLoopbackRequest(req, options.authority);
-      if (hasRouter(options)) await routeUiRequest(req, res, options);
+      if (hasRouter(options)) await routeUiRequest(req, res, { ...options, nonce });
       else await options.handler(req, res);
     } catch {
       if (!res.headersSent) {
