@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { performance } from "node:perf_hooks";
 import { QuirksError } from "../../core/errors.js";
 import {
   assertMutationIdentity,
@@ -17,6 +18,8 @@ import {
 
 export const DEFAULT_ADAPTER_TIMEOUT_MS = 30_000;
 
+const MONOTONIC_TIMEOUT_POLL_MS = 50;
+
 export interface ExternalTaskSourceOptions {
   command: readonly [string, ...string[]];
   timeoutMs: number;
@@ -25,6 +28,36 @@ export interface ExternalTaskSourceOptions {
   credentialVariables?: Readonly<Record<string, string>>;
   projectedFiles?: Readonly<Record<string, string>>;
   repositoryRoot?: string;
+}
+
+function createMonotonicTimeout(
+  timeoutMs: number,
+  onTimeout: () => void,
+): { cancel: () => void; hasTimedOut: () => boolean } {
+  const startedAt = performance.now();
+  let fired = false;
+  let timer: NodeJS.Timeout | undefined;
+
+  const schedule = (): void => {
+    const remaining = timeoutMs - (performance.now() - startedAt);
+    if (remaining <= 0) {
+      if (!fired) {
+        fired = true;
+        onTimeout();
+      }
+      return;
+    }
+    timer = setTimeout(schedule, Math.min(remaining, MONOTONIC_TIMEOUT_POLL_MS));
+  };
+
+  schedule();
+
+  return {
+    cancel: () => {
+      if (timer) clearTimeout(timer);
+    },
+    hasTimedOut: () => fired,
+  };
 }
 
 export class ExternalTaskSource implements TaskSource {
@@ -54,6 +87,13 @@ export class ExternalTaskSource implements TaskSource {
     return this.invokeAdapter(parsed, scrubbed);
   }
 
+  async dispose(): Promise<void> {
+    if (this.scrubbedEnvironment) {
+      await this.scrubbedEnvironment.cleanup();
+      this.scrubbedEnvironment = undefined;
+    }
+  }
+
   private async ensureScrubbedEnvironment(): Promise<ScrubbedEnvironment> {
     if (!this.scrubbedEnvironment) {
       this.scrubbedEnvironment = await createScrubbedEnvironment({
@@ -70,7 +110,6 @@ export class ExternalTaskSource implements TaskSource {
     scrubbed: ScrubbedEnvironment,
   ): Promise<TaskSourceResponse> {
     let child: ChildProcessWithoutNullStreams | undefined;
-    let timedOut = false;
     let terminationTimer: NodeJS.Timeout | undefined;
 
     const terminateChild = () => {
@@ -94,10 +133,7 @@ export class ExternalTaskSource implements TaskSource {
       child.stdin.write(formatRequestLine(request));
       child.stdin.end();
 
-      const timeoutTimer = setTimeout(() => {
-        timedOut = true;
-        terminateChild();
-      }, this.timeoutMs);
+      const timeout = createMonotonicTimeout(this.timeoutMs, terminateChild);
 
       const [exitCode, stdout, stderr] = await new Promise<
         [number | null, Buffer, Buffer]
@@ -109,14 +145,18 @@ export class ExternalTaskSource implements TaskSource {
             .catch(reject);
         });
       }).finally(() => {
-        clearTimeout(timeoutTimer);
+        timeout.cancel();
         if (terminationTimer) clearTimeout(terminationTimer);
       });
 
       const diagnosticStderr = redactStderr(stderr);
 
-      if (timedOut) {
-        throw new QuirksError("PROTOCOL_VIOLATION", "Adapter timed out", { stderr: diagnosticStderr });
+      if (timeout.hasTimedOut()) {
+        throw new QuirksError(
+          "PROTOCOL_VIOLATION",
+          `Adapter timed out after ${this.timeoutMs}ms`,
+          { stderr: diagnosticStderr, timeoutMs: String(this.timeoutMs) },
+        );
       }
 
       if (exitCode !== 0) {

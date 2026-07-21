@@ -250,6 +250,7 @@ async function main() {
   }
 
   if (mode === "timeout") {
+    setInterval(() => {}, 1_000);
     await new Promise(() => {});
   }
 
@@ -259,7 +260,8 @@ async function main() {
   }
 
   if (mode === "exit-zero-error") {
-    process.exit(3);
+    writeLine(failure(request.operation, "ADAPTER_ERROR", "deliberate adapter failure"));
+    return;
   }
 
   const response = await dispatch(request);

@@ -42,10 +42,18 @@ test("rejects oversized adapter output", async () => {
 });
 
 test("rejects adapter timeouts", async () => {
-  const source = fixtureSource({ QUIRKS_FIXTURE_MODE: "timeout" });
+  const timeoutMs = 500;
+  const source = new ExternalTaskSource({
+    command: [process.execPath, adapterPath],
+    timeoutMs,
+    maxOutputBytes: 1_048_576,
+    environment: { QUIRKS_FIXTURE_MODE: "timeout" },
+  });
   await assert.rejects(
     () => source.execute({ schemaVersion: 1, operation: "list", input: {} }),
-    (error: QuirksError) => error.code === "PROTOCOL_VIOLATION",
+    (error: QuirksError) =>
+      error.code === "PROTOCOL_VIOLATION" &&
+      error.message.includes(`timed out after ${timeoutMs}ms`),
   );
 });
 
@@ -65,12 +73,12 @@ test("rejects secret-shaped adapter output", async () => {
   );
 });
 
-test("rejects non-zero adapter exit codes", async () => {
+test("returns adapter error bodies that exit zero", async () => {
   const source = fixtureSource({ QUIRKS_FIXTURE_MODE: "exit-zero-error" });
-  await assert.rejects(
-    () => source.execute({ schemaVersion: 1, operation: "list", input: {} }),
-    (error: QuirksError) => error.code === "PROTOCOL_VIOLATION",
-  );
+  const response = await source.execute({ schemaVersion: 1, operation: "list", input: {} });
+  assert.equal(response.ok, false);
+  if (response.ok) return;
+  assert.equal(response.error.code, "ADAPTER_ERROR");
 });
 
 test("rejects stale response operations", async () => {
@@ -165,14 +173,18 @@ test("createTaskSource accepts an injected credential resolver for external sour
     driver: "external",
     command: [process.execPath, adapterPath],
     credentialAlias: "linear-prod",
+    credentialEnvironmentNames: ["LINEAR_API_KEY"],
   });
+  let requestedNames: readonly string[] | undefined;
   const source = await createTaskSource(context, {
     credentialResolver: {
-      async resolve() {
+      async resolve(_alias, requestedEnvironmentNames) {
+        requestedNames = requestedEnvironmentNames;
         return { LINEAR_API_KEY: "injected" };
       },
     },
   });
+  assert.deepEqual(requestedNames, ["LINEAR_API_KEY"]);
   const response = await source.execute({ schemaVersion: 1, operation: "capabilities", input: {} });
   assert.equal(response.ok, true);
 });

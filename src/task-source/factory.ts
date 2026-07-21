@@ -36,7 +36,10 @@ export async function createTaskSource(
 
   const credentialVariables =
     taskSource.credentialAlias && options.credentialResolver
-      ? await options.credentialResolver.resolve(taskSource.credentialAlias, [])
+      ? await options.credentialResolver.resolve(
+          taskSource.credentialAlias,
+          taskSource.credentialEnvironmentNames ?? [],
+        )
       : {};
 
   return new ExternalTaskSource({

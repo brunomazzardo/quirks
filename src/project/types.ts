@@ -1,6 +1,11 @@
 export type TaskSourceConfig =
   | { driver: "json"; path: string }
-  | { driver: "external"; command: readonly [string, ...string[]]; credentialAlias?: string };
+  | {
+      driver: "external";
+      command: readonly [string, ...string[]];
+      credentialAlias?: string;
+      credentialEnvironmentNames?: readonly string[];
+    };
 
 export type TaskStatus = "proposed" | "ready" | "claimed" | "in_review" | "blocked" | "completed" | "cancelled";
 export type CompletionBoundary = "accepted-commit" | "campaign-merge" | "target-merge" | "remote-push";
