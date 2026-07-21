@@ -3215,7 +3215,7 @@
       "title": "Unify dual probeLiveness implementations",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-W0-REV"
       ],
@@ -3259,7 +3259,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-RUN-002E-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "76e059d74bffd34d7769de629da385003955179b",
+            "commitRefs": [
+              "76e059d74bffd34d7769de629da385003955179b"
+            ],
+            "finishedAt": "2026-07-21T23:20:00Z",
+            "outcomeReason": "Unified dual probeLiveness surface"
+          }
+        ]
       }
     },
     {
