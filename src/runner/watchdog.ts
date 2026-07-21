@@ -37,7 +37,7 @@ export interface StartDetachedJobInput {
   heartbeatIntervalMs?: number;
 }
 
-export interface LivenessReport {
+export interface WatchdogHeartbeatProbe {
   pid: number;
   sessionHandle: string;
   outputGrowing: boolean;
@@ -546,7 +546,11 @@ export async function stopWatchdog(jobId?: string): Promise<void> {
   }
 }
 
-export async function probeLiveness(store: CampaignStore, jobId: string): Promise<LivenessReport> {
+/** Thin heartbeat/PID snapshot for watchdog monitors. Full classification lives in `liveness.probeLiveness`. */
+export async function probeWatchdogHeartbeat(
+  store: CampaignStore,
+  jobId: string,
+): Promise<WatchdogHeartbeatProbe> {
   const heartbeat = await readHeartbeat(store, jobId);
   const stdoutPath = path.join(store.artifactsPath, jobId, "stdout.log");
   let outputGrowing = false;

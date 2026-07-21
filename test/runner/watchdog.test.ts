@@ -10,7 +10,7 @@ import { CampaignStore } from "../../src/campaign/store.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 import {
   heartbeatPath,
-  probeLiveness,
+  probeWatchdogHeartbeat,
   readHeartbeat,
   startDetachedJob,
   stopWatchdog,
@@ -119,7 +119,7 @@ describe("watchdog detached execution", { concurrency: false }, () => {
     assert.equal(dispatched.evidence.timeoutMs, "5000");
     assert.equal(dispatched.evidence.cancelScope, "job");
 
-    const liveness = await probeLiveness(store, jobId);
+    const liveness = await probeWatchdogHeartbeat(store, jobId);
     assert.ok(liveness.pid > 0);
     assert.equal(liveness.sessionHandle, SESSION_ID);
   });
