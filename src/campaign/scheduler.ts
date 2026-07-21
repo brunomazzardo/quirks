@@ -57,14 +57,17 @@ export function selectRunnableTasks(
   plan: ExecutionPlan,
   completed: ReadonlySet<string>,
   activeLanes: ReadonlySet<string>,
+  activeTasks: ReadonlySet<string> = new Set(),
 ): readonly string[] {
   const currentWave = plan.waves.find((wave) => wave.taskIds.some((id) => !completed.has(id)));
   if (!currentWave) return [];
-  return currentWave.taskIds.filter((id) => {
-    if (completed.has(id)) return false;
+  const runnable = currentWave.taskIds.filter((id) => {
+    if (completed.has(id) || activeTasks.has(id)) return false;
     const lanesForTask = plan.lanes.filter((lane) => lane.taskOrder.includes(id));
     const isLaneHead = lanesForTask.every((lane) => lane.taskOrder.find((entry) => !completed.has(entry)) === id);
     if (!isLaneHead) return false;
     return lanesForTask.every((lane) => !activeLanes.has(lane.key));
   });
+  const budget = Math.max(0, plan.maxConcurrency - activeTasks.size);
+  return [...runnable].toSorted((a, b) => a.localeCompare(b)).slice(0, budget);
 }

@@ -69,13 +69,11 @@ export class InMemoryViewerSessionStore {
     if (!record || !constantTimeEqual(record.repositoryId, input.repositoryId)) return { result: "invalid" };
     const now = input.now ?? new Date().toISOString();
     const nowMs = parseInstant(now);
-    if (nowMs > parseInstant(record.absoluteExpiresAt)) return { result: "expired" };
     const idleMs = parseInstant(record.idleExpiresAt);
-    const canCapAtAbsolute = nowMs + IDLE_MS >= parseInstant(record.absoluteExpiresAt);
-    if (nowMs > idleMs && !canCapAtAbsolute) return { result: "expired" };
+    const absoluteMs = parseInstant(record.absoluteExpiresAt);
+    if (nowMs > idleMs || nowMs > absoluteMs) return { result: "expired" };
     const nextIdle = addMs(now, IDLE_MS);
-    record.idleExpiresAt =
-      parseInstant(nextIdle) < parseInstant(record.absoluteExpiresAt) ? nextIdle : record.absoluteExpiresAt;
+    record.idleExpiresAt = parseInstant(nextIdle) < absoluteMs ? nextIdle : record.absoluteExpiresAt;
     return {
       result: "authorized",
       repositoryId: record.repositoryId,

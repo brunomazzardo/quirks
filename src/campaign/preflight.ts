@@ -9,6 +9,7 @@ import { syncBoundary, type SyncBoundaryResult } from "../sync/boundaries.js";
 import type { OutboxPort, SyncIntent, SyncState } from "../sync/types.js";
 import { finalizeEnvelope } from "./envelope.js";
 import { inspectGit } from "./git-inspect.js";
+import { requiredTierForRole } from "./routing.js";
 import type { CampaignEnvelope, CampaignRoute, JudgmentTier } from "./types.js";
 
 type NormalizedTask = {
@@ -115,8 +116,13 @@ function designMode(task: NormalizedTask): CampaignEnvelope["designModes"][strin
 }
 
 function placeholderRoute(task: NormalizedTask): { primary: CampaignRoute; fallbacks: CampaignRoute[] } {
-  const tier = task.workflow.designGate.required ? task.workflow.designGate.judgmentTier : task.execution.effort;
-  return { primary: { profileId: "placeholder", tier, effort: task.execution.effort }, fallbacks: [] };
+  const { effort, risk } = task.execution;
+  const implementerTier = requiredTierForRole("implementer", effort, risk);
+  const reviewerTier = requiredTierForRole("reviewer", effort, risk);
+  return {
+    primary: { profileId: "placeholder", tier: implementerTier, effort },
+    fallbacks: [{ profileId: "placeholder-reviewer", tier: reviewerTier, effort }],
+  };
 }
 
 function preflightBlockers(tasks: readonly NormalizedTask[]): string[] {

@@ -51,3 +51,21 @@ test("selectRunnableTasks admits the next wave once its predecessor wave complet
   const runnable = selectRunnableTasks(plan, new Set(["A", "C"]), new Set());
   assert.deepEqual(runnable, ["B"]);
 });
+
+test("selectRunnableTasks enforces maxConcurrency when multiple lanes are free", () => {
+  const plan = buildExecutionPlan(tasks, { maxConcurrency: 1, maxTasks: 3 });
+  const runnable = selectRunnableTasks(plan, new Set(), new Set());
+  assert.deepEqual(runnable, ["A"]);
+});
+
+test("selectRunnableTasks respects active tasks against the concurrency budget", () => {
+  const plan = buildExecutionPlan(tasks, { maxConcurrency: 2, maxTasks: 3 });
+  const runnable = selectRunnableTasks(plan, new Set(), new Set(), new Set(["C"]));
+  assert.deepEqual(runnable, ["A"]);
+});
+
+test("selectRunnableTasks still withholds lane-conflicted tasks under a concurrency cap", () => {
+  const plan = buildExecutionPlan(tasks, { maxConcurrency: 2, maxTasks: 3 });
+  const runnable = selectRunnableTasks(plan, new Set(), new Set(["other"]));
+  assert.deepEqual(runnable, ["A"]);
+});
