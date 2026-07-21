@@ -26,7 +26,6 @@
     },
     "httpsUrl": {
       "type": "string",
-      "format": "uri",
       "pattern": "^https://[^@/?#]+",
       "maxLength": 2048
     },

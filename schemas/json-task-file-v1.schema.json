@@ -9,6 +9,7 @@
     "tasks": {
       "type": "array",
       "maxItems": 1024,
+      "uniqueTaskIds": true,
       "items": { "$ref": "#/$defs/nativeTask" }
     }
   },
@@ -31,7 +32,6 @@
     },
     "httpsUrl": {
       "type": "string",
-      "format": "uri",
       "pattern": "^https://[^@/?#]+",
       "maxLength": 2048
     },
@@ -191,6 +191,22 @@
         }
       ]
     },
+    "completedSourceRefConstraint": {
+      "if": {
+        "type": "object",
+        "properties": { "status": { "const": "completed" } },
+        "required": ["status"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "sourceRefs": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/immutableSourceRef" }
+          }
+        }
+      }
+    },
     "nativeTask": {
       "type": "object",
       "required": [
@@ -259,20 +275,7 @@
         "statusDetail": { "$ref": "#/$defs/statusDetail" }
       },
       "allOf": [
-        {
-          "if": {
-            "properties": { "status": { "const": "completed" } },
-            "required": ["status"]
-          },
-          "then": {
-            "properties": {
-              "sourceRefs": {
-                "type": "array",
-                "items": { "$ref": "#/$defs/immutableSourceRef" }
-              }
-            }
-          }
-        }
+        { "$ref": "#/$defs/completedSourceRefConstraint" }
       ]
     }
   }

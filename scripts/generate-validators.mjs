@@ -13,6 +13,10 @@ const outputDir = new URL("src/schema/generated/", root);
 const files = (await readdir(schemaDir)).filter((name) => name.endsWith(".schema.json")).toSorted();
 const ajv = new Ajv2020({ allErrors: true, strict: true, code: { esm: true, source: true } });
 addFormats(ajv);
+ajv.addKeyword({
+  keyword: "uniqueTaskIds",
+  meta: true,
+});
 const exports = {};
 for (const file of files) {
   const schema = JSON.parse(await readFile(new URL(file, schemaDir), "utf8"));
@@ -23,31 +27,39 @@ for (const file of files) {
 await mkdir(outputDir, { recursive: true });
 let code = standaloneCode(ajv, exports);
 code = inlineRuntimeHelpers(code);
+code = injectUniqueTaskIdsCheck(code);
 await writeFile(new URL("validators.mjs", outputDir), code);
 
 function inlineRuntimeHelpers(source) {
   const ucs2length = require("ajv/dist/runtime/ucs2length").default;
   const equal = require("ajv/dist/runtime/equal").default;
-  const { fullFormats } = require("ajv-formats/dist/formats");
 
   return source
-    .replaceAll(
-      'const func1 = require("ajv/dist/runtime/ucs2length").default;',
-      `const func1 = ${ucs2length.toString()};`,
+    .replace(/^"use strict";/, "")
+    .replace(
+      /const (\w+) = require\("ajv\/dist\/runtime\/ucs2length"\)\.default;/g,
+      `const $1 = ${ucs2length.toString()};`,
     )
-    .replaceAll(
-      'const func0 = require("ajv/dist/runtime/equal").default;',
-      `const func0 = ${equal.toString()};`,
+    .replace(
+      /const (\w+) = require\("ajv\/dist\/runtime\/equal"\)\.default;/g,
+      `const $1 = ${equal.toString()};`,
     )
-    .replaceAll(
-      'const formats0 = require("ajv-formats/dist/formats").fullFormats.uri;',
-      `const formats0 = ${fullFormats.uri.toString()};`,
+    .replace(
+      /const (\w+) = require\("ajv-formats\/dist\/formats"\)\.fullFormats\.uri;/g,
+      `${uriFormatBundle()}\nconst $1 = uri;`,
     )
-    .replaceAll(
-      'const formats6 = require("ajv-formats/dist/formats").fullFormats["date-time"];',
-      `${dateTimeFormatBundle()}\nconst formats6 = { validate: date_time_validate, compare: compareDateTime };`,
-    )
-    .replace(/^"use strict";/, "");
+    .replace(
+      /const (\w+) = require\("ajv-formats\/dist\/formats"\)\.fullFormats\["date-time"\];/g,
+      `${dateTimeFormatBundle()}\nconst $1 = { validate: date_time_validate, compare: compareDateTime };`,
+    );
+}
+
+function uriFormatBundle() {
+  return `const NOT_URI_FRAGMENT = /\\/|:/;
+const URI = /^(?:[a-z][a-z0-9+\\-.]*:)(?:\\/?\\/(?:(?:[a-z0-9\\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\\.[a-z0-9\\-._~!$&'()*+,;=:]+)\\]|(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)|(?:[a-z0-9\\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\\d*)?(?:\\/(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\\/(?:(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\\/(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\\/(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\\?(?:[a-z0-9\\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
+function uri(str) {
+  return NOT_URI_FRAGMENT.test(str) && URI.test(str);
+}`;
 }
 
 function dateTimeFormatBundle() {
@@ -112,4 +124,40 @@ function compareDateTime(dt1, dt2) {
   return d1 - d2;
 }
 const date_time_validate = getDateTime(true);`;
+}
+
+function injectUniqueTaskIdsCheck(source) {
+  const helper = `function validateUniqueTaskIds(tasks) {
+  const seen = new Set();
+  for (const task of tasks) {
+    if (task && typeof task === "object" && "id" in task) {
+      if (seen.has(task.id)) {
+        return false;
+      }
+      seen.add(task.id);
+    }
+  }
+  return true;
+}`;
+  return source.replace(
+    /export const json_task_file_v1 = (validate\d+);/,
+    `${helper}
+const json_task_file_v1_base = $1;
+export const json_task_file_v1 = function json_task_file_v1(data) {
+  if (!json_task_file_v1_base(data)) {
+    json_task_file_v1.errors = json_task_file_v1_base.errors;
+    return false;
+  }
+  if (!validateUniqueTaskIds(data?.tasks ?? [])) {
+    json_task_file_v1.errors = [{
+      instancePath: "/tasks",
+      schemaPath: "#/properties/tasks/uniqueTaskIds",
+      keyword: "uniqueTaskIds",
+      message: "must have unique task ids",
+    }];
+    return false;
+  }
+  return true;
+};`,
+  );
 }

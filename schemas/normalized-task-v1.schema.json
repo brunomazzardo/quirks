@@ -1,32 +1,107 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "quirks://schemas/normalized-task-v1",
-  "allOf": [
-    { "$ref": "quirks://schemas/json-task-file-v1#/$defs/nativeTask" },
-    {
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "kind",
+    "priority",
+    "status",
+    "source",
+    "nativeRevision",
+    "dependsOn",
+    "workflow",
+    "execution",
+    "sourceRefs",
+    "deliverables",
+    "acceptanceCriteria",
+    "verification",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/taskId" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "kind": {
+      "enum": [
+        "design",
+        "plan",
+        "implementation",
+        "review",
+        "verification",
+        "documentation",
+        "operations"
+      ]
+    },
+    "priority": { "enum": ["P0", "P1", "P2", "P3"] },
+    "status": {
+      "enum": ["proposed", "ready", "claimed", "in_review", "blocked", "completed", "cancelled"]
+    },
+    "source": {
       "type": "object",
-      "required": ["source", "nativeRevision"],
+      "required": ["driver", "nativeId", "webUrl"],
+      "additionalProperties": false,
       "properties": {
-        "source": {
-          "type": "object",
-          "required": ["driver", "nativeId", "webUrl"],
-          "additionalProperties": false,
-          "properties": {
-            "driver": { "type": "string", "minLength": 1, "maxLength": 64 },
-            "nativeId": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
-              "maxLength": 128
-            },
-            "webUrl": {
-              "oneOf": [
-                { "type": "null" },
-                { "$ref": "quirks://schemas/json-task-file-v1#/$defs/httpsUrl" }
-              ]
-            }
+        "driver": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "nativeId": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/taskId" },
+        "webUrl": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "quirks://schemas/json-task-file-v1#/$defs/httpsUrl" }
+          ]
+        }
+      }
+    },
+    "nativeRevision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "dependsOn": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/taskId" }
+    },
+    "workflow": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/workflow" },
+    "execution": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/execution" },
+    "sourceRefs": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/sourceRef" }
+    },
+    "deliverables": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "verification": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "provenance": { "$ref": "quirks://schemas/task-provenance-v1" },
+    "coordination": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/coordination" },
+    "statusDetail": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/statusDetail" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": { "status": { "const": "completed" } },
+        "required": ["status"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "sourceRefs": {
+            "type": "array",
+            "items": { "$ref": "quirks://schemas/json-task-file-v1#/$defs/immutableSourceRef" }
           }
-        },
-        "nativeRevision": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
       }
     }
   ]
