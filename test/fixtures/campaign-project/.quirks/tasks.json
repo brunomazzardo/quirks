@@ -2,6 +2,32 @@
   "schemaVersion": 1,
   "tasks": [
     {
+      "id": "QK-101",
+      "title": "Standalone control-plane acceptance task",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": ["acceptance"],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["implementation"],
+      "acceptanceCriteria": ["control plane accepts the task"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] }
+    },
+    {
       "id": "QK-100",
       "title": "Choose the campaign design",
       "kind": "design",
