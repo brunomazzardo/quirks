@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "protocol": "quirks-project-v1",
+  "taskSource": {
+    "driver": "json",
+    "path": ".quirks/tasks.json"
+  },
+  "workflowPolicy": {
+    "skills": {
+      "write": "writing-tasks",
+      "update": "updating-tasks",
+      "execute": "executing-tasks"
+    }
+  }
+}
