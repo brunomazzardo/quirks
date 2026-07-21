@@ -7,6 +7,7 @@ import { handleCampaigns, matchesCampaignsRoute } from "./api/campaigns.js";
 import { handleExistingTasks } from "./api/existing-tasks.js";
 import { handlePreflight } from "./api/preflight.js";
 import { sendJson, UNAUTHORIZED_BODY } from "./api/errors.js";
+import { handlePlanProgress, matchPlanProgressRoute } from "./api/plan-progress.js";
 import { handleTaskHistory, matchTaskHistoryRoute, type TaskHistorySource } from "./api/task-history.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
 import type { CampaignReadPort } from "./ports/campaign-read.js";
@@ -105,6 +106,14 @@ async function routeApiRequest(req: IncomingMessage, res: ServerResponse, option
   const taskId = matchTaskHistoryRoute(url.pathname);
   if (options.taskHistory && taskId) {
     return handleTaskHistory(req, res, { taskId, source: options.taskHistory });
+  }
+  const progressTaskId = matchPlanProgressRoute(url.pathname);
+  if (options.campaignRead && progressTaskId) {
+    return handlePlanProgress(req, res, {
+      taskId: progressTaskId,
+      port: options.campaignRead,
+      ...(options.now ? { now: options.now } : {}),
+    });
   }
   return sendJson(res, 200, { schemaVersion: 1, route: url.pathname, refreshedAt: options.now?.() ?? new Date().toISOString() });
 }
