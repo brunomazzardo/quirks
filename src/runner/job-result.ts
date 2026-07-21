@@ -10,7 +10,7 @@ export interface NormalizeJobResultInput {
   sessionHandle: string;
   artifactPaths: readonly string[];
   usage?: RunnerJobResult["usage"];
-  failure?: RunnerJobFailure;
+  failure?: RunnerJobFailure | undefined;
 }
 
 export function normalizeJobResult(input: NormalizeJobResultInput): RunnerJobResult {
