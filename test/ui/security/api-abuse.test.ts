@@ -109,8 +109,31 @@ test("repeated successful reads slide idle deadline but never absolute deadline"
   });
   assert.equal(idleExpired.status, 401);
   server.setNow("2026-07-21T23:00:00.000Z");
-  const capped = await fetch(`${server.authority.baseUrl}/api/v1/existing-tasks`, {
+  const cannotRevive = await fetch(`${server.authority.baseUrl}/api/v1/existing-tasks`, {
     headers: readHeaders(server.authority, viewerToken),
+    redirect: "manual",
+  });
+  assert.equal(cannotRevive.status, 401);
+  const fresh = await server.issue("C-1", "sha256:abc");
+  server.setNow("2026-07-21T07:00:00.000Z");
+  assert.equal(
+    (await fetch(`${server.authority.baseUrl}/api/v1/existing-tasks`, {
+      headers: readHeaders(server.authority, fresh.viewerToken),
+      redirect: "manual",
+    })).status,
+    200,
+  );
+  server.setNow("2026-07-21T14:00:00.000Z");
+  assert.equal(
+    (await fetch(`${server.authority.baseUrl}/api/v1/existing-tasks`, {
+      headers: readHeaders(server.authority, fresh.viewerToken),
+      redirect: "manual",
+    })).status,
+    200,
+  );
+  server.setNow("2026-07-21T21:00:00.000Z");
+  const capped = await fetch(`${server.authority.baseUrl}/api/v1/existing-tasks`, {
+    headers: readHeaders(server.authority, fresh.viewerToken),
     redirect: "manual",
   });
   assert.equal(capped.status, 200);
