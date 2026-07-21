@@ -37,6 +37,15 @@ function enforceIterationLimits(iteration: ProvenanceIteration): void {
   if (iteration.outcomeReason && Buffer.byteLength(iteration.outcomeReason, "utf8") > PROVENANCE_LIMITS.outcomeReasonBytes) {
     throw new Error(`outcomeReason exceeds ${PROVENANCE_LIMITS.outcomeReasonBytes} bytes`);
   }
+  if ((iteration.participants?.length ?? 0) > PROVENANCE_LIMITS.participants) {
+    throw new Error(`participants exceeds limit of ${PROVENANCE_LIMITS.participants}`);
+  }
+  if ((iteration.deviations?.length ?? 0) > PROVENANCE_LIMITS.deviations) {
+    throw new Error(`deviations exceeds limit of ${PROVENANCE_LIMITS.deviations}`);
+  }
+  if (iteration.usage && Buffer.byteLength(iteration.usage, "utf8") > PROVENANCE_LIMITS.summaryBytes) {
+    throw new Error(`usage exceeds ${PROVENANCE_LIMITS.summaryBytes} bytes`);
+  }
 }
 
 async function validateArtifactRef(

@@ -98,6 +98,24 @@ test("operator evidence stays self-asserted unless authenticated", async () => {
   assert.equal(authenticated.verified, true);
 });
 
+test("configured-profile operator evidence is not verified", async () => {
+  const result = await validateProvenanceCandidate(fixture.root, {
+    kind: "operator",
+    label: "profile-user",
+    evidence: "configured-profile",
+  }) as OperatorValidation;
+  assert.equal(result.verified, false);
+});
+
+test("commit author stays self-asserted regardless of signature", async () => {
+  const result = await validateProvenanceCandidate(fixture.root, {
+    kind: "commit",
+    sha: fixture.baseCommit,
+  }, { allowedSigners: ["Fixture Author <fixture@example.invalid>"] }) as CommitValidation;
+  assert.equal(result.author?.evidence, "self-asserted-git-metadata");
+  assert.equal(result.author?.verified, false);
+});
+
 test("signature metadata alone does not mark a commit verified", async () => {
   const result = await validateProvenanceCandidate(fixture.root, {
     kind: "commit",

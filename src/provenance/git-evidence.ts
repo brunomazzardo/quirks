@@ -34,13 +34,15 @@ async function gitExec(root: string, args: readonly string[]): Promise<{ stdout:
 }
 
 export async function commitExists(root: string, sha: string): Promise<boolean> {
-  const result = await gitExec(root, ["cat-file", "-e", `${sha}^{commit}`]);
+  const validated = assertGitSha(sha);
+  const result = await gitExec(root, ["cat-file", "-e", `${validated}^{commit}`]);
   return result.code === 0;
 }
 
 export async function pathExistsAtCommit(root: string, sha: string, relativePath: string): Promise<boolean> {
+  const validated = assertGitSha(sha);
   const normalized = assertRepositoryRelativePath(relativePath);
-  const result = await gitExec(root, ["cat-file", "-e", `${sha}:${normalized}`]);
+  const result = await gitExec(root, ["cat-file", "-e", `${validated}:${normalized}`]);
   return result.code === 0;
 }
 
@@ -54,11 +56,12 @@ function formatGitIdentity(identity: RawGitIdentity): string {
 }
 
 export async function readCommitIdentities(root: string, sha: string): Promise<{ author: RawGitIdentity; committer: RawGitIdentity }> {
+  const validated = assertGitSha(sha);
   const result = await gitExec(root, [
     "show",
     "--no-patch",
     "--format=%an%x00%ae%x00%cn%x00%ce",
-    sha,
+    validated,
   ]);
   if (result.code !== 0) {
     throw new QuirksError("INVALID_REPOSITORY_PATH", `Commit ${sha} is not available`);
@@ -102,7 +105,8 @@ export async function verifyCommitSignature(
   sha: string,
   allowedSigners: readonly string[],
 ): Promise<{ verified: boolean; signer?: string }> {
-  const result = await gitExec(root, ["verify-commit", "--raw", sha]);
+  const validated = assertGitSha(sha);
+  const result = await gitExec(root, ["verify-commit", "--raw", validated]);
   if (result.code !== 0) return { verified: false };
   const signer = parseSignerFromVerifyOutput(`${result.stdout}\n${result.stderr}`);
   const verified = isAllowListedSigner(signer, allowedSigners);
@@ -111,11 +115,14 @@ export async function verifyCommitSignature(
 }
 
 export async function isAncestor(root: string, ancestorSha: string, descendantSha: string): Promise<boolean> {
-  const result = await gitExec(root, ["merge-base", "--is-ancestor", ancestorSha, descendantSha]);
+  const ancestor = assertGitSha(ancestorSha);
+  const descendant = assertGitSha(descendantSha);
+  const result = await gitExec(root, ["merge-base", "--is-ancestor", ancestor, descendant]);
   return result.code === 0;
 }
 
 export async function readSignatureStatusMetadata(root: string, sha: string): Promise<string> {
-  const result = await gitExec(root, ["show", "--no-patch", "--format=%G?", sha]);
+  const validated = assertGitSha(sha);
+  const result = await gitExec(root, ["show", "--no-patch", "--format=%G?", validated]);
   return result.stdout.trim();
 }

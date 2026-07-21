@@ -101,15 +101,13 @@ async function validateCommit(
 
   const identities = await readCommitIdentities(repositoryRoot, candidate.sha);
   const signature = await verifyCommitSignature(repositoryRoot, candidate.sha, options.allowedSigners ?? []);
-  const authorVerified = signature.verified;
-  const committerVerified = signature.verified;
 
   return {
     kind: "commit",
     sha: candidate.sha,
     availability: "available",
-    author: labelGitIdentity(identities.author, authorVerified),
-    committer: labelGitIdentity(identities.committer, committerVerified),
+    author: labelGitIdentity(identities.author, false),
+    committer: labelGitIdentity(identities.committer, signature.verified),
   };
 }
 

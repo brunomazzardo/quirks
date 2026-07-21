@@ -26,7 +26,7 @@ export function isValidHttpsUrl(url: string): boolean {
 }
 
 export function labelOperatorIdentity(label: string, evidence: OperatorEvidenceKind): Identity {
-  const verified = evidence === "authenticated-host" || evidence === "authenticated-provider" || evidence === "configured-profile";
+  const verified = evidence === "authenticated-host" || evidence === "authenticated-provider";
   return { label, evidence, verified };
 }
 
