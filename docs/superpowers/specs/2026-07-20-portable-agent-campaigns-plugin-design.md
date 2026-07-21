@@ -2,6 +2,8 @@
 
 Date: 2026-07-20
 
+Last revised: 2026-07-21
+
 Status: APPROVED CONVERSATIONAL DESIGN — awaiting written-spec review
 
 Repository: `brunomazzardo/quirks`
@@ -15,8 +17,12 @@ scheduling, model/effort routing, delegated design, independent review, durable
 recovery, integration, merge, and an optionally approved push.
 
 The plugin is the only maintained copy of its orchestration skills. Target
-projects provide a small versioned adapter and their own execution instructions;
-they do not copy Quirks skills into each repository.
+projects select a versioned task-source adapter, define their workflow policy,
+and provide their own execution instructions; they do not copy Quirks skills
+into each repository. Version one ships a built-in JSON task source and a
+versioned external-executable escape hatch. GitHub Issues, Linear, Jira,
+ClickUp, and other provider adapters can be added later without changing the
+campaign core or normalized task model.
 
 Quirks uses the open Agent Skills directory format and includes a Codex plugin
 manifest. The same canonical skill directories are exposed to Claude Code and
@@ -34,6 +40,10 @@ Version one must:
 
 - run an exact approved set of tasks from different project task systems;
 - preserve each project's task source of truth and lifecycle rules;
+- keep task storage behind one capability-aware `TaskSource` contract, starting
+  with local JSON while preserving a path to provider and custom adapters;
+- treat the selected task source as canonical while Quirks normally performs
+  lifecycle writes and synchronizes them durably;
 - compute dependency-safe execution waves and serialize overlapping work;
 - support both human-guided and explicitly delegated brainstorming;
 - integrate with Superpowers-style brainstorm → specification → plan → execute
@@ -52,7 +62,10 @@ Version one must:
   approved remote/branch;
 - recover honestly after process, harness, machine, quota, or agent failure;
 - carry verified learnings across tasks without silently changing requirements;
-  and
+- expose a secure local approval, task, campaign, and history interface without
+  turning rendered HTML into another state store;
+- record compact, validated task provenance without copying specifications,
+  plans, logs, diffs, or provider records; and
 - remain free of project names, project paths, personal account names,
   credentials, and repository-specific commands.
 
@@ -64,14 +77,18 @@ Version one is not:
 - a replacement for GitHub Issues, project JSON ledgers, Jira, or other task
   authorities;
 - a universal task database;
+- a promise to ship GitHub, Linear, Jira, or ClickUp adapters in version one;
+- a continuously running issue-sync daemon;
+- cross-machine task leasing or prevention of duplicate work in another clone;
+- a persistent hosted dashboard or a store of rendered approval HTML;
 - an authorization bypass for production or external-system mutation;
 - an autonomous requirements generator that can expand its own campaign scope;
 - a generic remote shell or arbitrary command broker;
 - a credential store;
 - a mechanism for workers to approve or merge their own work;
-- a promise that every agent CLI has identical capabilities; or
+- a promise that every agent CLI has identical capabilities;
 - transparent migration or live resumption of a campaign on another device;
-- dependence on a host's native subagent facility for campaign correctness; or
+- dependence on a host's native subagent facility for campaign correctness;
 - a self-modifying skill system during a live campaign.
 
 ## 4. Terminology
@@ -85,10 +102,19 @@ Version one is not:
   surface from which an operator starts, inspects, resumes, or cancels Quirks.
 - **Control plane**: the host-independent local `quirks-campaign` process and
   watchdog that own runner lifecycle, durable state, and verification.
-- **Project adapter**: a project-owned executable implementing Quirks' versioned
-  task protocol.
-- **Normalized task**: the read model returned by an adapter for scheduling and
-  routing. It never replaces the native task record.
+- **Task source**: the canonical task authority selected by a project, such as a
+  JSON file, GitHub Issues, Linear, Jira, ClickUp, or a custom system.
+- **Task-source adapter**: a built-in, provider, or external-executable
+  implementation of Quirks' versioned semantic task protocol.
+- **Project workflow policy**: repository-owned configuration that maps native
+  task states and project completion rules into Quirks without implementing
+  storage transport.
+- **Normalized task**: the provider-neutral read model returned by a task-source
+  adapter for scheduling and routing. It never replaces the native task record.
+- **Sync outbox**: durable local intents awaiting acknowledgement from the
+  canonical task source.
+- **Provenance index**: compact references from a task to campaigns, files at
+  commits, accepted commits, pull requests, verification, and attributed actors.
 - **Runner**: an external agent CLI plus one configured account/model profile.
 - **Lane**: a sequence of tasks that must not run concurrently because they
   share files, resources, state, or a warm implementation session.
@@ -120,16 +146,28 @@ quirks/
 
   scripts/
     quirks-campaign
-    quirks-adapter
+    quirks-tasks
+    quirks-external-adapter
     quirks-runner-preflight
     quirks-watchdog
 
+  task-sources/
+    json/
+    external/
+
   schemas/
-    project-adapter-v1.schema.json
+    project-config-v1.schema.json
+    task-source-capabilities-v1.schema.json
+    task-source-request-v1.schema.json
+    task-source-response-v1.schema.json
+    json-task-file-v1.schema.json
     normalized-task-v1.schema.json
+    task-provenance-v1.schema.json
+    task-sync-intent-v1.schema.json
     campaign-v1.schema.json
     campaign-event-v1.schema.json
     campaign-state-v1.schema.json
+    campaign-approval-v1.schema.json
     host-profile-v1.schema.json
     runner-profile-v1.schema.json
 
@@ -138,7 +176,7 @@ quirks/
     model-routing.md
     security-boundaries.md
     installing.md
-    authoring-project-adapters.md
+    authoring-task-source-adapters.md
     hosts/
       claude-code.md
       codex.md
@@ -163,7 +201,7 @@ This is the parent skill invoked for “run these tasks,” “continue the queu
 - campaign preflight and approval presentation;
 - task selection and dependency closure;
 - supervisor qualification;
-- adapter and task claims;
+- task-source synchronization and task claims;
 - wave/lane planning;
 - delegated-design routing;
 - integration, final review, merge, and approved push;
@@ -219,7 +257,8 @@ compatible with Superpowers file and workflow conventions.
 
 Skills contain judgment and workflow policy. Dependency-free scripts enforce
 mechanical invariants: schemas, state transitions, event journaling, hashes,
-locks, budgets, adapter framing, bounded output, and deterministic reports.
+locks, budgets, task-source framing, sync outboxes, provenance validation,
+approval binding, bounded output, and deterministic reports.
 
 No safety property that can be enforced by a validator should exist only as
 prose in a skill.
@@ -234,7 +273,7 @@ evidence:
 |---|---|---|
 | User-level `dispatching-external-agents` | Per-CLI flags and result locations; permission-denial detection; session resume; quota/reset classification; foreground/wedge lessons; disk and test verification; cross-vendor review | Personal accounts and paths; the mandatory Claude-native Sonnet parent; prose-only ledgers; hard-coded model defaults |
 | Repository `overnight-orchestration` | Dependency-safe lanes; isolated worktrees; bounded concurrency; continuation in the same lane; independent diff review; integration verification; merge-hotspot awareness | Application-specific commands; queue-specific JSON; one hard-coded reviewer; project-specific commit and landing rules |
-| Repository `overnight-issue-worker` | Explicit lifecycle phases; frozen briefs plus freshness checks; claim-before-dispatch discipline; phase-aware hold/release; authoritative external task evidence | GitHub-specific selection, claim comments, labels, and landing markers, which belong to the target project's adapter |
+| Repository `overnight-issue-worker` | Explicit lifecycle phases; frozen briefs plus freshness checks; claim-before-dispatch discipline; phase-aware hold/release; authoritative external task evidence | GitHub-specific selection, claim comments, labels, and landing markers, which belong to a GitHub task-source adapter and project workflow policy |
 
 Run-history observations become dated regression scenarios. They do not become
 unbounded global policy unless a deterministic test or supported runner profile
@@ -246,10 +285,11 @@ There is one canonical Quirks repository.
 
 | Location | Authority |
 |---|---|
-| Quirks repository | Skills, scripts, schemas, model-routing policy, runner protocol |
+| Quirks repository | Skills, scripts, schemas, model-routing policy, runner protocol, built-in task-source adapters |
 | User configuration | Installed runner profiles, account aliases, executable paths, quota preferences, credentials |
-| Target repository | Native tasks, project adapter, project instructions, project tests, accepted changes |
-| OS application-state directory | Campaign envelopes, events, session handles, bounded artifacts, operational lessons |
+| Target repository | Task-source selection, JSON tasks when selected, project workflow policy, instructions, tests, accepted changes |
+| External task provider | Canonical task status and provider-native task record when selected |
+| OS application-state directory | Campaign envelopes, events, sync outbox, session handles, bounded artifacts, operational lessons |
 | Git remote | Accepted commits only when push was explicitly approved |
 
 Codex installs Quirks through its plugin/marketplace mechanism. A Quirks
@@ -266,90 +306,194 @@ credentials or claim that provider session handles are portable.
 Runner credentials never enter the plugin repository, a target repository,
 prompts, campaign JSON, task evidence, or reports.
 
-## 7. Project adapter contract
+## 7. Task-source and project-policy contract
 
-### 7.1 Discovery
+### 7.1 Discovery and drivers
 
-A campaign receives an adapter by either:
+A campaign receives task-source configuration by either:
 
-1. explicit `--adapter <path>`; or
+1. explicit `--config <path>`; or
 2. a committed `.agents/quirks.json` file in the target repository.
 
-There is no broad executable auto-discovery. An unattended campaign requires a
-committed, schema-valid adapter configuration. Inspection-only sessions may help
-author an adapter, but cannot mutate tasks or run unattended until it is reviewed
+There is no broad executable or provider auto-discovery. An unattended campaign
+requires committed, schema-valid configuration. Inspection-only sessions may
+help author it, but cannot mutate tasks or run unattended until it is reviewed
 and committed.
 
-The configuration names one executable as an argv array, never a shell string:
+The built-in JSON configuration is intentionally ordinary:
 
 ```json
 {
   "schemaVersion": 1,
-  "protocol": "quirks-task-adapter-v1",
-  "command": ["node", "scripts/project-tasks.mjs"],
-  "skills": {
-    "write": "writing-tasks",
-    "update": "updating-tasks",
-    "execute": "executing-tasks"
+  "protocol": "quirks-project-v1",
+  "taskSource": {
+    "driver": "json",
+    "path": ".quirks/tasks.json"
+  },
+  "workflowPolicy": {
+    "skills": {
+      "write": "writing-tasks",
+      "update": "updating-tasks",
+      "execute": "executing-tasks"
+    }
   }
 }
 ```
 
-The values above illustrate the protocol shape; Quirks ships no assumption that
-Node, those script paths, or those skill names exist in a target project.
+The JSON file is the canonical task authority when this driver is selected. Its
+adapter uses the same protocol as every future provider and custom source; the
+campaign core never opens or edits the file directly.
 
-### 7.2 Adapter operations
+The canonical file is a small versioned envelope:
 
-The executable receives one fixed operation and versioned JSON input. Version
-one operations are:
+```json
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "id": "QK-101",
+      "title": "Define the task-source contract",
+      "kind": "design",
+      "priority": "P0",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "brainstorm",
+        "designGate": {
+          "required": true,
+          "defaultApproval": "human",
+          "delegable": true,
+          "judgmentTier": "principal",
+          "decisionEnvelope": [
+            "Define the provider-neutral contract without selecting providers"
+          ]
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": ["architecture"],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": ["task-source-contract"],
+        "humanGates": [],
+        "completionBoundary": "target-merge"
+      },
+      "sourceRefs": [],
+      "deliverables": [],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "provenance": { "schemaVersion": 1, "iterations": [] }
+    }
+  ]
+}
+```
 
-- `capabilities`: supported operations, lifecycle, authority classes, protocol
-  limits, and native completion boundaries;
-- `validate`: repository-wide native task validation;
-- `list`: filtered task summaries;
+Task IDs are unique and stable within the source. The JSON driver derives the
+normalized `source` block and `nativeRevision` from canonical task content; those
+derived fields are not stored or hand-edited in the file. Exact workflow and
+execution subfields are validated by their referenced schemas.
+
+Future built-in/provider drivers such as `github`, `linear`, `jira`, or
+`clickup` carry only non-secret provider locators in project configuration.
+Credential aliases and authenticated account selection remain in user
+configuration. Each provider driver is a separately versioned package that must
+pass the shared task-source contract suite before it can be selected.
+
+Custom formats use the `external` driver with a committed argv array, never a
+shell string. The external executable is the successor to the original project
+adapter seam; it preserves arbitrary project integration without making every
+repository reimplement a standard provider.
+
+Project workflow policy is separate from transport. It defines native status
+mapping, required skills, design gates, evidence mapping, and one finite
+completion boundary: `accepted-commit`, `campaign-merge`, `target-merge`, or
+`remote-push`. A source driver cannot silently weaken this policy.
+
+### 7.2 Semantic `TaskSource` operations
+
+All drivers implement the same provider-neutral operations:
+
+- `capabilities`: supported operations, concurrency strength, lifecycle fields,
+  comment/reference and provenance-write modes, authority classes, limits, and
+  completion boundaries;
+- `validate`: source-wide task and policy validation;
+- `list`: filtered normalized task summaries;
 - `show`: one complete normalized task;
-- `claim`: native task claim with stable campaign/task owner;
+- `claim`: claim with stable campaign/task owner when supported;
 - `submit-review`: attach criterion-specific evidence and request review;
+- `attach-provenance`: append a validated compact provenance update;
 - `complete`: accept reviewed work with exact commit/artifact evidence;
 - `block`: record reason and observable unblock condition;
 - `release`: relinquish an unlanded claim safely;
 - `propose`: create a non-running proposed task for a discovered outcome; and
 - `verify`: project-defined campaign/task verification commands and results.
 
-Mutating operations require an expected native revision or equivalent
-compare-and-swap token. A stale update fails rather than overwriting another
-agent's change.
+Core scheduling calls semantic operations rather than provider CRUD APIs. A
+driver maps those operations to JSON fields, issue fields, labels, comments, or
+provider-native transitions according to its declared capabilities and the
+project workflow policy. Unsupported capabilities remain visible and fail
+closed; the UI does not pretend every provider has identical features.
 
-Every request and response is size-bounded JSON. Unknown fields and unsupported
-versions fail closed. Stdout is protocol-only; diagnostics use stderr. Secret
-values are invalid in adapter responses.
+Every mutating request carries an expected native revision and an idempotency
+key derived from campaign, task, operation, and event identity. A driver declares
+its enforceable concurrency strength as `atomic`, `optimistic`, `local-only`, or
+`none`. It cannot claim compare-and-swap protection that its storage or provider
+cannot enforce. Stale or conflicting updates fail instead of overwriting newer
+native state.
 
-The adapter declares one finite native completion boundary per task or project:
-`accepted-commit`, `campaign-merge`, `target-merge`, or `remote-push`. Quirks may
-submit evidence and request review earlier, but it cannot mark the native task
-complete until that boundary has succeeded. A project therefore keeps its own
-definition of “done” rather than inheriting Quirks' Git assumptions.
+The JSON driver uses canonical content revisions, a repository-local lock, and
+atomic file replacement. This protects concurrent writers in the same clone but
+does not prevent a different machine or clone from attempting the same task.
+That cross-machine limitation is explicit in version-one approval and history
+views. A future provider may offer stronger coordination through its adapter.
 
-### 7.3 Adapter authority
+Every request and response is size-bounded schema-valid JSON. Unknown fields and
+unsupported versions fail closed. External-adapter stdout is protocol-only;
+diagnostics use stderr. Secret values are invalid in task-source responses.
 
-The native project task system remains authoritative. Quirks' normalized task
-and campaign files are snapshots and execution journals, not a second editable
-task database.
+### 7.3 Authority and synchronization
+
+The selected task source owns canonical task status. Quirks is normally the
+writer during a campaign, but normalized task files and UI read models are only
+local snapshots. The campaign journal remains authoritative for execution
+events, approvals, runner activity, verification, and recovery—not for native
+task status.
+
+Quirks performs an inbound refresh before preflight, claim, resume, review,
+completion, landing, and final reporting. Before each outbound task mutation it
+durably appends a sync intent to the local outbox, invokes the adapter with the
+expected native revision and idempotency key, and records acknowledgement plus
+the new native revision. A task cannot be reported complete while its canonical
+completion update remains unacknowledged.
+
+`quirks tasks sync` exposes the same reconciliation explicitly. Version one has
+no always-running daemon; automatic synchronization happens at command and
+campaign lifecycle boundaries.
+
+If another actor changes the canonical task, the source wins. Quirks records the
+conflict and pauses the affected lane rather than overwriting, merging semantic
+status automatically, or substituting its local snapshot. Append-only provider
+metadata may be retried only when the adapter proves the operation idempotent and
+non-conflicting. Provider unavailability leaves an honest `pending_sync` outbox
+entry and blocks any transition whose correctness depends on acknowledgement.
 
 At preflight Quirks records:
 
-- adapter configuration hash;
-- adapter executable Git blob/commit identity where available;
-- adapter capability response hash;
-- native task revision tokens; and
-- project instruction hashes relevant to execution.
+- task-source driver, protocol, configuration, implementation, and capability
+  hashes;
+- project workflow-policy and relevant instruction hashes;
+- native task revision tokens and current sync state; and
+- credential alias and authenticated provider identity in sanitized form, never
+  the credential itself.
 
-Any change before claim, delegated approval, landing, or push pauses the campaign
-and requires re-preflight or new approval.
+Any source, policy, capability, or task revision change before claim, delegated
+approval, landing, or push pauses the campaign and requires re-preflight or new
+approval.
 
 ## 8. Normalized task model
 
-Adapters translate their native representation into `normalized-task-v1`:
+Task-source adapters translate their native representation into
+`normalized-task-v1`:
 
 ```json
 {
@@ -359,6 +503,11 @@ Adapters translate their native representation into `normalized-task-v1`:
   "kind": "design",
   "priority": "P0",
   "status": "ready",
+  "source": {
+    "driver": "json",
+    "nativeId": "PROJECT-123",
+    "webUrl": null
+  },
   "nativeRevision": "opaque-revision",
   "dependsOn": [],
   "workflow": {
@@ -385,7 +534,11 @@ Adapters translate their native representation into `normalized-task-v1`:
   "sourceRefs": [],
   "deliverables": [],
   "acceptanceCriteria": [],
-  "verification": []
+  "verification": [],
+  "provenance": {
+    "schemaVersion": 1,
+    "iterations": []
+  }
 }
 ```
 
@@ -403,7 +556,64 @@ paths, URLs, or model-provided free-form authority.
 
 If an implementation task lacks its required approved design or plan dependency,
 preflight marks the campaign invalid. Quirks may propose the missing task through
-the adapter but cannot schedule it without a new exact campaign approval.
+the task-source adapter but cannot schedule it without a new exact campaign
+approval.
+
+### 8.1 Compact task provenance
+
+The built-in JSON task source stores a compact provenance index, not duplicated
+artifacts. Provider adapters declare `structured`, `append-only`, or `none`
+provenance support and synchronize the same compact facts where supported. The
+campaign journal always retains the validated iteration/reference events needed
+for local history, but it never becomes canonical task status. Each append-only
+task iteration may reference:
+
+- campaign ID, task revision, approved envelope digest, outcome, completion
+  boundary, base/accepted/landed commits, and superseding iteration;
+- governing specification, plan, review, or other artifact by kind,
+  repository-relative path, exact Git commit at which it was used, and optional
+  canonical URL;
+- accepted or partial commits by full SHA; commit count is derived rather than
+  stored separately;
+- pull request by provider, repository locator, number, URL, state, opener,
+  merger, and merge commit;
+- verification, CI, build, release, or deployment evidence by stable reference
+  and concise outcome;
+- participants by role, runner, model, effort, and session reference;
+- human operator, Git author, Git committer, PR opener, and PR merger as distinct
+  identities with the evidence that supports each attribution;
+- start, finish, duration, reported usage/cost, deviations, retries, fallbacks,
+  permission denials, timeouts, resumptions, and follow-up task references; and
+- a short outcome reason suitable for a history list.
+
+Full specifications, plans, reviews, patches, logs, prompts, model reasoning,
+transcripts, test output, provider payloads, and secret-bearing output do not
+enter the task record. They remain in Git, project files, provider systems, or
+the bounded campaign journal. A campaign reference is a pointer to that journal,
+not a copy of it.
+
+Workers return candidate references only. The deterministic control plane
+validates referenced Git objects, repository-relative paths at the stated
+commit, accepted commit boundaries, provider URLs/identities when available,
+and schema limits before asking the task-source adapter to append provenance.
+Invalid or unverifiable candidates are rejected or labeled unavailable; a worker
+cannot write authoritative provenance directly.
+
+Git author and committer names/emails are self-asserted metadata. Quirks labels
+an identity verified only when a valid signature or authenticated provider
+identity proves it. The history UI keeps operator, producer agent/model, Git
+author, Git committer, PR opener, and PR merger separate rather than implying
+that any one field proves the others.
+
+The operator identity comes from a configured Quirks user profile or an
+authenticated host/provider identity with an explicit evidence kind. An OS
+username or free-form display name alone is self-asserted and never marked
+verified.
+
+Historical file links offer `Open as executed`, `Open current`, and `Compare`
+when the referenced Git object exists. If the historical object, provider, or
+URL is unavailable, the UI says so and never silently substitutes the current
+file or a newer provider record.
 
 ## 9. Superpowers workflow compatibility
 
@@ -413,7 +623,7 @@ the adapter but cannot schedule it without a new exact campaign approval.
 | Plan | Superpowers writing-plans after human-approved spec | Principal planning agent after delegated spec acceptance |
 | Execute | Project execution skill and applicable Superpowers plan executor | Runner selected by effort/risk; project skill remains binding |
 | Review | Human or requested independent review | Fresh cross-vendor review plus supervisor verification |
-| Complete | Project lifecycle update | Adapter update after reproduced evidence |
+| Complete | Project lifecycle update | Task-source update after reproduced evidence |
 
 Task metadata defines the safe default. Crucial design tasks normally use
 `defaultApproval: human` while remaining `delegable: true` for an explicitly
@@ -448,7 +658,7 @@ envelope unless named explicitly. They pause the lane.
 
 Human-guided tasks may be drafted overnight, but dependent planning or
 implementation remains blocked until the human approval is recorded by the
-native adapter.
+canonical task source.
 
 ## 10. Roles and authority
 
@@ -478,13 +688,13 @@ separate sessions with separate authority and lifecycle. This keeps supervision
 portable and recoverable even when the invoking harness changes or exits.
 
 The supervisor returns schema-valid decisions and reports; deterministic control
-plane code validates and applies state transitions, budgets, locks, adapter
-mutations, and Git target restrictions. Model judgment cannot bypass mechanical
-invariants.
+plane code validates and applies state transitions, budgets, locks, task-source
+mutations, sync acknowledgement, and Git target restrictions. Model judgment
+cannot bypass mechanical invariants.
 
 The supervisor:
 
-- owns the campaign state machine and adapter mutations;
+- owns the campaign state machine and task-source mutations;
 - never implements task scope;
 - never authors and approves the same design;
 - verifies actual Git/files and reproduces assigned evidence;
@@ -578,7 +788,8 @@ must display and persist an immutable candidate envelope containing:
 
 - repository identity, clean/dirty state, base commit, and relevant instruction
   hashes;
-- adapter path, protocol, configuration/executable/capability hashes;
+- task-source driver, protocol, configuration/implementation/capability hashes,
+  workflow-policy hash, authenticated identity summary, and sync health;
 - exact task IDs, native revisions, dependency closure, and selection reason;
 - human versus delegated design mode and decision envelope for every design task;
 - worktree/integration branch, target branch, landing strategy, and base SHA;
@@ -593,6 +804,35 @@ must display and persist an immutable candidate envelope containing:
 The envelope is canonicalized and hashed. Approval must reference the displayed
 campaign identity/digest in the interactive session. This is durable approval
 evidence, not a cryptographic signature.
+
+At run start Quirks asks whether the proposal may route work across other
+external agent providers/profiles. If disabled, the proposal is constrained to
+a child runner session using the current harness's configured CLI/profile; the
+interactive host still does not become the durable supervisor or bypass the
+control plane. If enabled, preflight may spread compatible work across approved
+Claude, Codex, Cursor, and later runner profiles.
+
+Quirks renders the candidate envelope as an ephemeral loopback approval
+workspace. The HTML is a projection, not an artifact or state store. It shows:
+
+- campaign summary: exact scope, waves, estimated time, confidence, budget, and
+  landing/push boundary;
+- dependency and execution map with ordered waves and conflict lanes;
+- agent lanes identifying runner, model, effort, task order, and health;
+- complete task list with readiness, blockers, design gates, risk, effort, and
+  proposed route;
+- selected-task inspector with routing rationale, tests, fallback, confidence,
+  and acceptance proof; and
+- a fixed approval area binding the exact campaign ID and digest.
+
+The approval action consumes a short-lived one-time token and records an
+operator-attributed approval event containing the exact digest. Nothing may
+claim, dispatch, or mutate a task before that event is durable. Changing task
+scope, route, model, fallback, budget, authority, verification, landing, or push
+regenerates the envelope and requires approval of the new digest. A runtime
+fallback may proceed without another approval only when that exact route and
+conditions were already present in the approved envelope; otherwise Quirks
+pauses for a new proposal.
 
 After approval the supervisor cannot expand tasks, delegated decisions,
 capabilities, external targets, models below tier, budgets, merge target, or push
@@ -615,8 +855,8 @@ draft|preflight|awaiting_approval|running|paused|blocked -> cancelled
 ```
 
 - `draft`: task selection intent exists but has not been validated.
-- `preflight`: adapter, repository, runners, tasks, risks, and baseline are being
-  inspected without project mutation.
+- `preflight`: task source, workflow policy, repository, runners, tasks, risks,
+  and baseline are being inspected without project mutation.
 - `awaiting_approval`: the immutable envelope and digest are ready.
 - `running`: exact approved tasks may be claimed, dispatched, reviewed, and
   integrated.
@@ -629,15 +869,18 @@ draft|preflight|awaiting_approval|running|paused|blocked -> cancelled
   are serialized.
 - `hold`: accepted or pushed work exists but safe automated continuation is
   ambiguous; operator ownership is required.
-- `complete`: final report and all native task updates are reconciled.
+- `complete`: final report and all canonical task updates and required
+  provenance writes are acknowledged; no required sync intent remains pending.
 
 Every state transition is append-only with timestamp, actor/session, from/to,
 reason, and sanitized evidence.
 
 ## 14. Execution and integration flow
 
-1. Acquire the repository campaign lock and revalidate the approved envelope.
-2. Claim eligible tasks through adapter compare-and-swap.
+1. Acquire the repository campaign lock, refresh the canonical task source, and
+   revalidate the approved envelope against native revisions and sync health.
+2. Claim eligible tasks through task-source compare-and-swap, with the mutation
+   intent durably recorded before the adapter call.
 3. Build dependency waves and conflict lanes from `dependsOn`,
    `parallelismKeys`, deliverables, and project capabilities.
 4. Create one isolated task branch/worktree per concurrent task from the current
@@ -651,13 +894,15 @@ reason, and sanitized evidence.
 9. Dispatch a fresh independent review when required.
 10. Return findings to the existing implementer session for bounded fixes, or a
     new session when independence/context hygiene requires it.
-11. Submit criterion-specific evidence through the adapter.
+11. Submit criterion-specific evidence through the task-source adapter.
 12. The supervisor accepts reviewed work and creates the exact task commit when
     sandbox restrictions prevent the worker from committing.
 13. Merge accepted task work into the campaign branch serially and run affected
     integration verification.
-14. Advance the native task only as far as its declared completion boundary
-    permits, with exact commit/artifact evidence.
+14. Validate and journal compact provenance, synchronize it to the task source
+    when supported, then advance the native task only as far as its declared
+    completion boundary permits, with exact commit/artifact evidence and
+    acknowledged required sync revisions.
 15. Recompute eligibility after every accepted task; never infer new tasks into
     the approved set.
 16. Run final whole-campaign verification and a fresh principal review.
@@ -665,10 +910,15 @@ reason, and sanitized evidence.
     any push.
 18. Push only when the envelope names the exact remote and branch.
 19. Complete tasks whose declared boundary has now succeeded, reconcile every
-    native task state, and write the final campaign report.
+    canonical task state and outbox entry, and write the final campaign report.
 
 Same-surface sequential tasks may resume a warm implementer session. Reviewers
 and final reviewers remain fresh.
+
+Every task-source write follows the durable intent → adapter mutation →
+acknowledgement sequence. A transport timeout after a provider may have accepted
+the request is resolved by idempotency-key lookup or fresh provider state, never
+by blindly repeating a non-idempotent mutation.
 
 ## 15. Git, merge, and push policy
 
@@ -694,8 +944,8 @@ Version one allows an approved campaign to merge and push.
 - Push requires a run-start prompt and explicit envelope fields for enabled,
   remote, source revision, and destination branch.
 
-The adapter or project instructions may impose a stricter branch/PR policy. The
-plugin cannot relax it.
+The task-source adapter, workflow policy, or project instructions may impose a
+stricter branch/PR policy. The plugin cannot relax it.
 
 ## 16. Host-independent external runner dispatch
 
@@ -831,7 +1081,9 @@ directory, keyed by canonical repository identity and campaign ID:
 ```text
 campaigns/<campaign-id>/
   campaign.json
+  approvals.jsonl
   events.jsonl
+  sync-outbox.jsonl
   state.json
   sessions.json
   tasks/<task-id>.json
@@ -841,22 +1093,31 @@ campaigns/<campaign-id>/
 ```
 
 - `campaign.json` is the immutable approved envelope.
+- `approvals.jsonl` records digest-bound operator approval events and token-use
+  results; it contains no reusable approval secret.
 - `events.jsonl` is the append-only recovery/audit sequence.
+- `sync-outbox.jsonl` stores idempotent task-source mutation intents,
+  acknowledgements, conflicts, and native revisions.
 - `state.json` is a derived atomic snapshot and can be rebuilt from events.
 - `sessions.json` stores opaque handles and liveness metadata, not credentials.
-- task files store normalized snapshots and native revision tokens.
+- task files store normalized snapshots, sync status, native revision tokens,
+  and a derived compact provenance read model from canonical source metadata and
+  validated campaign events.
 - artifacts are bounded, redacted, and excluded from secret/raw-log capture.
 - the final report is sanitized and may optionally be copied to a project path
-  only when its adapter declares that deliverable.
+  only when project workflow policy declares that deliverable.
 
-Version one permits one active write campaign per repository. An atomic lock and
-heartbeat identify its owner. Stale-lock recovery checks live processes,
-sessions, Git state, and event history before taking ownership.
+Version one permits one active write campaign per repository on one device. An
+atomic lock and heartbeat identify its local owner. Stale-lock recovery checks
+live processes, sessions, Git state, and event history before taking ownership.
+This lock is not a shared lease and cannot prevent another clone or machine from
+attempting the same task. The UI must say `Local coordination only` rather than
+implying an exclusive global claim.
 
 On resume a qualifying supervisor revalidates:
 
 - campaign/envelope hashes;
-- adapter and project instruction hashes;
+- task-source, workflow-policy, and project-instruction hashes;
 - native task revisions and ownership;
 - campaign/target branches and commits;
 - worktrees and running processes;
@@ -866,6 +1127,25 @@ On resume a qualifying supervisor revalidates:
 
 Any irreconcilable disagreement pauses or holds the campaign. Recovery never
 rewrites event history to make the current state look clean.
+
+The local control UI builds three read models without creating another source of
+truth:
+
+- **Existing Tasks** refreshes from the selected task-source adapter and shows
+  dependency frontier, readiness, blockers, design gates, scores, suggested
+  routes, source identity, last sync, pending writes, and conflicts. Selecting
+  tasks starts a new preflight rather than mutating them directly.
+- **Campaigns** shows active, paused, blocked, held, completed, and cancelled
+  local journals with tasks, agents/models, time/spend, outcomes, commits,
+  evidence, reports, and sync state. It defaults to the current repository with
+  an explicit all-projects filter.
+- **Task History** combines the task's compact provenance index with immutable
+  campaign journals to show iterations, governing files, commits, pull requests,
+  verification, deviations, attribution, follow-ups, and supersession.
+
+Past campaign journals and task iterations are append-only. `Run again` creates
+a new preflight and digest; it never edits a completed campaign or reuses its
+approval.
 
 ## 18. Learning across tasks
 
@@ -886,7 +1166,8 @@ instructions.
 
 Quirks does not edit its own skills during a campaign. A plugin learning becomes
 a separate task and must follow skill TDD. A project learning is promoted through
-the adapter and cannot enter the active campaign without new approval.
+the task-source adapter and cannot enter the active campaign without new
+approval.
 
 ## 19. Budgets and circuit breakers
 
@@ -900,7 +1181,7 @@ Defaults:
 - pause one lane after two consecutive task failures;
 - pause the campaign after an integration or post-merge verification failure;
 - stop before exceeding an approved token/cost/wall-clock ceiling;
-- pause on adapter/instruction/task revision drift;
+- pause on task-source/policy/instruction/task revision drift;
 - pause on target conflicts or unexpected protected-branch policy;
 - block on missing human approval or escaped delegated-design decision; and
 - hold after ambiguous accepted/pushed state.
@@ -910,9 +1191,16 @@ cannot increase budget, retries, authority, or task scope without a new envelope
 
 ## 20. Security boundaries
 
-- Adapter commands are argv arrays; Quirks never executes adapter shell strings.
-- A committed adapter is executable project code. Preflight displays its path,
-  hash, capabilities, and requested permissions before approval.
+- External task-source commands are argv arrays; Quirks never executes adapter
+  shell strings.
+- A committed external adapter is executable project code. Preflight displays
+  its path, hash, capabilities, concurrency strength, and requested permissions
+  before approval.
+- Provider credentials are referenced by user-configured aliases. They never
+  enter project configuration, task JSON, argv, prompts, worker environments,
+  campaign evidence, or rendered UI. A built-in provider driver or isolated
+  external-adapter child receives only the minimum credential material required
+  for that provider operation through a scrubbed allow-listed environment.
 - Project content, task prose, logs, tests, metadata, agent reports, and external
   output are potentially hostile data, not supervisor instructions.
 - Briefs separate binding instructions from quoted observations.
@@ -929,6 +1217,39 @@ cannot increase budget, retries, authority, or task scope without a new envelope
   provider authority.
 - The supervisor verifies current project instructions and authority order before
   every mutation boundary.
+
+The local control UI is an authorization boundary, not a decorative report:
+
+- it binds only to loopback and generates an exact `127.0.0.1` authority with a
+  random port; requests with another `Host` authority fail;
+- a cryptographically random, single-use token that expires after at most 15
+  minutes is bound to one campaign ID and envelope digest; it is delivered in
+  the URL fragment, kept in page memory, and never written to history state,
+  logs, cookies, or local storage;
+- the initial shell contains no proposal data; authenticated same-origin JSON
+  requests fetch the envelope projection and submit approval;
+- approval accepts only JSON, the exact origin, `Sec-Fetch-Site: same-origin`,
+  the session-bound token, and the displayed digest. There are no form or GET
+  mutation endpoints, and replay fails after the first terminal result;
+- every response uses `Cache-Control: no-store`, `Referrer-Policy: no-referrer`,
+  `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`,
+  and `Cross-Origin-Opener-Policy: same-origin`;
+- CSP is generated per response with a fresh nonce and no remote dependencies:
+  `default-src 'none'; script-src 'nonce-<random>'; style-src 'nonce-<random>';
+  img-src 'self' data:; connect-src 'self'; font-src 'none'; object-src 'none';
+  base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+- task text, paths, headers, Git metadata, provider data, logs, and traffic data
+  are rendered as escaped text. URLs are parsed; remote links require `https`,
+  file/Git actions use internal application routes, and `http` is accepted only
+  for the exact loopback UI authority. No attacker-controlled HTML, CSS, script,
+  image URL, or automatic remote fetch is accepted; and
+- rendered HTML is ephemeral and is never persisted as a campaign artifact.
+  Only the canonical envelope, digest, and terminal approval event are durable.
+
+Operator, runner, Git, and provider attribution is evidence, not authorization.
+The UI labels local Git identity as self-asserted and uses `verified` only for a
+valid signature or authenticated provider identity. It also states that
+version-one task claims coordinate only the current device/clone.
 
 ## 21. Failure behavior
 
@@ -949,16 +1270,38 @@ Failures are classified rather than retried generically:
   transcript if possible; continue only from on-disk evidence.
 - **Baseline/project failure**: no claims or task execution; report existing
   failure.
+- **Task-source conflict**: canonical provider/file revision wins; preserve the
+  local intent, pause the affected lane, and require explicit reconciliation.
+- **Task-source outage**: keep the durable outbox pending; do not claim,
+  complete, or report a transition that requires fresh canonical state.
+- **Ambiguous mutation acknowledgement**: query by idempotency key or refresh
+  native state; never blindly repeat a potentially accepted operation.
+- **Invalid provenance**: reject missing Git objects, paths outside the
+  repository, mismatched commit/PR boundaries, unsupported URL schemes, and
+  unverifiable claims. History displays unavailable references honestly.
+- **Stale or replayed approval**: reject the token/digest, perform no mutation,
+  and return to a fresh preflight when the underlying envelope changed.
 - **Integration failure**: stop new dispatches, preserve exact accepted commits,
   and pause for diagnosis.
 - **Pre-push landing failure**: do not push; record landing revision and pause.
 - **Post-push ambiguity**: hold for operator; never silently unassign or revert.
-- **Crash/restart**: reconstruct from events, Git, adapter, sessions, and locks;
-  never trust memory.
+- **Crash/restart**: reconstruct from events, Git, task source, sync outbox,
+  sessions, and locks; never trust memory.
 
 ## 22. Run-start user experience
 
-The campaign approval view is concise but complete:
+`quirks-campaign` opens one ephemeral local control workspace with four
+provider-neutral views. The underlying read models are also available as
+bounded schema-valid CLI JSON for agents and MCP clients; HTML never becomes the
+API or source of truth.
+
+**Existing Tasks** refreshes the selected task source, exposes source/sync
+health, and shows task readiness, dependencies, blockers, workflow phase,
+design/plan gates, risk, effort, confidence, suggested route, and current local
+coordination state. A user selects an exact set and starts preflight. The view
+does not offer unchecked direct provider mutations.
+
+**Preflight Proposal** is concise but complete:
 
 1. **What will run**: exact tasks, dependencies, design/plan/execute phases.
 2. **Delegated judgment**: human/delegated design tasks, envelopes, architect and
@@ -972,8 +1315,28 @@ The campaign approval view is concise but complete:
    runners, degraded independence.
 9. **Approval digest**: stable campaign ID and envelope hash.
 
-The user may change any choice before approval. After approval, any material
-change returns to this view with a new digest.
+It includes the dependency/execution map, agent lanes, full task list,
+selected-task inspector, tests, fallback, and routing rationale. The fixed
+approval area offers editing before approval and one exact digest-bound approve
+action. After approval, any material change returns to this view with a new
+digest.
+
+**Campaigns** lists active and immutable past campaign journals with status,
+tasks, waves, runners/models, timing, spend, deviations, outcomes, accepted
+commits, pull requests, verification, reports, and sync state. The default scope
+is the current repository; all-project history is an explicit filter. `Run
+again` always creates a new candidate envelope.
+
+**Task History** shows the compact provenance index without copying its sources:
+governing spec/plan/review links at their executed commits, iteration outcomes,
+accepted and partial commits, pull requests, verification, deviations,
+follow-ups, and distinct operator/agent/Git/provider attribution. Historical
+references support `Open as executed`, `Open current`, and `Compare`; missing
+objects stay visibly missing.
+
+Every view carries an explicit source/sync freshness indicator. Version one also
+shows `Local coordination only` and `No shared lease`; it does not imply that a
+claim prevents work from another clone or machine.
 
 ## 23. Testing strategy
 
@@ -997,11 +1360,16 @@ Pressure scenarios cover:
 - an architect reviewing its own specification;
 - implementing without approved design/plan dependencies;
 - trusting an executor's “tests pass” claim;
-- changing an adapter or task after approval;
+- changing a task source, workflow policy, or task after approval;
+- provider conflict and pressure to overwrite canonical status;
+- provider outage with pressure to report a pending completion as done;
+- an ambiguous provider timeout that tempts a duplicate mutation;
+- a worker fabricating commit, file, pull-request, or identity provenance;
+- approval token replay or approval of a digest different from the page;
 - pushing when push was not enabled;
 - broadening network/production authority;
 - quota exhaustion and tempting lower-tier fallback;
-- hostile task/log instructions;
+- hostile task/log/path/header/Git/provider content rendered in the local UI;
 - partial work and sunk-cost pressure;
 - target movement, conflicts, and post-push failure; and
 - recovery with contradictory Git, task, and campaign state.
@@ -1013,7 +1381,17 @@ Dependency-free tests cover:
 - every JSON schema and unknown-field rejection;
 - campaign state transitions and append-only events;
 - canonical envelope hashes;
-- adapter framing, revisions, stale updates, and output bounds;
+- shared task-source contract behavior and capability negotiation;
+- JSON-driver canonical revisions, local locks, atomic writes, stale updates, and
+  recovery from interrupted replacement;
+- external-adapter framing, argv-only execution, revisions, diagnostics, and
+  output bounds;
+- sync outbox intent/acknowledgement ordering, idempotency, retry, pending state,
+  provider conflict, ambiguous acknowledgement, and explicit `tasks sync`;
+- provenance schemas, Git/path/URL/provider validation, attribution evidence,
+  historical-reference failure, and rejection of duplicated content;
+- one-time approval token binding, expiry, replay rejection, digest mismatch,
+  exact Host/Origin/Fetch Metadata checks, and zero mutation before approval;
 - task dependency cycles, exact-set selection, and phase gates;
 - lane scheduling, parallelism keys, and task-count/concurrency budgets;
 - model tier resolution and forbidden downgrades;
@@ -1050,10 +1428,13 @@ CI uses fake runners and never consumes paid model quota.
 ### 23.4 Portable repository fixtures
 
 At least two unrelated fixture repositories use different native task formats
-and adapters. End-to-end tests prove:
+and adapters: one uses the built-in JSON driver and one uses an external fake
+provider implementing the same contract. End-to-end tests prove:
 
 - Quirks contains no native-task assumptions;
 - both adapters normalize into the same campaign flow;
+- lifecycle-boundary refresh, outbound sync, manual sync, pending writes, and
+  canonical conflicts behave identically at the control-plane boundary;
 - human and delegated designs gate dependents correctly;
 - independent tasks parallelize and conflicts serialize;
 - accepted commits integrate and rejected work does not;
@@ -1099,17 +1480,41 @@ Release gates include:
 - clean installation in a fresh user-data sandbox; and
 - documentation examples validated against current schemas.
 
+### 23.7 Local control UI and provenance tests
+
+Browser tests render realistic attacker-controlled task titles, descriptions,
+paths, headers, Git identities, provider metadata, logs, and traffic data. They
+verify escaping, URL-scheme restrictions, nonce propagation, the exact CSP and
+security headers, no remote requests, no cached proposal response, clickjacking
+protection, and no approval via form, GET, cross-origin request, stale token, or
+replay.
+
+Projection tests prove that proposal HTML is derived only from the canonical
+envelope, that the displayed digest equals the approved digest, and that no HTML
+file is persisted. Responsive checks cover the task map, lanes, task list,
+inspector, existing tasks, campaigns, and task-history views at desktop and
+compact widths without horizontal page overflow; intentionally wide commit
+tables may scroll only inside their bounded panel.
+
+History fixtures cover current and missing specifications/plans, partial and
+superseded iterations, signed and unsigned Git identities, distinct operator
+and provider actors, pull requests and CI links, unavailable providers, and
+corrupted campaign journals. The UI must never replace missing historical data
+with current data or claim that a local task lock is globally exclusive.
+
 ## 24. Acceptance criteria for version one
 
 Version one is acceptable when:
 
 1. The same installed plugin completes deterministic fake-runner campaigns in
-   two repositories with different task adapters.
+   two repositories, one using the built-in JSON task source and one using an
+   external fake-provider adapter.
 2. Claude Code, Codex, and Cursor each invoke the same control plane and pass all
    three Claude/Codex/Cursor runner cells in the dated real smoke matrix.
 3. Campaign preflight resolves an exact task set, flags every design gate,
-   presents model/authority/merge/push choices, and prevents execution before
-   digest-specific approval.
+   presents the approved task map, routes, models, authority, verification,
+   merge/push choices, source/sync state, and prevents execution before the
+   local UI records digest-specific approval.
 4. Human brainstorming preserves human approval; delegated brainstorming uses a
    Fable/GPT-5.6 architect, independent qualified review, and stops on envelope
    escape.
@@ -1125,15 +1530,33 @@ Version one is acceptable when:
 9. Supervisor verification rejects fabricated completion/test evidence.
 10. Dependency waves, conflict lanes, budgets, and circuit breakers behave
    deterministically.
-11. Crash recovery reconstructs the campaign without lost accepted work,
-   duplicated task dispatch, or rewritten history.
-12. Merge reaches only the approved target and push reaches only the explicitly
+11. The selected task source remains canonical while Quirks normally performs
+    lifecycle writes through one provider-neutral contract.
+12. Automatic lifecycle-boundary sync and manual `quirks tasks sync` preserve
+    durable intent, idempotency, expected revisions, provider acknowledgement,
+    honest pending state, and conflict pauses. No task reports complete before
+    its required canonical update is acknowledged.
+13. Task JSON provenance fields store only a compact validated index. Governing
+    files, commits, pull requests, verification, iterations, deviations,
+    follow-ups, and distinct human/agent/Git/provider attribution link to
+    authoritative sources without copying their contents.
+14. The loopback UI binds approval to a short-lived single-use token and exact
+    digest, enforces Host/Origin/Fetch Metadata and the documented CSP/security
+    headers, escapes hostile data, makes no remote asset requests, and persists
+    no rendered HTML.
+15. Existing Tasks, Campaigns, and Task History read models remain
+    provider-neutral, show sync freshness and unavailable historical references
+    honestly, and state that version-one coordination is local only.
+16. Crash recovery reconstructs the campaign and sync outbox without lost
+    accepted work, duplicated task dispatch, or rewritten history.
+17. Merge reaches only the approved target and push reaches only the explicitly
    approved remote/branch after final verification.
-13. Credentials, secrets, project-specific names, personal paths, and account
+18. Credentials, secrets, project-specific names, personal paths, and account
     identifiers are absent from shipped plugin artifacts and campaign evidence.
-14. Skill baseline/forward tests, schema tests, fake-runner integration, package
-    validation, and portability fixtures all pass.
-15. The final report distinguishes completed, rejected, blocked, held, skipped,
+19. Skill baseline/forward tests, schema tests, task-source contract tests,
+    sync/provenance tests, local UI security/browser tests, fake-runner
+    integration, package validation, and portability fixtures all pass.
+20. The final report distinguishes completed, rejected, blocked, held, skipped,
     and newly proposed work, with exact commits and reproducible evidence.
 
 ## 25. Delivery sequence
@@ -1143,21 +1566,26 @@ approved. The required delivery order is:
 
 1. write and approve the implementation plan;
 2. scaffold and validate the plugin package;
-3. implement schemas, canonical campaign state, deterministic validator, and
-   the host-independent control-plane lifecycle;
-4. implement the project adapter protocol and two fixtures;
-5. baseline-test and author `dispatching-external-agents`, including versioned
+3. implement schemas, canonical campaign state, approval events, sync outbox,
+   provenance validator, and the host-independent control-plane lifecycle;
+4. implement the provider-neutral `TaskSource` contract, built-in JSON driver,
+   external-executable driver, project workflow policy, manual/boundary sync,
+   and two portability fixtures;
+5. implement the ephemeral loopback UI/API and provider-neutral Existing Tasks,
+   Preflight Proposal, Campaigns, and Task History read models;
+6. baseline-test and author `dispatching-external-agents`, including versioned
    Claude, Codex, and Cursor runner references;
-6. baseline-test and author `delegated-brainstorming`;
-7. baseline-test and author `running-agent-campaigns`;
-8. implement fake runners/hosts, watchdog, resume, budgets, quota-pool routing,
+7. baseline-test and author `delegated-brainstorming`;
+8. baseline-test and author `running-agent-campaigns`;
+9. implement fake runners/hosts, watchdog, resume, budgets, quota-pool routing,
    and circuit breakers;
-9. implement Git integration, merge, and approved push;
-10. implement and validate Claude Code, Codex, and Cursor installation/control
+10. implement Git integration, merge, approved push, and validated provenance
+    write-back;
+11. implement and validate Claude Code, Codex, and Cursor installation/control
     integrations without copying the canonical skills;
-11. run portable fixture end-to-end acceptance and the dated nine-cell real
-    host/runner smoke matrix;
-12. install through the personal plugin marketplace and expose canonical skills
+12. run portable fixture end-to-end acceptance, task-source/sync/provenance/UI
+    suites, and the dated nine-cell real host/runner smoke matrix;
+13. install through the personal plugin marketplace and expose canonical skills
     to supported harnesses; and
-13. run one bounded real project campaign only after the disposable acceptance
+14. run one bounded real project campaign only after the disposable acceptance
     suite passes.
