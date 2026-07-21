@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/campaign-v1",
+  "type": "object",
+  "required": ["schemaVersion", "campaignId", "digest", "repositoryId", "createdAt", "taskIds", "taskRevisions", "designModes", "git", "authority", "routing", "budgets", "verification", "hashes", "externalRoutingEnabled"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 }, "campaignId": { "$ref": "#/$defs/id" }, "digest": { "$ref": "#/$defs/digest" }, "repositoryId": { "$ref": "#/$defs/digest" }, "createdAt": { "$ref": "#/$defs/dateTime" },
+    "taskIds": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/id" } },
+    "taskRevisions": { "type": "object", "maxProperties": 10000, "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 128 } },
+    "designModes": { "type": "object", "maxProperties": 10000, "additionalProperties": { "type": "object", "required": ["mode", "envelope"], "additionalProperties": false, "properties": { "mode": { "enum": ["human", "human-after-draft", "delegated"] }, "envelope": { "type": "array", "maxItems": 128, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } } } } },
+    "git": { "type": "object", "required": ["baseCommit", "campaignBranch", "targetBranch", "push"], "additionalProperties": false, "properties": { "baseCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" }, "campaignBranch": { "$ref": "#/$defs/shortString" }, "targetBranch": { "$ref": "#/$defs/shortString" }, "push": { "type": "object", "required": ["enabled"], "additionalProperties": false, "properties": { "enabled": { "type": "boolean" } } } } },
+    "authority": { "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": { "enum": ["repository", "task-source", "runner", "operator", "git"] } },
+    "routing": { "type": "object", "maxProperties": 10000, "additionalProperties": { "type": "object", "required": ["primary", "fallbacks"], "additionalProperties": false, "properties": { "primary": { "$ref": "#/$defs/route" }, "fallbacks": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/route" } } } } },
+    "budgets": { "type": "object", "required": ["maxTasks", "maxConcurrency", "maxWallClockMs", "maxRetries", "laneFailureThreshold"], "additionalProperties": false, "properties": { "maxTasks": { "type": "integer", "minimum": 1, "maximum": 10000 }, "maxConcurrency": { "type": "integer", "minimum": 1, "maximum": 1000 }, "maxWallClockMs": { "type": "integer", "minimum": 1, "maximum": 31536000000 }, "maxRetries": { "type": "integer", "minimum": 0, "maximum": 1000 }, "laneFailureThreshold": { "type": "integer", "minimum": 1, "maximum": 1000 } } },
+    "verification": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/shortString" } },
+    "hashes": { "type": "object", "required": ["config", "workflowPolicy", "instructions"], "additionalProperties": false, "properties": { "config": { "$ref": "#/$defs/digest" }, "workflowPolicy": { "$ref": "#/$defs/digest" }, "instructions": { "$ref": "#/$defs/digest" } } },
+    "externalRoutingEnabled": { "type": "boolean" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", "maxLength": 128 }, "digest": { "type": "string", "pattern": "^sha256:[A-Za-z0-9._-]{1,128}$", "maxLength": 135 }, "dateTime": { "type": "string", "format": "date-time", "maxLength": 64 }, "shortString": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "route": { "type": "object", "required": ["profileId", "tier", "effort"], "additionalProperties": false, "properties": { "profileId": { "$ref": "#/$defs/id" }, "tier": { "enum": ["mechanical", "standard", "high", "principal"] }, "effort": { "enum": ["mechanical", "standard", "high", "principal"] } } }
+  }
+}

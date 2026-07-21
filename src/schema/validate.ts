@@ -9,7 +9,14 @@ export type SchemaName =
   | "task-source-capabilities-v1"
   | "task-source-request-v1"
   | "task-source-response-v1"
-  | "task-sync-intent-v1";
+  | "task-sync-intent-v1"
+  | "campaign-v1"
+  | "campaign-state-v1"
+  | "campaign-event-v1"
+  | "campaign-approval-v1"
+  | "host-profile-v1"
+  | "runner-profile-v1"
+  | "runner-job-result-v1";
 
 type Validator = ((value: unknown) => boolean) & {
   errors?: readonly { instancePath?: string; message?: string }[] | null;
