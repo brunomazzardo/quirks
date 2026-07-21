@@ -104,3 +104,65 @@ test("fills JSON-driver workflow defaults without mutating committed config", as
   ]);
   assert.deepEqual(context.effectiveWorkflowPolicy.evidenceMap["accepted-commit"], ["commit", "review", "verification"]);
 });
+
+test("effective workflow policy defaults are isolated from caller mutation", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "quirks-project-"));
+  await initRepo(root);
+  await writeFile(path.join(root, ".agents/quirks.json"), JSON.stringify(minimalConfig));
+
+  const first = await loadProjectContext(root, { mode: "inspection" });
+  (first.effectiveWorkflowPolicy.nativeStatusMap as Record<string, string>).ready = "blocked";
+  (first.effectiveWorkflowPolicy.allowedCompletionBoundaries as string[]).push("accepted-commit");
+  (first.effectiveWorkflowPolicy.evidenceMap as Record<string, string[]>)["accepted-commit"] = ["deployment"];
+
+  const second = await loadProjectContext(root, { mode: "inspection" });
+  assert.equal(second.effectiveWorkflowPolicy.nativeStatusMap.ready, "ready");
+  assert.deepEqual(second.effectiveWorkflowPolicy.allowedCompletionBoundaries, [
+    "accepted-commit",
+    "campaign-merge",
+    "target-merge",
+    "remote-push",
+  ]);
+  assert.deepEqual(second.effectiveWorkflowPolicy.evidenceMap["accepted-commit"], ["commit", "review", "verification"]);
+});
+
+test("rejects invalid JSON project configuration", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "quirks-project-"));
+  await initRepo(root);
+  await writeFile(path.join(root, ".agents/quirks.json"), "{ not-json");
+  await assert.rejects(
+    () => loadProjectContext(root, { mode: "inspection" }),
+    (error: Error & { code?: string }) => error.code === "PROTOCOL_VIOLATION",
+  );
+});
+
+test("external task source fails closed without explicit workflow policy", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "quirks-project-"));
+  await initRepo(root);
+  await writeFile(path.join(root, ".agents/quirks.json"), JSON.stringify({
+    ...minimalConfig,
+    taskSource: { driver: "external", command: ["quirks-tasks", "list"] },
+  }));
+  await assert.rejects(
+    () => loadProjectContext(root, { mode: "inspection" }),
+    (error: Error & { code?: string }) => error.code === "PROTOCOL_VIOLATION",
+  );
+});
+
+test("external task source treats empty workflow maps as absent", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "quirks-project-"));
+  await initRepo(root);
+  await writeFile(path.join(root, ".agents/quirks.json"), JSON.stringify({
+    ...minimalConfig,
+    taskSource: { driver: "external", command: ["quirks-tasks", "list"] },
+    workflowPolicy: {
+      skills: {},
+      nativeStatusMap: {},
+      evidenceMap: {},
+    },
+  }));
+  await assert.rejects(
+    () => loadProjectContext(root, { mode: "inspection" }),
+    (error: Error & { code?: string }) => error.code === "PROTOCOL_VIOLATION",
+  );
+});

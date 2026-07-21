@@ -48,16 +48,42 @@ const EVIDENCE_KINDS = [
   "deployment",
 ] as const satisfies readonly EvidenceKind[];
 
-const IDENTITY_STATUS_MAP = Object.fromEntries(
-  TASK_STATUSES.map((status) => [status, status]),
-) as Record<string, TaskStatus>;
+const IDENTITY_STATUS_MAP = Object.freeze(
+  Object.fromEntries(TASK_STATUSES.map((status) => [status, status])),
+) as Readonly<Record<string, TaskStatus>>;
 
-const STANDARD_EVIDENCE_MAP: Record<CompletionBoundary, readonly EvidenceKind[]> = {
-  "accepted-commit": ["commit", "review", "verification"],
-  "campaign-merge": ["campaign-merge", "commit", "review", "verification"],
-  "target-merge": ["target-merge", "campaign-merge", "commit", "review", "verification", "ci"],
-  "remote-push": ["remote-push", "target-merge", "campaign-merge", "commit", "review", "verification", "ci", "deployment"],
-};
+const STANDARD_EVIDENCE_MAP = Object.freeze({
+  "accepted-commit": Object.freeze(["commit", "review", "verification"] as const),
+  "campaign-merge": Object.freeze(["campaign-merge", "commit", "review", "verification"] as const),
+  "target-merge": Object.freeze(["target-merge", "campaign-merge", "commit", "review", "verification", "ci"] as const),
+  "remote-push": Object.freeze(["remote-push", "target-merge", "campaign-merge", "commit", "review", "verification", "ci", "deployment"] as const),
+}) as Readonly<Record<CompletionBoundary, readonly EvidenceKind[]>>;
+
+const DEFAULT_COMPLETION_BOUNDARIES = Object.freeze([...COMPLETION_BOUNDARIES]);
+
+function cloneStatusMap(map: Readonly<Record<string, TaskStatus>>): Record<string, TaskStatus> {
+  return { ...map };
+}
+
+function cloneEvidenceMap(
+  map: Readonly<Partial<Record<CompletionBoundary, readonly EvidenceKind[]>>>,
+): Partial<Record<CompletionBoundary, readonly EvidenceKind[]>> {
+  return Object.fromEntries(
+    Object.entries(map).map(([boundary, evidenceKinds]) => [boundary, [...evidenceKinds]]),
+  ) as Partial<Record<CompletionBoundary, readonly EvidenceKind[]>>;
+}
+
+function cloneCompletionBoundaries(boundaries: readonly CompletionBoundary[]): CompletionBoundary[] {
+  return [...boundaries];
+}
+
+function hasExplicitWorkflowPolicy(workflowPolicy: ProjectWorkflowPolicy): boolean {
+  return Boolean(
+    (workflowPolicy.nativeStatusMap && Object.keys(workflowPolicy.nativeStatusMap).length > 0) ||
+    (workflowPolicy.evidenceMap && Object.keys(workflowPolicy.evidenceMap).length > 0) ||
+    (workflowPolicy.allowedCompletionBoundaries && workflowPolicy.allowedCompletionBoundaries.length > 0),
+  );
+}
 
 export interface LoadProjectContextOptions {
   mode: "inspection" | "unattended";
@@ -147,29 +173,25 @@ function buildEffectiveWorkflowPolicy(config: ProjectConfig): Required<ProjectWo
   const { workflowPolicy, taskSource } = config;
   assertSkillNames(workflowPolicy.skills);
 
-  const hasExplicitPolicy = Boolean(
-    workflowPolicy.nativeStatusMap ||
-    workflowPolicy.evidenceMap ||
-    workflowPolicy.allowedCompletionBoundaries,
-  );
-
-  if (taskSource.driver === "external" && !hasExplicitPolicy) {
+  if (taskSource.driver === "external" && !hasExplicitWorkflowPolicy(workflowPolicy)) {
     throw new QuirksError(
       "PROTOCOL_VIOLATION",
       "External task sources require explicit workflow policy mappings or capability metadata",
     );
   }
 
-  const nativeStatusMap = workflowPolicy.nativeStatusMap ?? IDENTITY_STATUS_MAP;
-  const evidenceMap = workflowPolicy.evidenceMap ?? STANDARD_EVIDENCE_MAP;
-  const allowedCompletionBoundaries = workflowPolicy.allowedCompletionBoundaries ?? COMPLETION_BOUNDARIES;
+  const nativeStatusMap = cloneStatusMap(workflowPolicy.nativeStatusMap ?? IDENTITY_STATUS_MAP);
+  const evidenceMap = cloneEvidenceMap(workflowPolicy.evidenceMap ?? STANDARD_EVIDENCE_MAP);
+  const allowedCompletionBoundaries = cloneCompletionBoundaries(
+    workflowPolicy.allowedCompletionBoundaries ?? DEFAULT_COMPLETION_BOUNDARIES,
+  );
 
   assertNativeStatusMap(nativeStatusMap);
   assertEvidenceMap(evidenceMap);
   assertAllowedCompletionBoundaries(allowedCompletionBoundaries);
 
   return {
-    skills: workflowPolicy.skills,
+    skills: { ...workflowPolicy.skills },
     nativeStatusMap,
     evidenceMap,
     allowedCompletionBoundaries,
@@ -183,7 +205,12 @@ export async function loadProjectContext(
   const { root, repositoryId } = await canonicalRepository(startDir);
   const configPath = assertRepositoryRelativePath(options.configPath ?? DEFAULT_CONFIG_PATH);
   const configFile = await resolveConfigFile(root, configPath);
-  const raw = JSON.parse(await readFile(configFile, "utf8")) as unknown;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(configFile, "utf8")) as unknown;
+  } catch {
+    throw new QuirksError("PROTOCOL_VIOLATION", `Invalid JSON in project configuration at ${configPath}`);
+  }
   const validated = validateSchema<ProjectConfig>("project-config-v1", raw);
   const config = normalizeConfig(validated);
   const effectiveWorkflowPolicy = buildEffectiveWorkflowPolicy(config);
