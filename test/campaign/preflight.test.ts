@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import test from "node:test";
+import { runPreflight } from "../../src/campaign/preflight.js";
+
+const execFileAsync = promisify(execFile);
+const fixture = path.resolve("test/fixtures/campaign-project");
+
+async function freshRepo(): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "quirks-preflight-"));
+  await cp(fixture, root, { recursive: true });
+  await execFileAsync("git", ["init", root]);
+  await execFileAsync("git", ["-C", root, "config", "user.email", "test@example.com"]);
+  await execFileAsync("git", ["-C", root, "config", "user.name", "Quirks Test"]);
+  await execFileAsync("git", ["-C", root, "add", "."]);
+  await execFileAsync("git", ["-C", root, "commit", "-m", "fixture"]);
+  return root;
+}
+
+test("preflight is read-only, expands dependencies, and flags missing design dependencies", async () => {
+  const root = await freshRepo();
+  const tasksPath = path.join(root, ".quirks/tasks.json");
+  const before = await readFile(tasksPath, "utf8");
+
+  const result = await runPreflight({
+    repositoryRoot: root,
+    selectedTaskIds: ["QK-200"],
+    externalRoutingEnabled: false,
+  });
+
+  assert.equal(result.mutatedRepository, false);
+  assert.equal(await readFile(tasksPath, "utf8"), before);
+  assert.deepEqual(result.envelope.taskIds, ["QK-100", "QK-200"]);
+  assert.equal(result.blockers.some((blocker) => blocker.includes("QK-100")), true);
+  assert.match(result.envelope.digest, /^sha256:/);
+  assert.match(result.envelope.hashes.config, /^sha256:/);
+  assert.match(result.envelope.hashes.workflowPolicy, /^sha256:/);
+  assert.match(result.envelope.hashes.instructions, /^sha256:/);
+  assert.equal(result.envelope.routing["QK-200"]?.primary.profileId, "placeholder");
+  assert.equal(result.syncHealth.ok, true);
+});
+
+test("preflight rejects dependency cycles", async () => {
+  const root = await freshRepo();
+  const tasksPath = path.join(root, ".quirks/tasks.json");
+  const tasks = JSON.parse(await readFile(tasksPath, "utf8")) as { tasks: Array<{ id: string; dependsOn: string[] }> };
+  tasks.tasks.find((task) => task.id === "QK-100")!.dependsOn = ["QK-200"];
+  await writeFile(tasksPath, JSON.stringify(tasks));
+
+  await assert.rejects(
+    () => runPreflight({ repositoryRoot: root, selectedTaskIds: ["QK-200"], externalRoutingEnabled: false }),
+    /Dependency cycle/,
+  );
+});

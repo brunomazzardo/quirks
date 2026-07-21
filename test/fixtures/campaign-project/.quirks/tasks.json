@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "id": "QK-100",
+      "title": "Choose the campaign design",
+      "kind": "design",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "brainstorm",
+        "designGate": {
+          "required": true,
+          "defaultApproval": "human",
+          "delegable": false,
+          "judgmentTier": "high",
+          "decisionEnvelope": ["campaign shape"]
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": ["architecture"],
+        "capabilities": ["repository-read"],
+        "parallelismKeys": [],
+        "humanGates": ["design approval"],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["design"],
+      "acceptanceCriteria": ["design approved"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] }
+    },
+    {
+      "id": "QK-200",
+      "title": "Implement the campaign design",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": ["QK-100"],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": ["campaign"],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["implementation"],
+      "acceptanceCriteria": ["implementation works"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] }
+    }
+  ]
+}
