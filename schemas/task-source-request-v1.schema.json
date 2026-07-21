@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/task-source-request-v1",
+  "oneOf": [
+    { "$ref": "#/$defs/capabilitiesRequest" },
+    { "$ref": "#/$defs/validateRequest" },
+    { "$ref": "#/$defs/listRequest" },
+    { "$ref": "#/$defs/showRequest" },
+    { "$ref": "#/$defs/verifyRequest" },
+    { "$ref": "#/$defs/claimRequest" },
+    { "$ref": "#/$defs/submitReviewRequest" },
+    { "$ref": "#/$defs/attachProvenanceRequest" },
+    { "$ref": "#/$defs/completeRequest" },
+    { "$ref": "#/$defs/blockRequest" },
+    { "$ref": "#/$defs/releaseRequest" },
+    { "$ref": "#/$defs/proposeRequest" }
+  ],
+  "$defs": {
+    "taskId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "maxLength": 128
+    },
+    "revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "emptyInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "capabilitiesRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "capabilities" },
+        "input": { "$ref": "#/$defs/emptyInput" }
+      }
+    },
+    "validateRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "validate" },
+        "input": { "$ref": "#/$defs/emptyInput" }
+      }
+    },
+    "listRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "list" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        }
+      }
+    },
+    "showRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "taskId", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "show" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "input": { "$ref": "#/$defs/emptyInput" }
+      }
+    },
+    "verifyRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "verify" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "input": {
+          "type": "object",
+          "required": ["scope"],
+          "additionalProperties": false,
+          "properties": {
+            "scope": { "enum": ["campaign", "task"] }
+          }
+        }
+      }
+    },
+    "claimRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "taskId", "expectedNativeRevision", "idempotencyKey", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "claim" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "expectedNativeRevision": { "$ref": "#/$defs/revision" },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "input": {
+          "type": "object",
+          "required": ["campaignId", "owner", "claimedAt"],
+          "additionalProperties": false,
+          "properties": {
+            "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "owner": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "claimedAt": { "type": "string", "format": "date-time", "maxLength": 64 }
+          }
+        }
+      }
+    },
+    "submitReviewRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "taskId", "expectedNativeRevision", "idempotencyKey", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "submit-review" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "expectedNativeRevision": { "$ref": "#/$defs/revision" },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "input": {
+          "type": "object",
+          "required": ["evidenceRefs"],
+          "additionalProperties": false,
+          "properties": {
+            "evidenceRefs": {
+              "type": "array",
+              "maxItems": 64,
+              "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+            }
+          }
+        }
+      }
+    },
+    "attachProvenanceRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "taskId", "expectedNativeRevision", "idempotencyKey", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "attach-provenance" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "expectedNativeRevision": { "$ref": "#/$defs/revision" },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "input": {
+          "type": "object",
+          "required": ["iteration"],
+          "additionalProperties": false,
+          "properties": {
+            "iteration": {
+              "$ref": "quirks://schemas/task-provenance-v1#/$defs/iteration"
+            }
+          }
+        }
+      }
+    },
+    "completeRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "taskId", "expectedNativeRevision", "idempotencyKey", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "complete" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "expectedNativeRevision": { "$ref": "#/$defs/revision" },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "input": {
+          "type": "object",
+          "required": ["evidenceRefs"],
+          "additionalProperties": false,
+          "properties": {
+            "evidenceRefs": {
+              "type": "array",
+              "maxItems": 64,
+              "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+            }
+          }
+        }
+      }
+    },
+    "blockRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "taskId", "expectedNativeRevision", "idempotencyKey", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "block" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "expectedNativeRevision": { "$ref": "#/$defs/revision" },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "input": {
+          "type": "object",
+          "required": ["reason", "unblockCondition"],
+          "additionalProperties": false,
+          "properties": {
+            "reason": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "unblockCondition": { "type": "string", "minLength": 1, "maxLength": 512 }
+          }
+        }
+      }
+    },
+    "releaseRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "taskId", "expectedNativeRevision", "idempotencyKey", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "release" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "expectedNativeRevision": { "$ref": "#/$defs/revision" },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "input": {
+          "type": "object",
+          "required": ["campaignId"],
+          "additionalProperties": false,
+          "properties": {
+            "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        }
+      }
+    },
+    "proposeRequest": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "taskId", "expectedNativeRevision", "idempotencyKey", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "propose" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "expectedNativeRevision": { "$ref": "#/$defs/revision" },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+        "input": {
+          "type": "object",
+          "required": ["task"],
+          "additionalProperties": false,
+          "properties": {
+            "task": {
+              "$ref": "quirks://schemas/json-task-file-v1#/$defs/nativeTask"
+            }
+          }
+        }
+      }
+    }
+  }
+}

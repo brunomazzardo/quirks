@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/json-task-file-v1",
+  "type": "object",
+  "required": ["schemaVersion", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "tasks": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": { "$ref": "#/$defs/nativeTask" }
+    }
+  },
+  "$defs": {
+    "taskId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "maxLength": 128
+    },
+    "repositoryPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*\\.\\.)[^\\\\\\0]+$"
+    },
+    "gitCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$",
+      "maxLength": 40
+    },
+    "httpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://[^@/?#]+",
+      "maxLength": 2048
+    },
+    "designGate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["required"],
+          "additionalProperties": false,
+          "properties": {
+            "required": { "const": false }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["required", "defaultApproval", "delegable", "judgmentTier", "decisionEnvelope"],
+          "additionalProperties": false,
+          "properties": {
+            "required": { "const": true },
+            "defaultApproval": { "enum": ["human", "delegated"] },
+            "delegable": { "type": "boolean" },
+            "judgmentTier": { "enum": ["mechanical", "standard", "high", "principal"] },
+            "decisionEnvelope": {
+              "type": "array",
+              "maxItems": 32,
+              "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+            }
+          }
+        }
+      ]
+    },
+    "workflow": {
+      "type": "object",
+      "required": ["family", "phase", "designGate"],
+      "additionalProperties": false,
+      "properties": {
+        "family": { "const": "superpowers" },
+        "phase": { "enum": ["brainstorm", "plan", "execute", "review", "verification"] },
+        "designGate": { "$ref": "#/$defs/designGate" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["effort", "risk", "capabilities", "parallelismKeys", "humanGates", "completionBoundary"],
+      "additionalProperties": false,
+      "properties": {
+        "effort": { "enum": ["mechanical", "standard", "high", "principal"] },
+        "risk": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "enum": [
+              "architecture",
+              "security",
+              "identity",
+              "concurrency",
+              "protocol",
+              "git-history",
+              "external-side-effect",
+              "production",
+              "destructive-migration",
+              "cost"
+            ]
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "enum": [
+              "repository-read",
+              "repository-write",
+              "network",
+              "remote-git",
+              "external-system",
+              "production",
+              "destructive"
+            ]
+          }
+        },
+        "parallelismKeys": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        "humanGates": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        "completionBoundary": {
+          "enum": ["accepted-commit", "campaign-merge", "target-merge", "remote-push"]
+        }
+      }
+    },
+    "immutableSourceRef": {
+      "type": "object",
+      "required": ["kind", "path", "commit"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["spec", "plan", "review", "other"] },
+        "path": { "$ref": "#/$defs/repositoryPath" },
+        "commit": { "$ref": "#/$defs/gitCommit" },
+        "url": { "$ref": "#/$defs/httpsUrl" },
+        "task": { "type": "integer", "minimum": 1, "maximum": 9999 },
+        "section": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "type": "integer", "minimum": 1, "maximum": 999 }
+        }
+      }
+    },
+    "plannedPlanRef": {
+      "type": "object",
+      "required": ["kind", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "planned-plan" },
+        "path": { "$ref": "#/$defs/repositoryPath" }
+      }
+    },
+    "sourceRef": {
+      "oneOf": [
+        { "$ref": "#/$defs/immutableSourceRef" },
+        { "$ref": "#/$defs/plannedPlanRef" }
+      ]
+    },
+    "coordination": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["scope", "campaignId", "owner", "claimedAt"],
+          "additionalProperties": false,
+          "properties": {
+            "scope": { "const": "local-clone" },
+            "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "owner": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "claimedAt": { "type": "string", "format": "date-time", "maxLength": 64 }
+          }
+        }
+      ]
+    },
+    "statusDetail": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["reason", "unblockCondition"],
+          "additionalProperties": false,
+          "properties": {
+            "reason": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "unblockCondition": { "type": "string", "minLength": 1, "maxLength": 512 }
+          }
+        }
+      ]
+    },
+    "nativeTask": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "kind",
+        "priority",
+        "status",
+        "dependsOn",
+        "workflow",
+        "execution",
+        "sourceRefs",
+        "deliverables",
+        "acceptanceCriteria",
+        "verification",
+        "provenance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/taskId" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "kind": {
+          "enum": [
+            "design",
+            "plan",
+            "implementation",
+            "review",
+            "verification",
+            "documentation",
+            "operations"
+          ]
+        },
+        "priority": { "enum": ["P0", "P1", "P2", "P3"] },
+        "status": {
+          "enum": ["proposed", "ready", "claimed", "in_review", "blocked", "completed", "cancelled"]
+        },
+        "dependsOn": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/taskId" }
+        },
+        "workflow": { "$ref": "#/$defs/workflow" },
+        "execution": { "$ref": "#/$defs/execution" },
+        "sourceRefs": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/sourceRef" }
+        },
+        "deliverables": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+        },
+        "acceptanceCriteria": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+        },
+        "verification": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+        },
+        "provenance": { "$ref": "quirks://schemas/task-provenance-v1" },
+        "coordination": { "$ref": "#/$defs/coordination" },
+        "statusDetail": { "$ref": "#/$defs/statusDetail" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "completed" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "sourceRefs": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/immutableSourceRef" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

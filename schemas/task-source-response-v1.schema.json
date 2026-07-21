@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/task-source-response-v1",
+  "oneOf": [
+    { "$ref": "#/$defs/successResponse" },
+    { "$ref": "#/$defs/failureResponse" }
+  ],
+  "$defs": {
+    "operation": {
+      "enum": [
+        "capabilities",
+        "validate",
+        "list",
+        "show",
+        "claim",
+        "submit-review",
+        "attach-provenance",
+        "complete",
+        "block",
+        "release",
+        "propose",
+        "verify"
+      ]
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "retryable"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "retryable": { "type": "boolean" }
+      }
+    },
+    "successResponse": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "ok", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "$ref": "#/$defs/operation" },
+        "ok": { "const": true },
+        "nativeRevision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "data": true
+      }
+    },
+    "failureResponse": {
+      "type": "object",
+      "required": ["schemaVersion", "operation", "ok", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "$ref": "#/$defs/operation" },
+        "ok": { "const": false },
+        "error": { "$ref": "#/$defs/error" }
+      }
+    }
+  }
+}

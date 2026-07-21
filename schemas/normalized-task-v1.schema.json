@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/normalized-task-v1",
+  "allOf": [
+    { "$ref": "quirks://schemas/json-task-file-v1#/$defs/nativeTask" },
+    {
+      "type": "object",
+      "required": ["source", "nativeRevision"],
+      "properties": {
+        "source": {
+          "type": "object",
+          "required": ["driver", "nativeId", "webUrl"],
+          "additionalProperties": false,
+          "properties": {
+            "driver": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "nativeId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "maxLength": 128
+            },
+            "webUrl": {
+              "oneOf": [
+                { "type": "null" },
+                { "$ref": "quirks://schemas/json-task-file-v1#/$defs/httpsUrl" }
+              ]
+            }
+          }
+        },
+        "nativeRevision": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    }
+  ]
+}

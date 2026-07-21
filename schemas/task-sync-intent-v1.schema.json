@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/task-sync-intent-v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "intentId",
+    "campaignId",
+    "taskId",
+    "operation",
+    "requestHash",
+    "request",
+    "state",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "intentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "taskId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "maxLength": 128
+    },
+    "operation": {
+      "enum": [
+        "claim",
+        "submit-review",
+        "attach-provenance",
+        "complete",
+        "block",
+        "release",
+        "propose"
+      ]
+    },
+    "requestHash": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "request": {
+      "oneOf": [
+        { "$ref": "quirks://schemas/task-source-request-v1#/$defs/claimRequest" },
+        { "$ref": "quirks://schemas/task-source-request-v1#/$defs/submitReviewRequest" },
+        { "$ref": "quirks://schemas/task-source-request-v1#/$defs/attachProvenanceRequest" },
+        { "$ref": "quirks://schemas/task-source-request-v1#/$defs/completeRequest" },
+        { "$ref": "quirks://schemas/task-source-request-v1#/$defs/blockRequest" },
+        { "$ref": "quirks://schemas/task-source-request-v1#/$defs/releaseRequest" },
+        { "$ref": "quirks://schemas/task-source-request-v1#/$defs/proposeRequest" }
+      ]
+    },
+    "state": {
+      "enum": ["pending", "acknowledged", "conflict", "failed"]
+    },
+    "createdAt": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "updatedAt": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "acknowledgement": {
+      "$ref": "quirks://schemas/task-source-response-v1"
+    }
+  }
+}

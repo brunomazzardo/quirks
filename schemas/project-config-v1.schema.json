@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/project-config-v1",
+  "type": "object",
+  "required": ["schemaVersion", "protocol", "taskSource", "workflowPolicy"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "protocol": { "const": "quirks-project-v1" },
+    "taskSource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["driver", "path"],
+          "additionalProperties": false,
+          "properties": {
+            "driver": { "const": "json" },
+            "path": { "$ref": "#/$defs/repositoryPath" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["driver", "command"],
+          "additionalProperties": false,
+          "properties": {
+            "driver": { "const": "external" },
+            "command": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+            },
+            "credentialAlias": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        }
+      ]
+    },
+    "workflowPolicy": {
+      "type": "object",
+      "required": ["skills"],
+      "additionalProperties": false,
+      "properties": {
+        "skills": {
+          "type": "object",
+          "required": ["write", "update", "execute"],
+          "additionalProperties": false,
+          "properties": {
+            "write": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "update": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "execute": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "repositoryPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*\\.\\.)[^\\\\\\0]+$"
+    }
+  }
+}
