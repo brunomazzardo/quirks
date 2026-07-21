@@ -1879,7 +1879,7 @@
       "title": "Write the skills and Git integration implementation plan",
       "kind": "plan",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-004",
         "QK-UI-001"
@@ -1936,7 +1936,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-SKL-001-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "113f256",
+            "commitRefs": [
+              "113f256"
+            ],
+            "finishedAt": "2026-07-21T23:53:45Z",
+            "outcomeReason": "Wave 2 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -3678,7 +3690,7 @@
       "title": "Campaign CLI",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-004B",
         "QK-CTL-004C",
@@ -3724,7 +3736,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-CTL-004E-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "295c008",
+            "commitRefs": [
+              "295c008"
+            ],
+            "finishedAt": "2026-07-21T23:53:45Z",
+            "outcomeReason": "Wave 2 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -3732,7 +3756,7 @@
       "title": "Control-plane acceptance matrix",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-004E"
       ],
@@ -3776,7 +3800,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-CTL-004F-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "e16c215",
+            "commitRefs": [
+              "e16c215"
+            ],
+            "finishedAt": "2026-07-21T23:53:45Z",
+            "outcomeReason": "Wave 2 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -3784,7 +3820,7 @@
       "title": "Full browser and live-progress integration",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-UI-004B",
         "QK-CTL-004D"
@@ -3829,7 +3865,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-UI-004C-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "9127f4b",
+            "commitRefs": [
+              "9127f4b"
+            ],
+            "finishedAt": "2026-07-21T23:53:45Z",
+            "outcomeReason": "Wave 2 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -3890,7 +3938,7 @@
       "title": "Independent platform wave review",
       "kind": "review",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-004F",
         "QK-UI-004C",
@@ -3929,7 +3977,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-PLATFORM-REV-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "e383059",
+            "commitRefs": [
+              "e383059"
+            ],
+            "finishedAt": "2026-07-21T23:53:45Z",
+            "outcomeReason": "Wave 2 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -3937,7 +3997,7 @@
       "title": "Platform wave integration",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-PLATFORM-REV"
       ],
@@ -3974,7 +4034,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-PLATFORM-INT-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "e383059",
+            "commitRefs": [
+              "e383059"
+            ],
+            "finishedAt": "2026-07-21T23:53:45Z",
+            "outcomeReason": "Wave 2 overnight lane"
+          }
+        ]
       }
     },
     {

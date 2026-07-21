@@ -56,12 +56,12 @@ test("unknown commands fail without printing help to stdout JSON", async () => {
   );
 });
 
-test("quirks-campaign reports the approved unavailable boundary", async () => {
+test("quirks-campaign reports usage when invoked without a command", async () => {
   const cli = new URL("../../src/cli/quirks-campaign.js", import.meta.url).pathname;
   await assert.rejects(
     () => execFileAsync(process.execPath, [cli]),
     (error: { code?: number; stderr?: string }) =>
       error.code === 2 &&
-      error.stderr === "Campaign execution is not installed; implement the approved runner-control and campaign plans.\n",
+      error.stderr === "Usage: quirks-campaign <command> [options]\n",
   );
 });
