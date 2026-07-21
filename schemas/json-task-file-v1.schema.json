@@ -32,7 +32,7 @@
     },
     "httpsUrl": {
       "type": "string",
-      "pattern": "^https://[^@/?#]+",
+      "pattern": "^https://[^@/?#]+(?:/[^?#]*)?(?:\\?[^#]*)?(?:#.*)?$",
       "maxLength": 2048
     },
     "designGate": {

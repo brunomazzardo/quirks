@@ -68,8 +68,8 @@ test("accepts a complete normalized task with derived fields", () => {
   assert.equal(validateSchema("normalized-task-v1", validNormalizedTask), validNormalizedTask);
 });
 
-test("accepts HTTPS sourceRef urls without credentials", () => {
-  const taskFile = {
+function taskFileWithSourceRefUrl(url: string) {
+  return {
     ...validFile,
     tasks: [{
       ...nativeTask,
@@ -77,11 +77,29 @@ test("accepts HTTPS sourceRef urls without credentials", () => {
         kind: "spec",
         path: "docs/spec.md",
         commit: "a".repeat(40),
-        url: "https://example.com/spec",
+        url,
       }],
     }],
   };
+}
+
+test("accepts HTTPS sourceRef urls without credentials", () => {
+  const taskFile = taskFileWithSourceRefUrl("https://example.com/path");
   assert.equal(validateSchema("json-task-file-v1", taskFile), taskFile);
+});
+
+test("rejects credentialed and non-HTTPS sourceRef urls", () => {
+  for (const url of [
+    "https://user:pass@evil.com/x",
+    "https://user@evil.com/x",
+    "http://example.com/path",
+  ]) {
+    assert.throws(
+      () => validateSchema("json-task-file-v1", taskFileWithSourceRefUrl(url)),
+      /pattern/,
+      `expected rejection for ${url}`,
+    );
+  }
 });
 
 test("rejects duplicate task ids in json-task-file-v1", () => {

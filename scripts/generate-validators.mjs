@@ -45,21 +45,9 @@ function inlineRuntimeHelpers(source) {
       `const $1 = ${equal.toString()};`,
     )
     .replace(
-      /const (\w+) = require\("ajv-formats\/dist\/formats"\)\.fullFormats\.uri;/g,
-      `${uriFormatBundle()}\nconst $1 = uri;`,
-    )
-    .replace(
       /const (\w+) = require\("ajv-formats\/dist\/formats"\)\.fullFormats\["date-time"\];/g,
       `${dateTimeFormatBundle()}\nconst $1 = { validate: date_time_validate, compare: compareDateTime };`,
     );
-}
-
-function uriFormatBundle() {
-  return `const NOT_URI_FRAGMENT = /\\/|:/;
-const URI = /^(?:[a-z][a-z0-9+\\-.]*:)(?:\\/?\\/(?:(?:[a-z0-9\\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\\.[a-z0-9\\-._~!$&'()*+,;=:]+)\\]|(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)|(?:[a-z0-9\\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\\d*)?(?:\\/(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\\/(?:(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\\/(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\\/(?:[a-z0-9\\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\\?(?:[a-z0-9\\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
-function uri(str) {
-  return NOT_URI_FRAGMENT.test(str) && URI.test(str);
-}`;
 }
 
 function dateTimeFormatBundle() {
@@ -139,10 +127,14 @@ function injectUniqueTaskIdsCheck(source) {
   }
   return true;
 }`;
+  const match = source.match(/export const json_task_file_v1 = (validate\d+);/);
+  if (!match) {
+    throw new Error("injectUniqueTaskIdsCheck: json_task_file_v1 export not found in generated code");
+  }
   return source.replace(
-    /export const json_task_file_v1 = (validate\d+);/,
+    match[0],
     `${helper}
-const json_task_file_v1_base = $1;
+const json_task_file_v1_base = ${match[1]};
 export const json_task_file_v1 = function json_task_file_v1(data) {
   if (!json_task_file_v1_base(data)) {
     json_task_file_v1.errors = json_task_file_v1_base.errors;
