@@ -40,12 +40,12 @@ export interface RunnerJobResult {
   schemaVersion: 1;
   jobId: string;
   runner: string;
-  runnerType: "claude" | "codex" | "cursor";
+  runnerType: RunnerProfile["runnerType"];
   resolvedModel: string;
   effort: string;
   status: RunnerJobStatus;
   sessionHandle: string;
   artifactPaths: readonly string[];
-  usage: Readonly<Record<string, unknown>>;
-  failure?: RunnerJobFailure;
+  usage: Readonly<Record<string, number>>;
+  failure: RunnerJobFailure | undefined;
 }

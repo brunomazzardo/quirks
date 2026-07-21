@@ -1,16 +1,19 @@
 import type { RunnerJobFailure, RunnerJobResult } from "./types.js";
 
-export function normalizeJobResult(input: {
+export interface NormalizeJobResultInput {
   jobId: string;
   profileId: string;
-  runnerType: "claude" | "codex" | "cursor";
+  runnerType: RunnerJobResult["runnerType"];
   resolvedModel: string;
   effort: string;
   status: RunnerJobResult["status"];
   sessionHandle: string;
   artifactPaths: readonly string[];
+  usage?: RunnerJobResult["usage"];
   failure?: RunnerJobFailure;
-}): RunnerJobResult {
+}
+
+export function normalizeJobResult(input: NormalizeJobResultInput): RunnerJobResult {
   return {
     schemaVersion: 1,
     jobId: input.jobId,
@@ -21,7 +24,7 @@ export function normalizeJobResult(input: {
     status: input.status,
     sessionHandle: input.sessionHandle,
     artifactPaths: [...input.artifactPaths],
-    usage: {},
-    ...(input.failure !== undefined ? { failure: input.failure } : {}),
+    usage: { ...(input.usage ?? {}) },
+    failure: input.failure,
   };
 }
