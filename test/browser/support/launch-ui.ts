@@ -2,7 +2,7 @@ import type { UiPreflightProposalV1 } from "../../../src/ui/types/preflight-prop
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page } from "@playwright/test";
-import { createTestUiServer, type TestUiServer } from "../../ui/support/test-server.js";
+import { createTestUiServer, type TestCampaign, type TestUiServer } from "../../ui/support/test-server.js";
 
 async function loadBuiltClientBundle(): Promise<string> {
   return readFile(path.resolve("dist/ui/client.bundle.js"), "utf8");
@@ -15,6 +15,7 @@ export type UiFixture = {
   server: TestUiServer;
   baseUrl: string;
   preflightUrl: string;
+  campaignDetailUrl: string;
   campaignId: string;
   viewerToken: string;
   approvalToken: string;
@@ -27,6 +28,7 @@ export type LaunchUiOptions = {
   campaignId?: string;
   now?: string;
   includeTokens?: boolean;
+  campaigns?: Record<string, TestCampaign>;
   preflightProposals?: Record<string, UiPreflightProposalV1>;
 };
 
@@ -58,7 +60,7 @@ export async function launchUiFixture(options?: LaunchUiOptions): Promise<UiFixt
   const server = await createTestUiServer({
     now: options?.now ?? "2026-07-21T12:00:00.000Z",
     clientScript: await loadBuiltClientBundle(),
-    campaigns: {
+    campaigns: options?.campaigns ?? {
       [campaignId]: { repositoryId: "repo-1", envelopeDigest: ISSUED_DIGEST, status: "awaiting_approval" },
     },
     ...(options?.preflightProposals ? { preflightProposals: options.preflightProposals } : {}),
@@ -71,16 +73,28 @@ export async function launchUiFixture(options?: LaunchUiOptions): Promise<UiFixt
     : { viewerToken: "", approvalToken: "" };
 
   const preflightPath = `/preflight/${campaignId}`;
-  const fragment =
+  const campaignDetailPath = `/campaigns/${campaignId}`;
+  const viewerFragment =
     includeTokens && tokens.viewerToken.length > 0
-      ? `#viewToken=${encodeURIComponent(tokens.viewerToken)}&approvalToken=${encodeURIComponent(tokens.approvalToken)}`
+      ? `viewToken=${encodeURIComponent(tokens.viewerToken)}`
       : "";
-  const preflightUrl = `${server.authority.baseUrl}${preflightPath}${fragment}`;
+  const approvalFragment =
+    includeTokens && tokens.approvalToken.length > 0
+      ? `approvalToken=${encodeURIComponent(tokens.approvalToken)}`
+      : "";
+  const preflightFragment =
+    viewerFragment.length > 0
+      ? `#${viewerFragment}${approvalFragment.length > 0 ? `&${approvalFragment}` : ""}`
+      : "";
+  const campaignDetailFragment = viewerFragment.length > 0 ? `#${viewerFragment}` : "";
+  const preflightUrl = `${server.authority.baseUrl}${preflightPath}${preflightFragment}`;
+  const campaignDetailUrl = `${server.authority.baseUrl}${campaignDetailPath}${campaignDetailFragment}`;
 
   return {
     server,
     baseUrl: server.authority.baseUrl,
     preflightUrl,
+    campaignDetailUrl,
     campaignId,
     viewerToken: tokens.viewerToken,
     approvalToken: tokens.approvalToken,
