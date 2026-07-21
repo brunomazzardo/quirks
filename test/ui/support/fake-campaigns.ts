@@ -1,4 +1,4 @@
-import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem, UiPlanProgressV1 } from "../../../src/ui/ports/campaign-read.js";
+import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem } from "../../../src/ui/ports/campaign-read.js";
 import { buildPlanProgressProjection } from "../../../src/ui/read-models/plan-progress.js";
 import { fixtureWithReportedCompletion } from "../../../src/ui/api/plan-progress.js";
 

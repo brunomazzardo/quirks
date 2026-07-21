@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { initializeProgressMailbox, updateRunnerProgress } from "../../src/runner/progress.js";
+import { updateRunnerProgress } from "../../src/runner/progress.js";
 import { createProgressStoreFixture } from "./support/progress-fixture.js";
 
 test("atomically advances only the bound job and plan step", async () => {

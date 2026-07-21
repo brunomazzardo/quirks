@@ -1,4 +1,3 @@
-import path from "node:path";
 import {
   hangForever,
   oversizedPayload,
@@ -43,7 +42,6 @@ function emitErrorResult(sessionId, message, extra = {}) {
 async function main() {
   const { mode, sessionId } = parseRunnerArgs(process.argv);
   const outDir = process.env.QUIRKS_FAKE_RUNNER_OUTDIR;
-  const artifacts = outDir ? [path.join(outDir, "result.json")] : [];
 
   switch (mode) {
     case "success":
