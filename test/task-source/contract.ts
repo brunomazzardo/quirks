@@ -26,29 +26,6 @@ const ALL_OPERATIONS: readonly TaskSourceOperation[] = [
   "verify",
 ];
 
-class LimitedTaskSource implements TaskSource {
-  constructor(
-    private readonly inner: TaskSource,
-    private readonly unsupported: TaskSourceOperation,
-  ) {}
-
-  async execute(request: TaskSourceRequest): Promise<TaskSourceResponse> {
-    if (request.operation === this.unsupported) {
-      return {
-        schemaVersion: 1,
-        operation: request.operation,
-        ok: false,
-        error: {
-          code: "PROTOCOL_VIOLATION",
-          message: `Unsupported operation ${request.operation}`,
-          retryable: false,
-        },
-      };
-    }
-    return this.inner.execute(request);
-  }
-}
-
 function assertFailure(response: TaskSourceResponse): asserts response is Extract<TaskSourceResponse, { ok: false }> {
   assert.equal(response.ok, false);
 }
@@ -179,9 +156,9 @@ export async function assertTaskSourceContract(
   assertFailure(conflictingClaim);
   assert.equal(conflictingClaim.error.code, "SOURCE_CONFLICT");
 
-  const unsupported = ALL_OPERATIONS.find((operation) => !capabilities.operations.includes(operation)) ?? "propose";
-  const limited = new LimitedTaskSource(source, unsupported);
-  const unsupportedResponse = await limited.execute(buildUnsupportedRequest(unsupported, taskId, showResponse.nativeRevision!));
+  const unsupported = ALL_OPERATIONS.find((operation) => !capabilities.operations.includes(operation));
+  assert.ok(unsupported, "expected capabilities to omit at least one operation");
+  const unsupportedResponse = await source.execute(buildUnsupportedRequest(unsupported, taskId, showResponse.nativeRevision!));
   assertFailure(unsupportedResponse);
   assert.equal(unsupportedResponse.error.code, "PROTOCOL_VIOLATION");
 }

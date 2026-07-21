@@ -33,9 +33,8 @@ type StoredTask = {
   statusDetail: null | { reason: string; unblockCondition: string };
 };
 
-const ALL_OPERATIONS: readonly TaskSourceOperation[] = [
+const SUPPORTED_OPERATIONS: readonly TaskSourceOperation[] = [
   "capabilities",
-  "validate",
   "list",
   "show",
   "claim",
@@ -102,13 +101,13 @@ function failure<O extends TaskSourceOperation>(
   code: string,
   message: string,
   retryable = false,
-): Extract<TaskSourceResponse, { operation: O }> {
+): Extract<TaskSourceResponse, { operation: O; ok: false }> {
   return {
     schemaVersion: 1,
     operation,
     ok: false,
     error: { code, message, retryable },
-  } as Extract<TaskSourceResponse, { operation: O }>;
+  } as Extract<TaskSourceResponse, { operation: O; ok: false }>;
 }
 
 export class FakeTaskSource implements TaskSource {
@@ -123,7 +122,7 @@ export class FakeTaskSource implements TaskSource {
     provenanceWriteMode: "structured",
     commentWriteMode: "none",
     idempotencyLookup: "key",
-    operations: ALL_OPERATIONS,
+    operations: SUPPORTED_OPERATIONS,
     authorityClasses: ["repository"],
     completionBoundaries: ["accepted-commit"],
     maxRequestBytes: MAX_PROTOCOL_BYTES,
@@ -163,16 +162,22 @@ export class FakeTaskSource implements TaskSource {
       case "verify":
         return { schemaVersion: 1, operation: "verify", ok: true, data: { scope: request.input.scope, valid: true } };
       case "claim":
-        return this.applyMutation(request, (task) => {
-          if (task.status !== "ready") throw new Error("task not ready");
-          task.status = "claimed";
-          task.coordination = {
-            scope: "local-clone",
-            campaignId: request.input.campaignId,
-            owner: request.input.owner,
-            claimedAt: request.input.claimedAt,
-          };
-        });
+        return this.applyMutation(
+          request,
+          (task) => {
+            task.status = "claimed";
+            task.coordination = {
+              scope: "local-clone",
+              campaignId: request.input.campaignId,
+              owner: request.input.owner,
+              claimedAt: request.input.claimedAt,
+            };
+          },
+          (task) =>
+            task.status !== "ready"
+              ? failure("claim", "SOURCE_CONFLICT", "Task is not ready to claim")
+              : undefined,
+        );
       case "release":
         return this.applyMutation(request, (task) => {
           task.status = "ready";
@@ -205,6 +210,7 @@ export class FakeTaskSource implements TaskSource {
   private applyMutation(
     request: MutationRequest,
     mutate: (task: StoredTask) => void,
+    guard?: (task: StoredTask) => Extract<TaskSourceResponse, { ok: false }> | undefined,
   ): TaskSourceResponse {
     const requestHash = mutationRequestHash(request);
     const cached = this.idempotency.get(request.idempotencyKey);
@@ -220,6 +226,9 @@ export class FakeTaskSource implements TaskSource {
     if (taskRevision(task) !== request.expectedNativeRevision) {
       return failure(request.operation, "STALE_REVISION", "Task revision is stale");
     }
+
+    const guardFailure = guard?.(task);
+    if (guardFailure) return guardFailure;
 
     mutate(task);
     const data = normalizedTask(task);
