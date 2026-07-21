@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "id": "QK-1",
+      "title": "Contract task",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": [],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": [],
+      "acceptanceCriteria": ["Contract passes"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": null
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { QuirksError } from "../core/errors.js";
 import type { ProjectContext } from "../project/types.js";
 import type { CredentialResolver } from "./credentials.js";
+import { JsonTaskSource } from "./json/json-task-source.js";
 import type { TaskSource } from "./task-source.js";
 
 export interface CreateTaskSourceOptions {
@@ -26,7 +27,7 @@ export async function createTaskSource(
   }
 
   if (taskSource.driver === "json") {
-    throw new QuirksError("UNSUPPORTED_VERSION", "JSON task source driver is not yet implemented");
+    return JsonTaskSource.open(context.root);
   }
 
   throw new QuirksError("UNSUPPORTED_VERSION", "External task source driver is not yet implemented");
