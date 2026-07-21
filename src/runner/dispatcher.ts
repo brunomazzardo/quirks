@@ -1,0 +1,331 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import type { Readable } from "node:stream";
+import { parseClaudeResult } from "./claude.js";
+import { parseCodexResult } from "./codex.js";
+import { parseCursorResult } from "./cursor.js";
+import { normalizeJobResult } from "./job-result.js";
+import type { RunnerJobFailure, RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
+
+const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
+const MAX_STDERR_BYTES = 1_048_576;
+const KILL_GRACE_MS = 100;
+
+export interface DispatchRunnerJobInput {
+  jobId: string;
+  profile: RunnerProfile;
+  argv: readonly string[];
+  artifactDir: string;
+  timeoutMs: number;
+  env?: Readonly<Record<string, string>>;
+}
+
+interface StreamCollectResult {
+  buffer: Buffer;
+  overflow: boolean;
+}
+
+interface ParsedDispatch {
+  status: RunnerJobStatus;
+  sessionHandle: string;
+  artifactPaths: readonly string[];
+  failure?: RunnerJobFailure;
+}
+
+function collectBoundedStream(
+  stream: Readable,
+  maxBytes: number,
+): Promise<StreamCollectResult> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let overflow = false;
+
+    stream.on("data", (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buffer.length;
+      if (total > maxBytes) {
+        overflow = true;
+        stream.destroy();
+        return;
+      }
+      chunks.push(buffer);
+    });
+
+    stream.on("error", (error) => reject(error));
+    stream.on("close", () => resolve({ buffer: Buffer.concat(chunks), overflow }));
+    stream.on("end", () => resolve({ buffer: Buffer.concat(chunks), overflow }));
+  });
+}
+
+function extractFlagValue(argv: readonly string[], flag: string): string | undefined {
+  for (let index = 1; index < argv.length; index += 1) {
+    if (argv[index] === flag && argv[index + 1]) {
+      return argv[index + 1];
+    }
+  }
+  return undefined;
+}
+
+function claudeArtifactPaths(artifactDir: string): readonly string[] {
+  return [path.join(artifactDir, "result.json")];
+}
+
+function codexDeclaredResultPath(argv: readonly string[]): string | undefined {
+  return extractFlagValue(argv, "-o");
+}
+
+async function readCodexArtifactFiles(
+  declaredResultPath: string,
+): Promise<Readonly<Record<string, string>>> {
+  try {
+    const contents = await readFile(declaredResultPath, "utf8");
+    return { [declaredResultPath]: contents };
+  } catch {
+    return {};
+  }
+}
+
+function failureResult(
+  base: {
+    jobId: string;
+    profile: RunnerProfile;
+    sessionHandle: string;
+  },
+  status: RunnerJobStatus,
+  code: string,
+  message: string,
+  artifactPaths: readonly string[] = [],
+): RunnerJobResult {
+  return normalizeJobResult({
+    jobId: base.jobId,
+    profileId: base.profile.profileId,
+    runnerType: base.profile.runnerType,
+    resolvedModel: base.profile.model,
+    effort: base.profile.effort,
+    status,
+    sessionHandle: base.sessionHandle,
+    artifactPaths,
+    failure: { code, message },
+  });
+}
+
+function parseRunnerOutput(input: {
+  profile: RunnerProfile;
+  argv: readonly string[];
+  artifactDir: string;
+  stdout: string;
+  exitCode: number | null;
+  sessionId?: string;
+}): ParsedDispatch {
+  const sessionFallback = input.sessionId ?? "";
+
+  switch (input.profile.runnerType) {
+    case "claude": {
+      const parsed = parseClaudeResult(input.stdout, {
+        exitCode: input.exitCode ?? 1,
+        artifactPaths: claudeArtifactPaths(input.artifactDir),
+        ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+      });
+      return {
+        status: parsed.status,
+        sessionHandle: parsed.sessionHandle || sessionFallback,
+        artifactPaths: parsed.artifactPaths,
+        ...(parsed.failure !== undefined
+          ? { failure: { code: parsed.failure.code, message: parsed.failure.message } }
+          : {}),
+      };
+    }
+    case "codex": {
+      return {
+        status: "failure",
+        sessionHandle: sessionFallback,
+        artifactPaths: [],
+        failure: {
+          code: "missing_async_parse",
+          message: "Codex parsing must use parseRunnerOutputAsync",
+        },
+      };
+    }
+    case "cursor": {
+      const parsed = parseCursorResult(input.stdout, claudeArtifactPaths(input.artifactDir));
+      return {
+        status: parsed.status,
+        sessionHandle: parsed.sessionHandle ?? sessionFallback,
+        artifactPaths: parsed.artifactPaths,
+        ...(parsed.failure !== undefined
+          ? {
+              failure: {
+                code: parsed.failure.reason,
+                message: parsed.failure.detail ?? parsed.failure.reason,
+              },
+            }
+          : {}),
+      };
+    }
+    default: {
+      const _exhaustive: never = input.profile.runnerType;
+      return _exhaustive;
+    }
+  }
+}
+
+async function parseRunnerOutputAsync(input: {
+  profile: RunnerProfile;
+  argv: readonly string[];
+  artifactDir: string;
+  stdout: string;
+  exitCode: number | null;
+  sessionId?: string;
+}): Promise<ParsedDispatch> {
+  const sessionFallback = input.sessionId ?? "";
+
+  if (input.profile.runnerType !== "codex") {
+    return parseRunnerOutput(input);
+  }
+
+  const declaredResultPath = codexDeclaredResultPath(input.argv);
+  if (!declaredResultPath) {
+    return {
+      status: "failure",
+      sessionHandle: sessionFallback,
+      artifactPaths: [],
+      failure: {
+        code: "missing_result_path",
+        message: "Codex argv did not declare a result artifact path",
+      },
+    };
+  }
+
+  const parsed = parseCodexResult(input.stdout, {
+    declaredResultPath,
+    files: await readCodexArtifactFiles(declaredResultPath),
+  });
+
+  return {
+    status: parsed.status,
+    sessionHandle: parsed.sessionHandle ?? sessionFallback,
+    artifactPaths: parsed.artifactPaths,
+    ...(parsed.failure !== undefined
+      ? { failure: { code: "runner_error", message: parsed.failure } }
+      : {}),
+  };
+}
+
+export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<RunnerJobResult> {
+  const sessionId = extractFlagValue(input.argv, "--session-id");
+  const base = {
+    jobId: input.jobId,
+    profile: input.profile,
+    sessionHandle: sessionId ?? "",
+  };
+
+  const executable = input.argv[0];
+  if (!executable) {
+    return failureResult(base, "failure", "invalid_argv", "Runner argv must include an executable");
+  }
+
+  let child: ChildProcess | undefined;
+  let timedOut = false;
+  let terminationTimer: NodeJS.Timeout | undefined;
+
+  const terminateChild = () => {
+    child?.kill("SIGTERM");
+    terminationTimer = setTimeout(() => child?.kill("SIGKILL"), KILL_GRACE_MS);
+  };
+
+  const timeoutTimer = setTimeout(() => {
+    timedOut = true;
+    terminateChild();
+  }, input.timeoutMs);
+
+  try {
+    child = spawn(executable, input.argv.slice(1), {
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QUIRKS_FAKE_RUNNER_OUTDIR: input.artifactDir,
+        ...(input.env ?? {}),
+      },
+    });
+
+    const activeChild = child;
+    if (!activeChild.stdout || !activeChild.stderr) {
+      return failureResult(base, "failure", "spawn_error", "Runner child is missing stdout or stderr pipes");
+    }
+
+    const stdoutPromise = collectBoundedStream(activeChild.stdout, MAX_STDOUT_BYTES);
+    const stderrPromise = collectBoundedStream(activeChild.stderr, MAX_STDERR_BYTES);
+
+    const [exitCode, stdoutResult, stderrResult] = await new Promise<
+      [number | null, StreamCollectResult, StreamCollectResult]
+    >((resolve, reject) => {
+      child!.once("error", reject);
+      activeChild.once("close", (code) => {
+        Promise.all([stdoutPromise, stderrPromise])
+          .then(([stdoutCollected, stderrCollected]) => {
+            resolve([code, stdoutCollected, stderrCollected]);
+          })
+          .catch(reject);
+      });
+    });
+
+    if (stdoutResult.overflow || stderrResult.overflow) {
+      return failureResult(
+        base,
+        "failure",
+        "output_limit_exceeded",
+        stdoutResult.overflow
+          ? `stdout exceeded ${MAX_STDOUT_BYTES} bytes`
+          : `stderr exceeded ${MAX_STDERR_BYTES} bytes`,
+      );
+    }
+
+    if (timedOut) {
+      return failureResult(
+        base,
+        "timeout",
+        "runner_timeout",
+        `Runner exceeded wall-clock timeout of ${input.timeoutMs}ms`,
+      );
+    }
+
+    const parsed = await parseRunnerOutputAsync({
+      profile: input.profile,
+      argv: input.argv,
+      artifactDir: input.artifactDir,
+      stdout: stdoutResult.buffer.toString("utf8"),
+      exitCode,
+      ...(sessionId !== undefined ? { sessionId } : {}),
+    });
+
+    return normalizeJobResult({
+      jobId: input.jobId,
+      profileId: input.profile.profileId,
+      runnerType: input.profile.runnerType,
+      resolvedModel: input.profile.model,
+      effort: input.profile.effort,
+      status: parsed.status,
+      sessionHandle: parsed.sessionHandle,
+      artifactPaths: parsed.artifactPaths,
+      ...(parsed.failure !== undefined ? { failure: parsed.failure } : {}),
+    });
+  } catch (error) {
+    if (timedOut) {
+      return failureResult(
+        base,
+        "timeout",
+        "runner_timeout",
+        `Runner exceeded wall-clock timeout of ${input.timeoutMs}ms`,
+      );
+    }
+
+    const message = error instanceof Error ? error.message : "Runner dispatch failed";
+    return failureResult(base, "failure", "spawn_error", message);
+  } finally {
+    clearTimeout(timeoutTimer);
+    if (terminationTimer) clearTimeout(terminationTimer);
+  }
+}

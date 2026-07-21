@@ -31,14 +31,21 @@ export type RunnerJobStatus =
   | "usage_limit"
   | "permission_denied";
 
+export interface RunnerJobFailure {
+  code: string;
+  message: string;
+}
+
 export interface RunnerJobResult {
   schemaVersion: 1;
   jobId: string;
+  runner: string;
+  runnerType: "claude" | "codex" | "cursor";
+  resolvedModel: string;
+  effort: string;
   status: RunnerJobStatus;
-  startedAt: string;
-  finishedAt: string;
-  exitCode: number;
-  sessionId?: string;
-  summary?: string;
-  evidence: Readonly<Record<string, string>>;
+  sessionHandle: string;
+  artifactPaths: readonly string[];
+  usage: Readonly<Record<string, unknown>>;
+  failure?: RunnerJobFailure;
 }
