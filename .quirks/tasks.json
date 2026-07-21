@@ -23,9 +23,18 @@
       },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "concurrency", "protocol"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["quirks-design"],
+        "risk": [
+          "architecture",
+          "security",
+          "concurrency",
+          "protocol"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "quirks-design"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
@@ -78,17 +87,29 @@
       "kind": "plan",
       "priority": "P0",
       "status": "completed",
-      "dependsOn": ["QK-DES-001"],
+      "dependsOn": [
+        "QK-DES-001"
+      ],
       "workflow": {
         "family": "superpowers",
         "phase": "plan",
-        "designGate": { "required": false }
+        "designGate": {
+          "required": false
+        }
       },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "protocol"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["foundation-plan"],
+        "risk": [
+          "architecture",
+          "security",
+          "protocol"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "foundation-plan"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
@@ -143,312 +164,938 @@
       "title": "Scaffold the dependency-free package and toolchain",
       "kind": "implementation",
       "priority": "P0",
-      "status": "ready",
-      "dependsOn": ["QK-PLN-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-PLN-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "standard",
-        "risk": ["architecture"],
-        "capabilities": ["repository-write", "network"],
-        "parallelismKeys": ["package-toolchain"],
+        "risk": [
+          "architecture"
+        ],
+        "capabilities": [
+          "repository-write",
+          "network"
+        ],
+        "parallelismKeys": [
+          "package-toolchain"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 1 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 1
+        }
       ],
-      "deliverables": ["Foundation plan Task 1"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 1"],
-      "verification": ["Run the commands in foundation plan Task 1"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 1"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 1"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 1"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-001-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "20414ea3f353d51973de069ad09dc93e7ebe28e7",
+            "commitRefs": [
+              "20414ea3f353d51973de069ad09dc93e7ebe28e7"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Scaffolded dependency-free package toolchain"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-002",
       "title": "Implement canonical JSON, hashes, paths, and typed errors",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["protocol", "security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["core-primitives"],
+        "risk": [
+          "protocol",
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "core-primitives"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 2 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 2
+        }
       ],
-      "deliverables": ["Foundation plan Task 2"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 2"],
-      "verification": ["Run the commands in foundation plan Task 2"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 2"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 2"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 2"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-002-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "89a7f3f51e47bb2df5ba77f722090240d0a2bfbb",
+            "commitRefs": [
+              "89a7f3f51e47bb2df5ba77f722090240d0a2bfbb"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Canonical JSON, hashes, paths, and QuirksError"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-003",
       "title": "Implement versioned schemas and standalone validators",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-002"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["protocol", "security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["protocol-schemas"],
+        "risk": [
+          "protocol",
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "protocol-schemas"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 3 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 3
+        }
       ],
-      "deliverables": ["Foundation plan Task 3"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 3"],
-      "verification": ["Run the commands in foundation plan Task 3"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 3"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 3"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 3"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-003-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "d46ec10f3b5f127466c22c4258d2736fb84bbd51",
+            "commitRefs": [
+              "30b5f99484236531d09a4a182b5d42ed60531f90",
+              "9b2db0d03464af7f8305d3523f1620c70abbd2f4",
+              "d46ec10f3b5f127466c22c4258d2736fb84bbd51"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Strict versioned schemas and standalone validators"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-004",
       "title": "Implement repository identity, project config, and app paths",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-003"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-003"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["identity", "security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["project-config"],
+        "risk": [
+          "identity",
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "project-config"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 4 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 4
+        }
       ],
-      "deliverables": ["Foundation plan Task 4"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 4"],
-      "verification": ["Run the commands in foundation plan Task 4"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 4"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 4"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 4"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-004-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "81c5159b83fef0f88ad089d4ed04e2e12140d882",
+            "commitRefs": [
+              "e0daee92f8fce0e18a7091efd49363f0e719c891",
+              "87c2f1248ce63aab831afaafaf1d5fd6ab6dcad9",
+              "81c5159b83fef0f88ad089d4ed04e2e12140d882"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Project configuration and application paths"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-005",
       "title": "Implement atomic state, journals, and local locks",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-004"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-004"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["concurrency", "protocol"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["durable-state"],
+        "risk": [
+          "concurrency",
+          "protocol"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "durable-state"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 5 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 5
+        }
       ],
-      "deliverables": ["Foundation plan Task 5"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 5"],
-      "verification": ["Run the commands in foundation plan Task 5"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 5"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 5"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 5"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-005-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "2969139c3f34cbb11f45a91e26c049c5bf52d271",
+            "commitRefs": [
+              "93c3c84a2e8f2c866de5cc498a1b7c2ba8c10e3c",
+              "e88904f8955642f806b0112d165951e1f1204dde",
+              "2969139c3f34cbb11f45a91e26c049c5bf52d271"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Atomic files, event journal, and local repository lock"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-006",
       "title": "Implement the provider-neutral TaskSource protocol",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-005"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-005"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "protocol", "concurrency"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["task-source-contract"],
+        "risk": [
+          "architecture",
+          "protocol",
+          "concurrency"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "task-source-contract"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 6 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 6
+        }
       ],
-      "deliverables": ["Foundation plan Task 6"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 6"],
-      "verification": ["Run the commands in foundation plan Task 6"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 6"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 6"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 6"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-006-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "77ed8635ef0e883c2634cf4c4399a2c080e276af",
+            "commitRefs": [
+              "74d5973728019f7e9ac2468c994cbf7e85289f03",
+              "81b33ebccaaad91462fcff211e72810792332f0d",
+              "77ed8635ef0e883c2634cf4c4399a2c080e276af"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Provider-neutral TaskSource protocol and conformance harness"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-007",
       "title": "Implement the canonical JSON task-source driver",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-006"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-006"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["concurrency", "protocol"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["json-task-source"],
+        "risk": [
+          "concurrency",
+          "protocol"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "json-task-source"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 7 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 7
+        }
       ],
-      "deliverables": ["Foundation plan Task 7"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 7"],
-      "verification": ["Run the commands in foundation plan Task 7"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 7"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 7"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 7"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-007-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "cad2ae28482fc8c9b49639f1f8c268025ed3304b",
+            "commitRefs": [
+              "b93cc444ee7e67aba626e20033159d4ba4ee65c1",
+              "cad2ae28482fc8c9b49639f1f8c268025ed3304b"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Canonical JSON task-source driver"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-008",
       "title": "Implement the external-executable task-source driver",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-007"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-007"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["security", "protocol", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["external-task-source"],
+        "risk": [
+          "security",
+          "protocol",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "external-task-source"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 8 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 8
+        }
       ],
-      "deliverables": ["Foundation plan Task 8"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 8"],
-      "verification": ["Run the commands in foundation plan Task 8"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 8"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 8"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 8"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-008-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "ce197d2214edec569e97a02239f673e3287427ce",
+            "commitRefs": [
+              "87bc4920e269c3b8bb81a8e1b3e2e68c1a2fa151",
+              "ce197d2214edec569e97a02239f673e3287427ce"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Bounded external-executable task-source driver"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-009",
       "title": "Implement the durable sync outbox and reconciler",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-008"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-008"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["concurrency", "protocol", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["task-sync"],
+        "risk": [
+          "concurrency",
+          "protocol",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "task-sync"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 9 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 9
+        }
       ],
-      "deliverables": ["Foundation plan Task 9"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 9"],
-      "verification": ["Run the commands in foundation plan Task 9"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 9"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 9"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 9"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-009-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "728f1e075eaf2aebd6c6df251586090fa4811aea",
+            "commitRefs": [
+              "ddbf9a3845c3f04f9cec00134767e26bfcfab349",
+              "728f1e075eaf2aebd6c6df251586090fa4811aea"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Durable sync outbox and reconciler"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-010",
       "title": "Implement compact provenance validation and attribution",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-009"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-009"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["identity", "security", "git-history"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["provenance"],
+        "risk": [
+          "identity",
+          "security",
+          "git-history"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "provenance"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 10 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 10
+        }
       ],
-      "deliverables": ["Foundation plan Task 10"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 10"],
-      "verification": ["Run the commands in foundation plan Task 10"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 10"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 10"
+      ],
+      "verification": [
+        "Run the commands in foundation plan Task 10"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-010-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "9bb4ed9687e08aafe948e78e4b08f13da12c7a7c",
+            "commitRefs": [
+              "f060fd2bfe186f4c316ce084fff77bd88fc87537",
+              "9bb4ed9687e08aafe948e78e4b08f13da12c7a7c"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Compact provenance validation and attribution"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-011",
       "title": "Implement the provider-neutral task CLI and portable fixture",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-010"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-010"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["protocol", "security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["task-cli"],
+        "risk": [
+          "protocol",
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "task-cli"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "task": 11 }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "task": 11
+        }
       ],
-      "deliverables": ["Foundation plan Task 11"],
-      "acceptanceCriteria": ["Complete every acceptance proof in foundation plan Task 11"],
-      "verification": ["Run pnpm check and every foundation boundary check"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Foundation plan Task 11"
+      ],
+      "acceptanceCriteria": [
+        "Complete every acceptance proof in foundation plan Task 11"
+      ],
+      "verification": [
+        "Run pnpm check and every foundation boundary check"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-011-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "ffc688576b146479f041ee813e3154ab4e82b8f8",
+            "commitRefs": [
+              "8d2c3530bb25612747054cd74824653f778e561e",
+              "d93825d3c8513b7885409b35944dd017ef9acb47",
+              "ffc688576b146479f041ee813e3154ab4e82b8f8"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Provider-neutral task CLI and portable fixture"
+          }
+        ]
+      }
     },
     {
       "id": "QK-FND-012",
       "title": "Independently review the completed foundation boundary",
       "kind": "review",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-011"],
-      "workflow": { "family": "superpowers", "phase": "review", "designGate": { "required": false } },
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-011"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "review",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "concurrency", "protocol", "identity"],
-        "capabilities": ["repository-read"],
-        "parallelismKeys": ["foundation-review"],
+        "risk": [
+          "architecture",
+          "security",
+          "concurrency",
+          "protocol",
+          "identity"
+        ],
+        "capabilities": [
+          "repository-read"
+        ],
+        "parallelismKeys": [
+          "foundation-review"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "plan", "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "section": "Plan Boundary Verification" }
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "section": "Plan Boundary Verification"
+        }
       ],
-      "deliverables": ["Criterion-specific foundation review findings"],
-      "acceptanceCriteria": ["All foundation findings are resolved or explicitly accepted before dependent implementation begins"],
-      "verification": ["Run pnpm check and both task-source conformance suites from a clean worktree"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Criterion-specific foundation review findings"
+      ],
+      "acceptanceCriteria": [
+        "All foundation findings are resolved or explicitly accepted before dependent implementation begins"
+      ],
+      "verification": [
+        "Run pnpm check and both task-source conformance suites from a clean worktree"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-012-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "0500f6779f19c1a0d1f5863b50633b5c4ea206fa",
+            "commitRefs": [
+              "0500f6779f19c1a0d1f5863b50633b5c4ea206fa"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Independent foundation review findings resolved; pnpm check green"
+          }
+        ]
+      }
+    },
+    {
+      "id": "QK-FND-013",
+      "title": "Close external-adapter cleanup and isolation contract",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "completed",
+      "dependsOn": [
+        "QK-FND-012"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "mechanical",
+        "risk": [
+          "security",
+          "protocol"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "external-cleanup"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-foundation-task-sources.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "section": "Plan Boundary Verification"
+        }
+      ],
+      "deliverables": [
+        "TaskSource.dispose optional contract",
+        "quirks-tasks finally dispose",
+        "External sandbox cleanup tests"
+      ],
+      "acceptanceCriteria": [
+        "TaskSource exposes optional dispose()",
+        "quirks-tasks always disposes the source in finally",
+        "External adapter HOME sandbox is removed by dispose and dispose is idempotent"
+      ],
+      "verification": [
+        "node --test dist/test/task-source/external/*.test.js",
+        "pnpm check"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-FND-013-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "ed26001ef434ad649f5fc4616a751b656099dd95",
+            "commitRefs": [
+              "ed26001ef434ad649f5fc4616a751b656099dd95"
+            ],
+            "finishedAt": "2026-07-21T13:05:00-03:00",
+            "outcomeReason": "Optional TaskSource.dispose cleans adapter sandboxes from CLI"
+          }
+        ]
+      }
     },
     {
       "id": "QK-CTL-001",
       "title": "Write the campaign control-plane and runner implementation plan",
       "kind": "plan",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-012"],
-      "workflow": { "family": "superpowers", "phase": "plan", "designGate": { "required": false } },
+      "status": "ready",
+      "dependsOn": [
+        "QK-FND-013"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "plan",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "concurrency", "protocol", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["control-plane-plan"],
+        "risk": [
+          "architecture",
+          "security",
+          "concurrency",
+          "protocol",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "control-plane-plan"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "spec", "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "sections": [10, 11, 12, 13, 14, 16, 17, 19, 21, 23] }
+        {
+          "kind": "spec",
+          "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "sections": [
+            10,
+            11,
+            12,
+            13,
+            14,
+            16,
+            17,
+            19,
+            21,
+            23
+          ]
+        }
       ],
-      "deliverables": ["docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"],
-      "acceptanceCriteria": ["Plan campaign state, approval, scheduling, runner IPC, recovery, budgets, and fake-runner acceptance with TDD steps"],
-      "verification": ["Self-review every control-plane trust boundary against the approved spec"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+      ],
+      "acceptanceCriteria": [
+        "Plan campaign state, approval, scheduling, runner IPC, recovery, budgets, and fake-runner acceptance with TDD steps"
+      ],
+      "verification": [
+        "Self-review every control-plane trust boundary against the approved spec"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-CTL-002",
@@ -456,21 +1103,51 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-CTL-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-CTL-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["security", "concurrency", "protocol"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["campaign-state"],
+        "risk": [
+          "security",
+          "concurrency",
+          "protocol"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "campaign-state"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md" }],
-      "deliverables": ["Versioned campaign, state, event, and approval schemas"],
-      "acceptanceCriteria": ["Complete the corresponding approved control-plane plan tasks"],
-      "verification": ["Run the corresponding focused schema and recovery suites"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+        }
+      ],
+      "deliverables": [
+        "Versioned campaign, state, event, and approval schemas"
+      ],
+      "acceptanceCriteria": [
+        "Complete the corresponding approved control-plane plan tasks"
+      ],
+      "verification": [
+        "Run the corresponding focused schema and recovery suites"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-CTL-003",
@@ -478,21 +1155,51 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-CTL-002"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-CTL-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "concurrency"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["campaign-supervisor"],
+        "risk": [
+          "architecture",
+          "security",
+          "concurrency"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "campaign-supervisor"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md" }],
-      "deliverables": ["Deterministic campaign control plane and immutable approval envelope"],
-      "acceptanceCriteria": ["No task claim or dispatch is possible before durable exact-envelope approval"],
-      "verification": ["Run scheduler, approval replay, drift, and interruption suites"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+        }
+      ],
+      "deliverables": [
+        "Deterministic campaign control plane and immutable approval envelope"
+      ],
+      "acceptanceCriteria": [
+        "No task claim or dispatch is possible before durable exact-envelope approval"
+      ],
+      "verification": [
+        "Run scheduler, approval replay, drift, and interruption suites"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-RUN-001",
@@ -500,21 +1207,52 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-CTL-003"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-CTL-003"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["security", "protocol", "cost", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["runner-contracts"],
+        "risk": [
+          "security",
+          "protocol",
+          "cost",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "runner-contracts"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md" }],
-      "deliverables": ["Versioned runner protocol, profiles, probes, and three CLI adapters"],
-      "acceptanceCriteria": ["Adapters preserve sandbox, model tier, account, session, output, and permission semantics"],
-      "verification": ["Run fake CLI contract tests before any paid real-runner probe"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+        }
+      ],
+      "deliverables": [
+        "Versioned runner protocol, profiles, probes, and three CLI adapters"
+      ],
+      "acceptanceCriteria": [
+        "Adapters preserve sandbox, model tier, account, session, output, and permission semantics"
+      ],
+      "verification": [
+        "Run fake CLI contract tests before any paid real-runner probe"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-RUN-002",
@@ -522,21 +1260,51 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-RUN-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-RUN-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["concurrency", "cost", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["runner-liveness"],
+        "risk": [
+          "concurrency",
+          "cost",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "runner-liveness"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md" }],
-      "deliverables": ["Durable runner liveness and bounded routing control"],
-      "acceptanceCriteria": ["Crash and quota recovery never duplicate unsafe work or broaden approval"],
-      "verification": ["Run fake-runner crash, wedge, quota, timeout, cancellation, and recovery suites"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+        }
+      ],
+      "deliverables": [
+        "Durable runner liveness and bounded routing control"
+      ],
+      "acceptanceCriteria": [
+        "Crash and quota recovery never duplicate unsafe work or broaden approval"
+      ],
+      "verification": [
+        "Run fake-runner crash, wedge, quota, timeout, cancellation, and recovery suites"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-CTL-004",
@@ -544,45 +1312,111 @@
       "kind": "verification",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-RUN-002"],
-      "workflow": { "family": "superpowers", "phase": "verification", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-RUN-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["security", "concurrency", "protocol", "cost"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["control-plane-acceptance"],
+        "risk": [
+          "security",
+          "concurrency",
+          "protocol",
+          "cost"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "control-plane-acceptance"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md" }],
-      "deliverables": ["Deterministic fake-runner and fake-host acceptance evidence"],
-      "acceptanceCriteria": ["All control-plane failure and recovery paths pass without real provider access"],
-      "verification": ["Run the full fake-runner integration matrix"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+        }
+      ],
+      "deliverables": [
+        "Deterministic fake-runner and fake-host acceptance evidence"
+      ],
+      "acceptanceCriteria": [
+        "All control-plane failure and recovery paths pass without real provider access"
+      ],
+      "verification": [
+        "Run the full fake-runner integration matrix"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-UI-001",
       "title": "Write the local control UI implementation plan",
       "kind": "plan",
       "priority": "P0",
-      "status": "proposed",
-      "dependsOn": ["QK-FND-012"],
-      "workflow": { "family": "superpowers", "phase": "plan", "designGate": { "required": false } },
+      "status": "ready",
+      "dependsOn": [
+        "QK-FND-013"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "plan",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["control-ui-plan"],
+        "risk": [
+          "architecture",
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "control-ui-plan"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "spec", "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "sections": [12, 17, 20, 22, 23] }
+        {
+          "kind": "spec",
+          "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "sections": [
+            12,
+            17,
+            20,
+            22,
+            23
+          ]
+        }
       ],
-      "deliverables": ["docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"],
-      "acceptanceCriteria": ["Plan loopback security, approval API, task/history views, visual states, and browser tests with TDD steps"],
-      "verification": ["Self-review every UI authorization and hostile-data boundary against the approved spec"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"
+      ],
+      "acceptanceCriteria": [
+        "Plan loopback security, approval API, task/history views, visual states, and browser tests with TDD steps"
+      ],
+      "verification": [
+        "Self-review every UI authorization and hostile-data boundary against the approved spec"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-UI-002",
@@ -590,21 +1424,52 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-UI-001", "QK-CTL-002"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-UI-001",
+        "QK-CTL-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["security", "identity", "protocol"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["control-ui-server"],
+        "risk": [
+          "security",
+          "identity",
+          "protocol"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "control-ui-server"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md" }],
-      "deliverables": ["Loopback-only server, security headers, nonce CSP, one-time approval token, and JSON API"],
-      "acceptanceCriteria": ["Cross-origin, wrong-host, replay, stale-digest, form, GET mutation, and hostile-content tests fail closed"],
-      "verification": ["Run focused UI security and API tests"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"
+        }
+      ],
+      "deliverables": [
+        "Loopback-only server, security headers, nonce CSP, one-time approval token, and JSON API"
+      ],
+      "acceptanceCriteria": [
+        "Cross-origin, wrong-host, replay, stale-digest, form, GET mutation, and hostile-content tests fail closed"
+      ],
+      "verification": [
+        "Run focused UI security and API tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-UI-003",
@@ -612,21 +1477,50 @@
       "kind": "implementation",
       "priority": "P1",
       "status": "proposed",
-      "dependsOn": ["QK-UI-002", "QK-CTL-003"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-UI-002",
+        "QK-CTL-003"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["control-ui-views"],
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "control-ui-views"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md" }],
-      "deliverables": ["Provider-neutral task, proposal, campaign, and provenance projections"],
-      "acceptanceCriteria": ["Views show exact tasks, ordering, ownership, source freshness, commits, PRs, identities, and unavailable references without copying source content"],
-      "verification": ["Run component/read-model tests with hostile paths, metadata, logs, and task text"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"
+        }
+      ],
+      "deliverables": [
+        "Provider-neutral task, proposal, campaign, and provenance projections"
+      ],
+      "acceptanceCriteria": [
+        "Views show exact tasks, ordering, ownership, source freshness, commits, PRs, identities, and unavailable references without copying source content"
+      ],
+      "verification": [
+        "Run component/read-model tests with hostile paths, metadata, logs, and task text"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-UI-004",
@@ -634,21 +1528,50 @@
       "kind": "verification",
       "priority": "P1",
       "status": "proposed",
-      "dependsOn": ["QK-UI-003", "QK-CTL-004"],
-      "workflow": { "family": "superpowers", "phase": "verification", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-UI-003",
+        "QK-CTL-004"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["control-ui-acceptance"],
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "control-ui-acceptance"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md" }],
-      "deliverables": ["Automated browser evidence across approved desktop and narrow layouts"],
-      "acceptanceCriteria": ["No overlap, clipping, unsafe rendering, inaccessible approval controls, or authorization regression remains"],
-      "verification": ["Run browser, accessibility, CSP, header, replay, and screenshot suites"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"
+        }
+      ],
+      "deliverables": [
+        "Automated browser evidence across approved desktop and narrow layouts"
+      ],
+      "acceptanceCriteria": [
+        "No overlap, clipping, unsafe rendering, inaccessible approval controls, or authorization regression remains"
+      ],
+      "verification": [
+        "Run browser, accessibility, CSP, header, replay, and screenshot suites"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-SKL-001",
@@ -656,23 +1579,63 @@
       "kind": "plan",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-CTL-004", "QK-UI-001"],
-      "workflow": { "family": "superpowers", "phase": "plan", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-CTL-004",
+        "QK-UI-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "plan",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "git-history", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["skills-git-plan"],
+        "risk": [
+          "architecture",
+          "security",
+          "git-history",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "skills-git-plan"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "spec", "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "sections": [5, 9, 10, 14, 15, 18, 23] }
+        {
+          "kind": "spec",
+          "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "sections": [
+            5,
+            9,
+            10,
+            14,
+            15,
+            18,
+            23
+          ]
+        }
       ],
-      "deliverables": ["docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"],
-      "acceptanceCriteria": ["Plan skill baseline/forward tests, worktrees, review, merge, approved push, and provenance write-back"],
-      "verification": ["Self-review skill authority and Git mutation boundaries against the approved spec"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+      ],
+      "acceptanceCriteria": [
+        "Plan skill baseline/forward tests, worktrees, review, merge, approved push, and provenance write-back"
+      ],
+      "verification": [
+        "Self-review skill authority and Git mutation boundaries against the approved spec"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-SKL-002",
@@ -680,21 +1643,52 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-SKL-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-SKL-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["security", "protocol", "cost", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["dispatch-skill"],
+        "risk": [
+          "security",
+          "protocol",
+          "cost",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "dispatch-skill"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md" }],
-      "deliverables": ["skills/dispatching-external-agents/SKILL.md and versioned runner references"],
-      "acceptanceCriteria": ["Skill delegates only through approved runner profiles and deterministic control-plane transitions"],
-      "verification": ["Run skill baseline and forward tests plus fake-runner dispatch tests"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "skills/dispatching-external-agents/SKILL.md and versioned runner references"
+      ],
+      "acceptanceCriteria": [
+        "Skill delegates only through approved runner profiles and deterministic control-plane transitions"
+      ],
+      "verification": [
+        "Run skill baseline and forward tests plus fake-runner dispatch tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-SKL-005",
@@ -702,21 +1696,51 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-SKL-001", "QK-FND-011"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-SKL-001",
+        "QK-FND-011"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["protocol", "concurrency"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["task-lifecycle-skills"],
+        "risk": [
+          "protocol",
+          "concurrency"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "task-lifecycle-skills"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md" }],
-      "deliverables": ["Canonical writing-tasks, updating-tasks, and executing-tasks skills"],
-      "acceptanceCriteria": ["The three skills use only the selected TaskSource, preserve canonical status ownership, and update compact provenance through validated CLI operations"],
-      "verification": ["Run baseline and forward tests for authoring, updating, executing, conflict, and sync behavior"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "Canonical writing-tasks, updating-tasks, and executing-tasks skills"
+      ],
+      "acceptanceCriteria": [
+        "The three skills use only the selected TaskSource, preserve canonical status ownership, and update compact provenance through validated CLI operations"
+      ],
+      "verification": [
+        "Run baseline and forward tests for authoring, updating, executing, conflict, and sync behavior"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-SKL-003",
@@ -724,21 +1748,50 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-SKL-002"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-SKL-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["brainstorm-skill"],
+        "risk": [
+          "architecture",
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "brainstorm-skill"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md" }],
-      "deliverables": ["skills/delegated-brainstorming/SKILL.md"],
-      "acceptanceCriteria": ["Human-guided design remains default and delegated principal author/reviewer authority stays inside the approved decision envelope"],
-      "verification": ["Run skill baseline, delegated design, reviewer independence, and authority-denial tests"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "skills/delegated-brainstorming/SKILL.md"
+      ],
+      "acceptanceCriteria": [
+        "Human-guided design remains default and delegated principal author/reviewer authority stays inside the approved decision envelope"
+      ],
+      "verification": [
+        "Run skill baseline, delegated design, reviewer independence, and authority-denial tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-SKL-004",
@@ -746,21 +1799,54 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-SKL-003", "QK-SKL-005", "QK-UI-004"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-SKL-003",
+        "QK-SKL-005",
+        "QK-UI-004"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "concurrency", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["campaign-skill"],
+        "risk": [
+          "architecture",
+          "security",
+          "concurrency",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "campaign-skill"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md" }],
-      "deliverables": ["skills/running-agent-campaigns/SKILL.md"],
-      "acceptanceCriteria": ["The parent skill preflights, asks about external routing, renders exact approval, supervises tasks, and reports without bypassing the control plane"],
-      "verification": ["Run skill baseline, forward, denial, recovery, and exact-envelope tests"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "skills/running-agent-campaigns/SKILL.md"
+      ],
+      "acceptanceCriteria": [
+        "The parent skill preflights, asks about external routing, renders exact approval, supervises tasks, and reports without bypassing the control plane"
+      ],
+      "verification": [
+        "Run skill baseline, forward, denial, recovery, and exact-envelope tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-GIT-001",
@@ -768,21 +1854,51 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-SKL-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-SKL-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["git-history", "concurrency", "security"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["git-integration"],
+        "risk": [
+          "git-history",
+          "concurrency",
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "git-integration"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md" }],
-      "deliverables": ["Scoped worktree, branch, integration, review, and cleanup control"],
-      "acceptanceCriteria": ["Only approved task commits reach the exact integration and target boundaries"],
-      "verification": ["Run dirty-tree, conflict, wrong-base, wrong-target, stale-review, and interruption suites"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "Scoped worktree, branch, integration, review, and cleanup control"
+      ],
+      "acceptanceCriteria": [
+        "Only approved task commits reach the exact integration and target boundaries"
+      ],
+      "verification": [
+        "Run dirty-tree, conflict, wrong-base, wrong-target, stale-review, and interruption suites"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-GIT-002",
@@ -790,21 +1906,55 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-GIT-001", "QK-SKL-004"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-GIT-001",
+        "QK-SKL-004"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["git-history", "security", "external-side-effect"],
-        "capabilities": ["repository-write", "remote-git"],
-        "parallelismKeys": ["git-landing"],
-        "humanGates": ["approve-exact-remote-and-branch"],
+        "risk": [
+          "git-history",
+          "security",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write",
+          "remote-git"
+        ],
+        "parallelismKeys": [
+          "git-landing"
+        ],
+        "humanGates": [
+          "approve-exact-remote-and-branch"
+        ],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md" }],
-      "deliverables": ["Verified merge, optional approved push, and compact canonical task provenance"],
-      "acceptanceCriteria": ["Push is impossible unless exact remote and branch are in the approved envelope and final verification passes"],
-      "verification": ["Run local bare-remote tests for wrong remote, wrong branch, drift, rejection, replay, and provenance acknowledgement"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "Verified merge, optional approved push, and compact canonical task provenance"
+      ],
+      "acceptanceCriteria": [
+        "Push is impossible unless exact remote and branch are in the approved envelope and final verification passes"
+      ],
+      "verification": [
+        "Run local bare-remote tests for wrong remote, wrong branch, drift, rejection, replay, and provenance acknowledgement"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-HOST-001",
@@ -812,23 +1962,62 @@
       "kind": "plan",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-UI-004", "QK-SKL-004", "QK-GIT-002"],
-      "workflow": { "family": "superpowers", "phase": "plan", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-UI-004",
+        "QK-SKL-004",
+        "QK-GIT-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "plan",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "external-side-effect", "cost"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["host-acceptance-plan"],
+        "risk": [
+          "architecture",
+          "security",
+          "external-side-effect",
+          "cost"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-acceptance-plan"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "spec", "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "sections": [6, 16, 23, 24, 25] }
+        {
+          "kind": "spec",
+          "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "sections": [
+            6,
+            16,
+            23,
+            24,
+            25
+          ]
+        }
       ],
-      "deliverables": ["docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"],
-      "acceptanceCriteria": ["Plan package installation, three harness integrations, portability fixtures, real smoke evidence, marketplace installation, and bounded first campaign"],
-      "verification": ["Self-review host-specific authority and dated evidence requirements"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+      ],
+      "acceptanceCriteria": [
+        "Plan package installation, three harness integrations, portability fixtures, real smoke evidence, marketplace installation, and bounded first campaign"
+      ],
+      "verification": [
+        "Self-review host-specific authority and dated evidence requirements"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-HOST-002",
@@ -836,21 +2025,50 @@
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-HOST-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-HOST-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["security", "protocol"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["host-installation"],
+        "risk": [
+          "security",
+          "protocol"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-installation"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md" }],
-      "deliverables": ["Codex plugin manifest, personal marketplace metadata, and canonical host installation references"],
-      "acceptanceCriteria": ["All hosts use the same maintained skills without project copies or silent host authority"],
-      "verification": ["Run clean-home install, upgrade, uninstall, and skill-discovery tests for all three hosts"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Codex plugin manifest, personal marketplace metadata, and canonical host installation references"
+      ],
+      "acceptanceCriteria": [
+        "All hosts use the same maintained skills without project copies or silent host authority"
+      ],
+      "verification": [
+        "Run clean-home install, upgrade, uninstall, and skill-discovery tests for all three hosts"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-HOST-003",
@@ -858,21 +2076,52 @@
       "kind": "verification",
       "priority": "P0",
       "status": "proposed",
-      "dependsOn": ["QK-HOST-002"],
-      "workflow": { "family": "superpowers", "phase": "verification", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-HOST-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["security", "concurrency", "protocol", "git-history"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["portable-acceptance"],
+        "risk": [
+          "security",
+          "concurrency",
+          "protocol",
+          "git-history"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "portable-acceptance"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md" }],
-      "deliverables": ["Disposable end-to-end evidence for both v1 task sources and all three hosts"],
-      "acceptanceCriteria": ["A clean fixture completes preflight through final report with crash recovery and no hidden host assumptions"],
-      "verification": ["Run the full portable fixture, UI, sync, provenance, Git, and fake-runner suite"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Disposable end-to-end evidence for both v1 task sources and all three hosts"
+      ],
+      "acceptanceCriteria": [
+        "A clean fixture completes preflight through final report with crash recovery and no hidden host assumptions"
+      ],
+      "verification": [
+        "Run the full portable fixture, UI, sync, provenance, Git, and fake-runner suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-HOST-004",
@@ -880,21 +2129,55 @@
       "kind": "verification",
       "priority": "P1",
       "status": "proposed",
-      "dependsOn": ["QK-HOST-003"],
-      "workflow": { "family": "superpowers", "phase": "verification", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-HOST-003"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["security", "cost", "external-side-effect"],
-        "capabilities": ["repository-write", "network", "external-system"],
-        "parallelismKeys": ["real-runner-smoke"],
-        "humanGates": ["approve-paid-runner-probes"],
+        "risk": [
+          "security",
+          "cost",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write",
+          "network",
+          "external-system"
+        ],
+        "parallelismKeys": [
+          "real-runner-smoke"
+        ],
+        "humanGates": [
+          "approve-paid-runner-probes"
+        ],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md" }],
-      "deliverables": ["Dated, redacted evidence for each Claude Code, Codex, and Cursor host/runner pairing"],
-      "acceptanceCriteria": ["Every cell records version, account/profile, model, flags, result, session behavior, and bounded artifact digest"],
-      "verification": ["Validate all nine evidence records and confirm no credential or personal path persisted"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Dated, redacted evidence for each Claude Code, Codex, and Cursor host/runner pairing"
+      ],
+      "acceptanceCriteria": [
+        "Every cell records version, account/profile, model, flags, result, session behavior, and bounded artifact digest"
+      ],
+      "verification": [
+        "Validate all nine evidence records and confirm no credential or personal path persisted"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-HOST-005",
@@ -902,21 +2185,57 @@
       "kind": "operations",
       "priority": "P1",
       "status": "proposed",
-      "dependsOn": ["QK-HOST-004"],
-      "workflow": { "family": "superpowers", "phase": "verification", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-HOST-004"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["security", "cost", "external-side-effect", "git-history"],
-        "capabilities": ["repository-write", "network", "remote-git", "external-system"],
-        "parallelismKeys": ["first-real-campaign"],
-        "humanGates": ["approve-exact-campaign"],
+        "risk": [
+          "security",
+          "cost",
+          "external-side-effect",
+          "git-history"
+        ],
+        "capabilities": [
+          "repository-write",
+          "network",
+          "remote-git",
+          "external-system"
+        ],
+        "parallelismKeys": [
+          "first-real-campaign"
+        ],
+        "humanGates": [
+          "approve-exact-campaign"
+        ],
         "completionBoundary": "remote-push"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md" }],
-      "deliverables": ["One bounded real-project campaign report with exact commits and source acknowledgements"],
-      "acceptanceCriteria": ["The real run stays inside the approved tasks, routes, budget, Git target, and external authority"],
-      "verification": ["Review final report, canonical task status, Git target, sync outbox, and redacted evidence"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "One bounded real-project campaign report with exact commits and source acknowledgements"
+      ],
+      "acceptanceCriteria": [
+        "The real run stays inside the approved tasks, routes, budget, Git target, and external authority"
+      ],
+      "verification": [
+        "Review final report, canonical task status, Git target, sync outbox, and redacted evidence"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-ADP-001",
@@ -924,23 +2243,59 @@
       "kind": "plan",
       "priority": "P3",
       "status": "proposed",
-      "dependsOn": ["QK-HOST-005"],
-      "workflow": { "family": "superpowers", "phase": "plan", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-HOST-005"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "plan",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "principal",
-        "risk": ["architecture", "security", "protocol", "external-side-effect"],
-        "capabilities": ["repository-write"],
-        "parallelismKeys": ["provider-adapter-sdk"],
+        "risk": [
+          "architecture",
+          "security",
+          "protocol",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "provider-adapter-sdk"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
       "sourceRefs": [
-        { "kind": "spec", "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md", "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f", "sections": [7, 8, 20, 23] }
+        {
+          "kind": "spec",
+          "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
+          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "sections": [
+            7,
+            8,
+            20,
+            23
+          ]
+        }
       ],
-      "deliverables": ["Post-v1 provider adapter SDK plan"],
-      "acceptanceCriteria": ["Plan capability mapping, revisions, credentials, sync, provenance, conformance, and packaging without changing campaign core"],
-      "verification": ["Review the SDK plan against the v1 shared conformance suite"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "deliverables": [
+        "Post-v1 provider adapter SDK plan"
+      ],
+      "acceptanceCriteria": [
+        "Plan capability mapping, revisions, credentials, sync, provenance, conformance, and packaging without changing campaign core"
+      ],
+      "verification": [
+        "Review the SDK plan against the v1 shared conformance suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-ADP-002",
@@ -948,21 +2303,53 @@
       "kind": "implementation",
       "priority": "P3",
       "status": "proposed",
-      "dependsOn": ["QK-ADP-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-ADP-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["security", "protocol", "external-side-effect"],
-        "capabilities": ["repository-write", "network", "external-system"],
-        "parallelismKeys": ["github-adapter"],
+        "risk": [
+          "security",
+          "protocol",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write",
+          "network",
+          "external-system"
+        ],
+        "parallelismKeys": [
+          "github-adapter"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/quirks-provider-adapter-sdk.md" }],
-      "deliverables": ["GitHub Issues TaskSource package"],
-      "acceptanceCriteria": ["Adapter passes the shared contract without weakening GitHub revision, identity, or permission semantics"],
-      "verification": ["Run shared conformance plus disposable GitHub integration tests"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/quirks-provider-adapter-sdk.md"
+        }
+      ],
+      "deliverables": [
+        "GitHub Issues TaskSource package"
+      ],
+      "acceptanceCriteria": [
+        "Adapter passes the shared contract without weakening GitHub revision, identity, or permission semantics"
+      ],
+      "verification": [
+        "Run shared conformance plus disposable GitHub integration tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-ADP-003",
@@ -970,21 +2357,53 @@
       "kind": "implementation",
       "priority": "P3",
       "status": "proposed",
-      "dependsOn": ["QK-ADP-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-ADP-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["security", "protocol", "external-side-effect"],
-        "capabilities": ["repository-write", "network", "external-system"],
-        "parallelismKeys": ["linear-adapter"],
+        "risk": [
+          "security",
+          "protocol",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write",
+          "network",
+          "external-system"
+        ],
+        "parallelismKeys": [
+          "linear-adapter"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/quirks-provider-adapter-sdk.md" }],
-      "deliverables": ["Linear TaskSource package"],
-      "acceptanceCriteria": ["Adapter passes the shared contract without weakening Linear revision, identity, or permission semantics"],
-      "verification": ["Run shared conformance plus disposable Linear integration tests"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/quirks-provider-adapter-sdk.md"
+        }
+      ],
+      "deliverables": [
+        "Linear TaskSource package"
+      ],
+      "acceptanceCriteria": [
+        "Adapter passes the shared contract without weakening Linear revision, identity, or permission semantics"
+      ],
+      "verification": [
+        "Run shared conformance plus disposable Linear integration tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-ADP-004",
@@ -992,21 +2411,53 @@
       "kind": "implementation",
       "priority": "P3",
       "status": "proposed",
-      "dependsOn": ["QK-ADP-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-ADP-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["security", "protocol", "external-side-effect"],
-        "capabilities": ["repository-write", "network", "external-system"],
-        "parallelismKeys": ["jira-adapter"],
+        "risk": [
+          "security",
+          "protocol",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write",
+          "network",
+          "external-system"
+        ],
+        "parallelismKeys": [
+          "jira-adapter"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/quirks-provider-adapter-sdk.md" }],
-      "deliverables": ["Jira TaskSource package"],
-      "acceptanceCriteria": ["Adapter passes the shared contract without weakening Jira revision, identity, or permission semantics"],
-      "verification": ["Run shared conformance plus disposable Jira integration tests"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/quirks-provider-adapter-sdk.md"
+        }
+      ],
+      "deliverables": [
+        "Jira TaskSource package"
+      ],
+      "acceptanceCriteria": [
+        "Adapter passes the shared contract without weakening Jira revision, identity, or permission semantics"
+      ],
+      "verification": [
+        "Run shared conformance plus disposable Jira integration tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     },
     {
       "id": "QK-ADP-005",
@@ -1014,21 +2465,53 @@
       "kind": "implementation",
       "priority": "P3",
       "status": "proposed",
-      "dependsOn": ["QK-ADP-001"],
-      "workflow": { "family": "superpowers", "phase": "execute", "designGate": { "required": false } },
+      "dependsOn": [
+        "QK-ADP-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
       "execution": {
         "effort": "high",
-        "risk": ["security", "protocol", "external-side-effect"],
-        "capabilities": ["repository-write", "network", "external-system"],
-        "parallelismKeys": ["clickup-adapter"],
+        "risk": [
+          "security",
+          "protocol",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-write",
+          "network",
+          "external-system"
+        ],
+        "parallelismKeys": [
+          "clickup-adapter"
+        ],
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [{ "kind": "planned-plan", "path": "docs/superpowers/plans/quirks-provider-adapter-sdk.md" }],
-      "deliverables": ["ClickUp TaskSource package"],
-      "acceptanceCriteria": ["Adapter passes the shared contract without weakening ClickUp revision, identity, or permission semantics"],
-      "verification": ["Run shared conformance plus disposable ClickUp integration tests"],
-      "provenance": { "schemaVersion": 1, "iterations": [] }
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/quirks-provider-adapter-sdk.md"
+        }
+      ],
+      "deliverables": [
+        "ClickUp TaskSource package"
+      ],
+      "acceptanceCriteria": [
+        "Adapter passes the shared contract without weakening ClickUp revision, identity, or permission semantics"
+      ],
+      "verification": [
+        "Run shared conformance plus disposable ClickUp integration tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
     }
   ]
 }
