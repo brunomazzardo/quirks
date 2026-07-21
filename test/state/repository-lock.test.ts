@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -71,6 +71,55 @@ test("rejects heartbeat after release", async () => {
   const handle = await RepositoryLock.acquire(lockPath, { campaignId: "C-1" });
   await handle.release();
   await assert.rejects(() => handle.heartbeat(), /LOCK_ALREADY_RELEASED/);
+});
+
+test("rejects heartbeat and release when lock file ownership no longer matches", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-lock-"));
+  const lockPath = path.join(dir, "lock");
+  const handle = await RepositoryLock.acquire(lockPath, { campaignId: "C-1" });
+
+  const successorRecord = {
+    schemaVersion: 1 as const,
+    scope: "local-clone" as const,
+    campaignId: "C-2",
+    pid: 99_999_999,
+    hostname: "other-host",
+    acquiredAt: "2026-07-21T01:00:00.000Z",
+    heartbeatAt: "2026-07-21T01:00:00.000Z",
+  };
+  const successorContent = `${canonicalJson(successorRecord)}\n`;
+  await writeFile(lockPath, successorContent, { mode: 0o600 });
+
+  const assertNotOwned = (error: unknown) => {
+    assert.ok(error instanceof QuirksError);
+    assert.match(error.message, /LOCK_NOT_OWNED/);
+    assert.equal(error.details["campaignId"], "C-2");
+    assert.equal(error.details["hostname"], "other-host");
+    return true;
+  };
+
+  await assert.rejects(() => handle.heartbeat(), assertNotOwned);
+  await assert.rejects(() => handle.release(), assertNotOwned);
+
+  const after = await readFile(lockPath, "utf8");
+  assert.equal(after, successorContent);
+});
+
+test("rejects heartbeat and release when lock file is missing", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-lock-"));
+  const lockPath = path.join(dir, "lock");
+  const handle = await RepositoryLock.acquire(lockPath, { campaignId: "C-1" });
+  await rm(lockPath, { force: true });
+
+  const assertNotOwned = (error: unknown) => {
+    assert.ok(error instanceof QuirksError);
+    assert.match(error.message, /LOCK_NOT_OWNED: lock file is missing or unreadable/);
+    assert.equal(error.details["campaignId"], "C-1");
+    return true;
+  };
+
+  await assert.rejects(() => handle.heartbeat(), assertNotOwned);
+  await assert.rejects(() => handle.release(), assertNotOwned);
 });
 
 test("double release under contention does not clobber the new owner", async () => {
