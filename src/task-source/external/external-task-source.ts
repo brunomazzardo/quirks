@@ -153,25 +153,31 @@ export class ExternalTaskSource implements TaskSource {
 
       if (timeout.hasTimedOut()) {
         throw new QuirksError(
-          "PROTOCOL_VIOLATION",
+          "SOURCE_UNAVAILABLE",
           `Adapter timed out after ${this.timeoutMs}ms`,
           { stderr: diagnosticStderr, timeoutMs: String(this.timeoutMs) },
         );
       }
 
-      if (exitCode !== 0) {
-        throw new QuirksError("PROTOCOL_VIOLATION", `Adapter exited with code ${exitCode ?? "null"}`, {
-          stderr: diagnosticStderr,
-          exitCode: String(exitCode ?? "null"),
-        });
+      let frame: unknown;
+      try {
+        frame = parseResponseFrame(stdout, this.maxOutputBytes);
+      } catch (error) {
+        if (exitCode !== 0) {
+          throw new QuirksError(
+            "SOURCE_UNAVAILABLE",
+            `Adapter exited with code ${exitCode ?? "null"} without a valid response frame`,
+            { stderr: diagnosticStderr, exitCode: String(exitCode ?? "null") },
+          );
+        }
+        throw error;
       }
 
-      const frame = parseResponseFrame(stdout, this.maxOutputBytes);
       return parseTaskSourceResponse(frame, request.operation);
     } catch (error) {
       if (error instanceof QuirksError) throw error;
       throw new QuirksError(
-        "PROTOCOL_VIOLATION",
+        "SOURCE_UNAVAILABLE",
         error instanceof Error ? error.message : "Adapter invocation failed",
       );
     }

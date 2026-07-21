@@ -254,6 +254,10 @@ async function main() {
     await new Promise(() => {});
   }
 
+  if (mode === "crash") {
+    process.exit(1);
+  }
+
   if (mode === "malformed") {
     process.stdout.write("not-json\n");
     return;

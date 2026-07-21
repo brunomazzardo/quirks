@@ -65,6 +65,37 @@ test("second reconcileMutation does not re-execute an acknowledged intent", asyn
   assert.equal(source.mutationCalls, 1);
 });
 
+test("resolves submit-review ambiguity via show in_review status", async () => {
+  const outbox = new MemoryOutbox();
+  const source = new SubmitReviewAmbiguousSource();
+  const result = await reconcileMutation({ campaignId: "C-1", outbox, source, request: source.submitReviewRequest });
+  assert.equal(result.state, "acknowledged");
+  assert.equal(source.mutationCalls, 1);
+});
+
+test("resolves attach-provenance ambiguity via show provenance iteration", async () => {
+  const outbox = new MemoryOutbox();
+  const source = new AttachProvenanceAmbiguousSource();
+  const result = await reconcileMutation({
+    campaignId: "C-1",
+    outbox,
+    source,
+    request: source.attachProvenanceRequest,
+  });
+  assert.equal(result.state, "acknowledged");
+  assert.equal(source.mutationCalls, 1);
+});
+
+test("reconcilePending resolves recoverable intents when idempotency lookup is none", async () => {
+  const outbox = new TrackingOutbox();
+  const source = new SubmitReviewAmbiguousSource();
+  await outbox.enqueue(pendingIntent(source.submitReviewRequest));
+  const resolved = await reconcilePending({ campaignId: "C-1", outbox, source });
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0]?.state, "acknowledged");
+  assert.equal(source.mutationCalls, 0);
+});
+
 test("second reconcileMutation does not re-execute a pending intent without safe key retry", async () => {
   const outbox = new MemoryOutbox();
   const source = new OutageWithoutEvidenceSource();
@@ -196,6 +227,81 @@ class KeyLookupSource implements TaskSource {
     }
     if (request.operation === "capabilities") {
       return capabilitiesResponse("key");
+    }
+    return { schemaVersion: 1, operation: request.operation, ok: true, data: {} } as TaskSourceResponse;
+  }
+}
+
+class SubmitReviewAmbiguousSource implements TaskSource {
+  mutationCalls = 0;
+  readonly submitReviewRequest: MutationRequest = {
+    schemaVersion: 1,
+    operation: "submit-review",
+    taskId: "QK-1",
+    expectedNativeRevision: "sha256:before",
+    idempotencyKey: "C-1:QK-1:submit-review:evt-1",
+    input: { evidenceRefs: ["review:evt-1"] },
+  };
+
+  async execute(request: TaskSourceRequest): Promise<TaskSourceResponse> {
+    if (request.operation === "submit-review") {
+      this.mutationCalls += 1;
+      throw Object.assign(new Error("connection lost after write"), { code: "SOURCE_UNAVAILABLE" });
+    }
+    if (request.operation === "show") {
+      return {
+        schemaVersion: 1,
+        operation: "show",
+        ok: true,
+        nativeRevision: "sha256:after",
+        data: { id: "QK-1", status: "in_review" },
+      };
+    }
+    if (request.operation === "capabilities") {
+      return capabilitiesResponse("none");
+    }
+    return { schemaVersion: 1, operation: request.operation, ok: true, data: {} } as TaskSourceResponse;
+  }
+}
+
+const sampleIteration = {
+  id: "iter-1",
+  outcome: "completed" as const,
+  completionBoundary: "accepted-commit" as const,
+  startedAt: "2026-07-21T00:00:00.000Z",
+};
+
+class AttachProvenanceAmbiguousSource implements TaskSource {
+  mutationCalls = 0;
+  readonly attachProvenanceRequest: MutationRequest = {
+    schemaVersion: 1,
+    operation: "attach-provenance",
+    taskId: "QK-1",
+    expectedNativeRevision: "sha256:before",
+    idempotencyKey: "C-1:QK-1:attach-provenance:evt-1",
+    input: { iteration: sampleIteration },
+  };
+
+  async execute(request: TaskSourceRequest): Promise<TaskSourceResponse> {
+    if (request.operation === "attach-provenance") {
+      this.mutationCalls += 1;
+      throw Object.assign(new Error("connection lost after write"), { code: "SOURCE_UNAVAILABLE" });
+    }
+    if (request.operation === "show") {
+      return {
+        schemaVersion: 1,
+        operation: "show",
+        ok: true,
+        nativeRevision: "sha256:after",
+        data: {
+          id: "QK-1",
+          status: "claimed",
+          provenance: { schemaVersion: 1, iterations: [sampleIteration] },
+        },
+      };
+    }
+    if (request.operation === "capabilities") {
+      return capabilitiesResponse("none");
     }
     return { schemaVersion: 1, operation: request.operation, ok: true, data: {} } as TaskSourceResponse;
   }

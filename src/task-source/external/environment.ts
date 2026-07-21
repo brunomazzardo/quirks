@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -37,6 +37,25 @@ function isBlockedExplicitEnvName(name: string): boolean {
   return false;
 }
 
+function assertSafeProjectedRelativePath(relativePath: string): void {
+  if (path.isAbsolute(relativePath)) {
+    throw new Error(`Projected file path must be relative: ${relativePath}`);
+  }
+  const normalized = path.normalize(relativePath);
+  const segments = normalized.split(path.sep).filter((segment) => segment.length > 0);
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error(`Projected file path escapes sandbox: ${relativePath}`);
+  }
+}
+
+async function assertContainedUnderSandbox(sandboxRoot: string, absolutePath: string): Promise<void> {
+  const [sandboxReal, fileReal] = await Promise.all([realpath(sandboxRoot), realpath(absolutePath)]);
+  const sandboxPrefix = sandboxReal.endsWith(path.sep) ? sandboxReal : `${sandboxReal}${path.sep}`;
+  if (fileReal !== sandboxReal && !fileReal.startsWith(sandboxPrefix)) {
+    throw new Error(`Projected file path escapes sandbox: ${absolutePath}`);
+  }
+}
+
 export async function createScrubbedEnvironment(
   options: ScrubbedEnvironmentOptions,
 ): Promise<ScrubbedEnvironment> {
@@ -44,9 +63,11 @@ export async function createScrubbedEnvironment(
   await chmod(sandboxRoot, 0o700);
 
   for (const [relativePath, content] of Object.entries(options.projectedFiles ?? {})) {
-    const absolutePath = path.join(sandboxRoot, relativePath);
+    assertSafeProjectedRelativePath(relativePath);
+    const absolutePath = path.join(sandboxRoot, ...path.normalize(relativePath).split(path.sep));
     await mkdir(path.dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, content, { mode: 0o600 });
+    await assertContainedUnderSandbox(sandboxRoot, absolutePath);
   }
 
   const env: NodeJS.ProcessEnv = {};

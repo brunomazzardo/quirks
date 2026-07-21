@@ -41,7 +41,7 @@ test("rejects oversized adapter output", async () => {
   );
 });
 
-test("rejects adapter timeouts", async () => {
+test("rejects adapter timeouts as source outages", async () => {
   const timeoutMs = 500;
   const source = new ExternalTaskSource({
     command: [process.execPath, adapterPath],
@@ -52,8 +52,28 @@ test("rejects adapter timeouts", async () => {
   await assert.rejects(
     () => source.execute({ schemaVersion: 1, operation: "list", input: {} }),
     (error: QuirksError) =>
-      error.code === "PROTOCOL_VIOLATION" &&
+      error.code === "SOURCE_UNAVAILABLE" &&
       error.message.includes(`timed out after ${timeoutMs}ms`),
+  );
+});
+
+test("rejects adapter crashes without a response frame as source outages", async () => {
+  const source = fixtureSource({ QUIRKS_FIXTURE_MODE: "crash" });
+  await assert.rejects(
+    () => source.execute({ schemaVersion: 1, operation: "list", input: {} }),
+    (error: QuirksError) => error.code === "SOURCE_UNAVAILABLE",
+  );
+});
+
+test("rejects spawn failures as source outages", async () => {
+  const source = new ExternalTaskSource({
+    command: ["/no/such/adapter-binary"],
+    timeoutMs: 2_000,
+    maxOutputBytes: 1_048_576,
+  });
+  await assert.rejects(
+    () => source.execute({ schemaVersion: 1, operation: "list", input: {} }),
+    (error: QuirksError) => error.code === "SOURCE_UNAVAILABLE",
   );
 });
 

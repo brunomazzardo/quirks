@@ -86,7 +86,13 @@ function showEvidence(request: MutationRequest, response: TaskSourceResponse): b
     case "block":
       return data["status"] === "blocked";
     case "submit-review":
-      return data["status"] === "in-review" || data["status"] === "review-submitted";
+      return data["status"] === "in_review";
+    case "attach-provenance": {
+      const iteration = request.input.iteration as { id?: string } | null;
+      if (!iteration || typeof iteration.id !== "string") return false;
+      const provenance = data["provenance"] as { iterations?: Array<{ id?: string }> } | undefined;
+      return provenance?.iterations?.some((entry) => entry.id === iteration.id) === true;
+    }
     default:
       return false;
   }
@@ -205,7 +211,6 @@ export async function reconcileMutation(input: ReconcileMutationInput): Promise<
 
 export async function reconcilePending(input: ReconcilePendingInput): Promise<SyncIntent[]> {
   const capabilities = await readCapabilities(input.source);
-  if (capabilities.idempotencyLookup === "none") return [];
 
   const resolved: SyncIntent[] = [];
   for (const intent of await input.outbox.listPending(input.campaignId)) {
