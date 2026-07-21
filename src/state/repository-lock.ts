@@ -1,4 +1,5 @@
 import os from "node:os";
+import type { FileHandle } from "node:fs/promises";
 import { mkdir, open, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { canonicalJson } from "../core/canonical-json.js";
@@ -76,16 +77,72 @@ async function readLockRecord(lockPath: string): Promise<RepositoryLockRecord> {
   return assertLockRecord(parsed);
 }
 
+function ownershipMatches(expected: RepositoryLockRecord, actual: RepositoryLockRecord): boolean {
+  return (
+    expected.campaignId === actual.campaignId &&
+    expected.pid === actual.pid &&
+    expected.hostname === actual.hostname &&
+    expected.acquiredAt === actual.acquiredAt
+  );
+}
+
+function assertHandleNotReleased(released: boolean): void {
+  if (released) {
+    throw new QuirksError("PROTOCOL_VIOLATION", "LOCK_ALREADY_RELEASED");
+  }
+}
+
+async function readOwnedLockRecord(
+  lockPath: string,
+  expected: RepositoryLockRecord,
+): Promise<RepositoryLockRecord> {
+  let existing: RepositoryLockRecord;
+  try {
+    existing = await readLockRecord(lockPath);
+  } catch {
+    throw new QuirksError(
+      "PROTOCOL_VIOLATION",
+      "LOCK_NOT_OWNED: lock file is missing or unreadable",
+      lockDetails(expected),
+    );
+  }
+
+  if (!ownershipMatches(expected, existing)) {
+    throw new QuirksError(
+      "PROTOCOL_VIOLATION",
+      `LOCK_NOT_OWNED: lock is held by campaign ${existing.campaignId}`,
+      lockDetails(existing),
+    );
+  }
+
+  return existing;
+}
+
+async function writeAll(handle: FileHandle, data: string): Promise<void> {
+  let offset = 0;
+  while (offset < data.length) {
+    const { bytesWritten } = await handle.write(data, offset);
+    offset += bytesWritten;
+  }
+}
+
 function createHandle(lockPath: string, record: RepositoryLockRecord): RepositoryLockHandle {
+  let released = false;
+
   return {
     scope: "local-clone",
     record,
     async heartbeat(): Promise<void> {
+      assertHandleNotReleased(released);
+      await readOwnedLockRecord(lockPath, record);
       record.heartbeatAt = new Date().toISOString();
       await writeJsonAtomic(lockPath, record);
     },
     async release(): Promise<void> {
+      assertHandleNotReleased(released);
+      await readOwnedLockRecord(lockPath, record);
       await rm(lockPath, { force: true });
+      released = true;
     },
   };
 }
@@ -109,7 +166,7 @@ export class RepositoryLock {
     try {
       const handle = await open(lockPath, "wx", 0o600);
       try {
-        await handle.write(`${canonicalJson(record)}\n`);
+        await writeAll(handle, `${canonicalJson(record)}\n`);
         await handle.sync();
       } finally {
         await handle.close();

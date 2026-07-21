@@ -64,3 +64,24 @@ test("updates heartbeatAt on heartbeat", async () => {
   assert.notEqual(handle.record.heartbeatAt, before);
   await handle.release();
 });
+
+test("rejects heartbeat after release", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-lock-"));
+  const lockPath = path.join(dir, "lock");
+  const handle = await RepositoryLock.acquire(lockPath, { campaignId: "C-1" });
+  await handle.release();
+  await assert.rejects(() => handle.heartbeat(), /LOCK_ALREADY_RELEASED/);
+});
+
+test("double release under contention does not clobber the new owner", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-lock-"));
+  const lockPath = path.join(dir, "lock");
+  const first = await RepositoryLock.acquire(lockPath, { campaignId: "C-1" });
+  await first.release();
+  const second = await RepositoryLock.acquire(lockPath, { campaignId: "C-2" });
+  await assert.rejects(() => first.release(), /LOCK_ALREADY_RELEASED/);
+  await assert.rejects(() => first.heartbeat(), /LOCK_ALREADY_RELEASED/);
+  await access(lockPath);
+  assert.equal(second.record.campaignId, "C-2");
+  await second.release();
+});
