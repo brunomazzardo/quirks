@@ -4,9 +4,9 @@
 
 **Goal:** Deliver the ephemeral loopback local control workspace—secure approval API, provider-neutral Existing Tasks / Preflight Proposal / Campaigns / Task History projections, nonce-CSP client shell, visual states, and browser-backed security tests—without making rendered HTML a state store.
 
-**Architecture:** Plan 3 of the Quirks v1 suite. A dependency-free Node `http` server binds only to `127.0.0.1`, serves a nonce-CSP shell with zero embedded proposal data, and exposes bounded JSON read APIs plus a single `POST /api/v1/approval` mutation. Read models are pure projections over the frozen kernel (`TaskSource`, `syncBoundary`, `buildTaskHistory`) and over control-plane ports defined here but implemented in `2026-07-21-quirks-campaign-control-plane.md`. Approval consumes a one-time fragment-delivered token bound to campaign ID and envelope digest; the control plane records the durable approval event.
+**Architecture:** Plan 3 of the Quirks v1 suite. A framework-independent Node `http` server binds only to `127.0.0.1`, serves a nonce-CSP shell with zero embedded proposal data, and exposes bounded JSON read APIs plus a single `POST /api/v1/approval` mutation. The browser is a single locally built React bundle using code-based TanStack Router, TanStack Query, TanStack Table, and TanStack Form; TanStack Start and framework-owned server routes are intentionally absent. Read models are pure projections over the frozen kernel (`TaskSource`, `syncBoundary`, `buildTaskHistory`) and over control-plane ports defined here but implemented in `2026-07-21-quirks-campaign-control-plane.md`. Approval consumes a one-time fragment-delivered token bound to campaign ID and envelope digest; the control plane records the durable approval event.
 
-**Tech Stack:** Node.js 24 LTS (`>=24.18.0`), TypeScript 7.0.2, ESM, pnpm 10.30.3, Node `node:test`, Ajv 8.20.0 (build-time validators only), Oxlint 1.74.0, esbuild 0.25.9 (dev-only UI client bundle), Playwright 1.54.2 (dev-only browser tests).
+**Tech Stack:** Node.js 24 LTS (`>=24.18.0`), TypeScript 7.0.2, ESM, pnpm 10.30.3, Node `node:test`, React/React DOM 19.2.8, TanStack Router 1.170.18, TanStack Query 5.101.4, TanStack Table 8.21.3, TanStack Form 1.33.2, Ajv 8.20.0 (build-time validators only), Oxlint 1.74.0, esbuild 0.25.9 (dev-only UI client bundle), Playwright 1.54.2 (dev-only browser tests), TanStack CLI 0.69.6 and Intent 0.3.6 (one-shot development tooling only).
 
 ## Ordered Plan Suite
 
@@ -31,7 +31,7 @@ This plan **does not** implement campaign scheduling, runner dispatch, envelope 
 | `CampaignReadPort.getDetail(campaignId)` | control plane | Campaign detail + sync state |
 | `CampaignJournalEvents` (read-only) | control plane | Task History join with kernel provenance |
 
-Until the control-plane plan lands, Tasks 8–10 and 17 use in-memory fakes under `test/ui/support/` that mirror the port signatures frozen here. Task 6 approval API calls the port; it never writes `approvals.jsonl` itself.
+Until the control-plane plan lands, Tasks 8–10 and 19 use in-memory fakes under `test/ui/support/` that mirror the port signatures frozen here. Task 6 approval API calls the port; it never writes `approvals.jsonl` itself.
 
 Kernel contracts consumed directly (already shipped in foundation):
 
@@ -41,7 +41,7 @@ Kernel contracts consumed directly (already shipped in foundation):
 
 ## Global Constraints
 
-- Runtime code has zero third-party production dependencies; esbuild and Playwright are dev-only.
+- Node server, security, schema, read-model, and control-plane runtime modules import zero third-party production dependencies. Browser production dependencies are limited to React, React DOM, TanStack Router, Query, Table, and Form; esbuild bundles them into the one local client asset. TanStack Start, Store, Pacer, Virtual, router devtools, and Query devtools are absent.
 - The local control UI is an authorization boundary: loopback-only bind, exact `127.0.0.1` Host authority, one-time approval token expiring within 15 minutes, fragment delivery only, no cookies/localStorage/history persistence of the token.
 - Initial HTML shell contains no proposal, task, campaign, or history payload; authenticated same-origin `fetch` loads JSON projections.
 - Approval accepts only `POST` JSON with `Content-Type: application/json`, exact loopback `Origin`, `Sec-Fetch-Site: same-origin`, valid session token, and displayed digest; no form endpoints, no GET mutations, replay fails after first terminal result.
@@ -58,9 +58,9 @@ Kernel contracts consumed directly (already shipped in foundation):
 
 | Inventory task | Plan tasks |
 |---|---|
-| QK-UI-002 ephemeral loopback UI security + approval API | Tasks 1–6, 13 |
-| QK-UI-003 Existing Tasks / Preflight / Campaigns / Task History views | Tasks 7–12, 14 |
-| QK-UI-004 UI security/a11y/responsive verification | Tasks 15–16 |
+| QK-UI-002 ephemeral loopback UI security + approval API | Tasks 1–6, 15, 19 |
+| QK-UI-003 Existing Tasks / Preflight / Campaigns / Task History views | Tasks 7–14, 16, 19 |
+| QK-UI-004 UI security/a11y/responsive verification | Tasks 17–18 |
 
 ---
 
@@ -421,6 +421,7 @@ git commit -m "feat: add per-response UI security headers and CSP"
 
 **Files:**
 - Create: `src/ui/ports/approval-write.ts`
+- Create: `src/ui/ports/ui-session.ts`
 - Create: `src/ui/approval/token-store.ts`
 - Create: `test/ui/approval/token-store.test.ts`
 - Create: `test/ui/support/fake-approval-write.ts`
@@ -434,9 +435,16 @@ export interface ApprovalWritePort {
   issueToken(input: { campaignId: string; envelopeDigest: string; now?: string }): Promise<{ token: string; expiresAt: string }>;
   approve(input: { campaignId: string; envelopeDigest: string; token: string; operator: { label: string; evidence: string } }): Promise<{ result: "approved"; approvalEventId: string } | { result: "stale" | "expired" | "replay" | "invalid" }>;
 }
+
+export interface UiSessionPort {
+  authorize(input: { token: string; now?: string }): Promise<
+    | { result: "authorized"; campaignId: string; envelopeDigest: string; expiresAt: string; approvalConsumed: boolean }
+    | { result: "expired" | "invalid" }
+  >;
+}
 ```
 
-`InMemoryApprovalTokenStore` enforces: 15-minute TTL, single-use, binding to exact `{campaignId, envelopeDigest}`, constant-time compare, no persistence of token secret after terminal state.
+`InMemoryApprovalTokenStore` enforces: 15-minute TTL, single approval use, binding to exact `{campaignId, envelopeDigest}`, constant-time compare, and no persistence of the token secret. `authorize` is side-effect free and gates every projection read; `consume` is the sole approval transition to terminal use.
 
 - [ ] **Step 1: Write failing token tests**
 
@@ -468,18 +476,20 @@ Token format: `qkui_` + 32 bytes base64url random; store keyed by SHA-256 hash o
 
 `consume` returns `expired` when `now > expiresAt`, `stale` when digest mismatch, `invalid` when unknown token, `replay` when `consumedAt` already set, `ok` once.
 
+`authorize` accepts the same hashed token until expiry, returns its campaign/digest binding plus `approvalConsumed` without the secret, and remains read-authorized after approval so Query can refresh the now-terminal campaign. Add tests proving repeated authorization does not consume the token, authorization after approval remains read-only, and a second `consume` returns `replay`.
+
 `FakeApprovalWritePort` in test support delegates to store and appends approval events to an in-memory array for assertions.
 
 - [ ] **Step 4: Run token tests**
 
 Run: `pnpm build && node --test dist/test/ui/approval/token-store.test.js`
 
-Expected: PASS including expiry at 15 minutes and digest mismatch.
+Expected: PASS including expiry at 15 minutes, digest mismatch, post-approval read authorization, and mutation replay rejection.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/ports/approval-write.ts src/ui/approval/token-store.ts test/ui/approval test/ui/support/fake-approval-write.ts
+git add src/ui/ports/approval-write.ts src/ui/ports/ui-session.ts src/ui/approval/token-store.ts test/ui/approval test/ui/support/fake-approval-write.ts
 git commit -m "feat: add one-time approval token lifecycle"
 ```
 
@@ -495,7 +505,7 @@ git commit -m "feat: add one-time approval token lifecycle"
 - Create: `test/ui/api/approval.test.ts`
 
 **Interfaces:**
-- Consumes: Tasks 3–5, `validateSchema` for request/response, `ApprovalWritePort`.
+- Consumes: Tasks 3–5, `validateSchema` for request/response, `ApprovalWritePort`, and `UiSessionPort`.
 - Produces: `POST /api/v1/approval` only mutation route; `GET`/`PUT`/`DELETE` on `/api/*` return `405`; `GET` on `/api/v1/*` read routes added in later tasks return JSON only.
 
 - [ ] **Step 1: Write failing approval API tests**
@@ -511,13 +521,13 @@ test("rejects cross-origin and form POST approval", async () => {
   const { token } = await issue("C-1", "sha256:abc");
   const xhr = await fetch(`${authority.baseUrl}/api/v1/approval`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "http://evil.test", Host: authority.hostHeader, "Sec-Fetch-Site": "cross-site" },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Origin: "http://evil.test", Host: authority.hostHeader, "Sec-Fetch-Site": "cross-site" },
     body: JSON.stringify({ schemaVersion: 1, campaignId: "C-1", envelopeDigest: "sha256:abc", token }),
   });
   assert.equal(xhr.status, 403);
   const form = await fetch(`${authority.baseUrl}/api/v1/approval`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: authority.origin, Host: authority.hostHeader, "Sec-Fetch-Site": "same-origin" },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded", Origin: authority.origin, Host: authority.hostHeader, "Sec-Fetch-Site": "same-origin" },
     body: "campaignId=C-1",
   });
   assert.equal(form.status, 415);
@@ -533,7 +543,9 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement approval route**
 
-`approval.ts` checks in order: method `POST`, `Content-Type: application/json`, `Origin === authority.origin`, `Sec-Fetch-Site === "same-origin"`, Host authority, body schema, token consume via port, returns `ui-approval-response-v1`.
+The server router checks exact Host first, then requires `Authorization: Bearer <token>` and `UiSessionPort.authorize` before invoking any `/api/v1/*` read-model or control-plane port. Missing/unknown/expired tokens return `401` with a fixed body and zero projection/approval port calls. A token whose approval was consumed remains valid for bounded reads until its original expiry but can never authorize another mutation. Do not log or echo the header.
+
+`approval.ts` additionally checks in order: method `POST`, `Content-Type: application/json`, `Origin === authority.origin`, `Sec-Fetch-Site === "same-origin"`, body schema, constant-time equality between bearer and body token, exact authorized campaign/digest binding, then token consume via the approval port. It returns `ui-approval-response-v1`.
 
 No `/api/v1/approval` GET handler. Wrong digest → `{ result: "stale" }` without port mutation.
 
@@ -543,7 +555,7 @@ No `/api/v1/approval` GET handler. Wrong digest → `{ result: "stale" }` withou
 
 Run: `pnpm build && node --test dist/test/ui/api/approval.test.js`
 
-Expected: PASS for happy path, replay, stale digest, expired token, GET mutation attempt, missing `Sec-Fetch-Site`.
+Expected: PASS for authenticated reads, happy-path approval, replay, stale digest, expired token, bearer/body mismatch, GET mutation attempt, and missing `Sec-Fetch-Site`.
 
 - [ ] **Step 5: Commit**
 
@@ -812,22 +824,124 @@ git commit -m "feat: add Task History UI projection"
 
 ---
 
-### Task 11: Ephemeral HTML shell and client bundle pipeline
+### Task 11: Freeze the focused TanStack client contract and load shipped guidance
+
+**Files:**
+- Create: `AGENTS.md`
+- Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
+- Create: `test/ui/client-stack-contract.test.ts`
+
+**Interfaces:**
+- Consumes: approved design section 22.1; the disposable TanStack CLI reference output; package-shipped TanStack Intent skills.
+- Produces: an exact browser dependency allow-list, reproducible tool versions, and durable agent guidance. No generated server, route, demo, Tailwind, devtools, or deployment code enters the repository.
+
+- [ ] **Step 1: Write the failing client-stack contract test**
+
+```ts
+// test/ui/client-stack-contract.test.ts
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+test("pins only the approved browser stack and exact Intent sources", async () => {
+  const pkg = JSON.parse(await readFile("package.json", "utf8")) as {
+    dependencies: Record<string, string>;
+    intent: { skills: string[] };
+  };
+  assert.deepEqual(pkg.dependencies, {
+    "@tanstack/react-form": "1.33.2",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-router": "1.170.18",
+    "@tanstack/react-table": "8.21.3",
+    react: "19.2.8",
+    "react-dom": "19.2.8",
+  });
+  assert.deepEqual(pkg.intent.skills, [
+    "@tanstack/react-router",
+    "@tanstack/react-query",
+    "@tanstack/react-table",
+    "@tanstack/react-form",
+  ]);
+  for (const excluded of ["@tanstack/react-start", "@tanstack/react-store", "@tanstack/react-pacer", "@tanstack/react-virtual"])
+    assert.equal(pkg.dependencies[excluded], undefined);
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `node --test test/ui/client-stack-contract.test.ts`
+
+Expected: FAIL because the browser dependencies and Intent allow-list are absent.
+
+- [ ] **Step 3: Generate and inspect the disposable Router-only reference**
+
+Run outside the repository in a disposable directory:
+
+```bash
+tanstack_reference_dir="$(mktemp -d)/quirks-ui-reference"
+pnpm dlx @tanstack/cli@0.69.6 create quirks-ui-reference --router-only --framework React --package-manager pnpm --toolchain biome --no-examples --no-git --intent --target-dir "$tanstack_reference_dir" -y
+```
+
+Inspect its `package.json`, root/bootstrap code, route registration, and generated agent guidance. Record the exact command, CLI version `0.69.6`, and deliberate divergences in `AGENTS.md`: Quirks keeps its existing Oxlint/esbuild toolchain, code-based five-route tree, framework-independent Node server, and nonce-injected single bundle. Do not copy the scratch directory or `.cta.json` into Quirks.
+
+- [ ] **Step 4: Install exact client packages and configure Intent trust**
+
+Run:
+
+```bash
+pnpm add react@19.2.8 react-dom@19.2.8 @tanstack/react-router@1.170.18 @tanstack/react-query@5.101.4 @tanstack/react-table@8.21.3 @tanstack/react-form@1.33.2
+pnpm add -D @types/react@19.2.17 @types/react-dom@19.2.3 esbuild@0.25.9
+```
+
+Add the exact four-package `intent.skills` allow-list asserted above. Do not use `"*"` or `"@tanstack/*"`; transitive packages do not gain instruction authority.
+
+Run:
+
+```bash
+pnpm dlx @tanstack/intent@0.3.6 install --map
+pnpm dlx @tanstack/intent@0.3.6 list --json
+```
+
+Before changing client files, execute every matching `load` command written by `install --map` for Router, Query, Table, and Form. If an allowed package exposes no skill at its pinned version, record `no shipped skill discovered` with that package/version in `AGENTS.md`; do not broaden the allow-list to find one.
+
+Outside the managed Intent block, `AGENTS.md` records: exact scaffold and Intent commands, pinned stack, no environment variables or secrets required by the UI, loopback-only/no-deployment posture, code-based routing rationale, CSP/no-remote-assets constraints, no client canonical state, and the Virtual performance gate in Task 18.
+
+- [ ] **Step 5: Run the contract test and commit**
+
+Run: `pnpm build && node --test dist/test/ui/client-stack-contract.test.js`
+
+Expected: PASS; `pnpm dlx @tanstack/intent@0.3.6 list --json` reports only explicitly allowed sources and no wildcard-trust notice.
+
+```bash
+git add AGENTS.md package.json pnpm-lock.yaml test/ui/client-stack-contract.test.ts
+git commit -m "chore: freeze focused TanStack client contract"
+```
+
+---
+
+### Task 12: Ephemeral shell, token vault, and single React bundle
 
 **Files:**
 - Create: `src/ui/shell.ts`
-- Create: `src/ui/client/main.ts`
-- Create: `src/ui/client/token.ts`
+- Create: `src/ui/styles.ts`
+- Create: `src/ui/client/main.tsx`
+- Create: `src/ui/client/app.tsx`
+- Create: `src/ui/client/token-vault.ts`
 - Create: `src/ui/client/fetch-json.ts`
 - Create: `scripts/bundle-ui-client.mjs`
 - Modify: `package.json`
+- Modify: `tsconfig.json`
+- Modify: `tsconfig.build.json`
 - Create: `test/ui/shell.test.ts`
+- Create: `test/ui/client/token-vault.test.ts`
+- Create: `test/ui/client/bundle-boundary.test.ts`
 
 **Interfaces:**
-- Consumes: Tasks 4, 6; bundled client JS.
-- Produces: `renderShell({ nonce, authority }): string` with empty `<div id="app"></div>` only; `GET /` and `GET /campaigns/:id` serve shell; token read from `location.hash` once via `token.ts`, stripped with `history.replaceState`.
+- Consumes: Tasks 4 and 6; browser packages frozen by Task 11.
+- Produces: `renderShell({ nonce, clientScript }): string` with only `<div id="app"></div>`; a closure-backed `TokenVault`; one self-contained IIFE with no remote/runtime imports.
 
-- [ ] **Step 1: Write failing shell test**
+- [ ] **Step 1: Write failing shell and token tests**
 
 ```ts
 // test/ui/shell.test.ts
@@ -835,62 +949,171 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderShell } from "../../src/ui/shell.js";
 
-test("shell contains no proposal JSON and includes nonce script", () => {
-  const html = renderShell({ nonce: "nonce-123", authority: "http://127.0.0.1:9", clientScript: "window.__QUIRKS_BOOT__=1;" });
-  assert.doesNotMatch(html, /"envelopeDigest"/);
-  assert.match(html, /nonce="nonce-123"/);
-  assert.match(html, /window\.__QUIRKS_BOOT__=1/);
+test("shell contains no projection data and nonces its only script and style", () => {
+  const html = renderShell({ nonce: "nonce-123", clientScript: "window.__QUIRKS_BOOT__=1;" });
+  assert.doesNotMatch(html, /envelopeDigest|campaignId|application\/json/);
+  assert.equal((html.match(/nonce="nonce-123"/g) ?? []).length, 2);
+  assert.match(html, /<div id="app"><\/div>/);
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+```ts
+// test/ui/client/token-vault.test.ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import { consumeFragmentToken } from "../../../src/ui/client/token-vault.js";
 
-Run: `node --test test/ui/shell.test.ts`
+test("consumes the fragment once and strips it without history state", () => {
+  const replaced: unknown[][] = [];
+  const vault = consumeFragmentToken({
+    href: "http://127.0.0.1:9123/preflight/C-1#token=qkui_secret",
+    replaceState: (...args: unknown[]) => replaced.push(args),
+  });
+  assert.equal(vault.withToken((token) => token), "qkui_secret");
+  assert.deepEqual(replaced, [[null, "", "/preflight/C-1"]]);
+  vault.clear();
+  assert.equal(vault.withToken(() => "present"), undefined);
+});
+```
 
-Expected: FAIL.
+- [ ] **Step 2: Run tests to verify they fail**
 
-- [ ] **Step 3: Implement shell and client bundle**
+Run: `node --test test/ui/shell.test.ts test/ui/client/token-vault.test.ts`
 
-`scripts/bundle-ui-client.mjs` uses esbuild to emit single IIFE `dist/ui/client.bundle.js` from `src/ui/client/main.ts` with `platform: "browser"`, `target: "es2022"`.
+Expected: FAIL with missing modules.
 
-`renderShell` inlines bundled script and minimal layout CSS, both with same nonce.
+- [ ] **Step 3: Implement the trusted shell and private token vault**
 
-`token.ts` parses `#token=<value>` fragment; rejects missing token for approval view; never writes `localStorage`.
+`src/ui/styles.ts` exports a fixed `UI_CSS` string containing no runtime interpolation. `renderShell` escapes the nonce attribute, injects `UI_CSS` and the local bundle with that nonce, and receives no campaign/task/projection argument.
 
-`fetch-json.ts` always sets `credentials: "omit"`, `cache: "no-store"`.
+The Node router serves this shell only for `GET /`, `GET /preflight/:campaignId`, `GET /campaigns`, `GET /campaigns/:campaignId`, and `GET /tasks/:taskId/history`, after exact Host validation. Add table-driven shell tests for all five patterns and every other method. Unknown paths—including `/health`, `/_next/*`, `/assets/*`, and malformed IDs—return fixed `404`/`405` responses with the same security headers; there is no framework fallback, server component, or broad static-file handler.
 
-- [ ] **Step 4: Build and run shell tests**
+`consumeFragmentToken` accepts only one `token` parameter, immediately calls `history.replaceState(null, "", pathname + search)`, and returns an object whose token exists only in a private closure. The vault exposes `withToken(callback)` and `clear()`; it has no serializable token property. Never place the token in React state/props, TanStack Router context/search, Query keys/data/meta, Form values, logs, cookies, `sessionStorage`, or `localStorage`.
 
-Run: `pnpm build && node --test dist/test/ui/shell.test.js`
+`fetch-json.ts` accepts only relative paths beginning `/api/v1/`, obtains the bearer from the vault inside the request closure, and sets `Authorization`, `Accept: application/json`, `credentials: "omit"`, `cache: "no-store"`, and `redirect: "error"`. It never accepts a caller-provided origin.
 
-Expected: PASS.
+- [ ] **Step 4: Build one local IIFE and prove the bundle boundary**
 
-- [ ] **Step 5: Commit**
+Configure TypeScript for `jsx: "react-jsx"`. `main.tsx` calls `createRoot`, supplies the opaque vault through a private React context, and renders a temporary loading shell until Task 13 supplies the router.
+
+`scripts/bundle-ui-client.mjs` invokes esbuild with entry point `src/ui/client/main.tsx`, `bundle: true`, `format: "iife"`, `platform: "browser"`, `target: "es2022"`, `write: false`, and `metafile: true`; it fails unless there is exactly one JavaScript output and `output.imports` is empty, then writes `dist/ui/client.bundle.js`. Update `build` so validator generation, TypeScript compilation, and `bundle:ui` all run deterministically.
+
+`bundle-boundary.test.ts` reads the esbuild metafile and emitted bundle, asserts one JavaScript output with zero external imports, and rejects `sourceMappingURL`, `@tanstack/react-start`, devtools packages, or the fragment-token fixture. Do not reject inert URL strings embedded by React itself; Task 17 proves the stronger property that the running client makes zero non-loopback requests.
+
+- [ ] **Step 5: Build, test, and commit**
+
+Run: `pnpm build && node --test dist/test/ui/shell.test.js dist/test/ui/client/token-vault.test.js dist/test/ui/client/bundle-boundary.test.js`
+
+Expected: PASS with one local bundle, no source map, and no projection/token material in HTML.
 
 ```bash
-git add src/ui/shell.ts src/ui/client scripts/bundle-ui-client.mjs package.json pnpm-lock.yaml test/ui/shell.test.ts
-git commit -m "feat: add ephemeral UI shell and client bundle"
+git add src/ui/shell.ts src/ui/styles.ts src/ui/client scripts/bundle-ui-client.mjs package.json tsconfig.json tsconfig.build.json test/ui/shell.test.ts test/ui/client/token-vault.test.ts test/ui/client/bundle-boundary.test.ts
+git commit -m "feat: add nonce-bound React shell and bundle"
 ```
 
 ---
 
-### Task 12: View components, routing, and visual states
+### Task 13: Typed Router and Query projection layer
 
 **Files:**
-- Create: `src/ui/client/router.ts`
+- Create: `src/ui/client/router.tsx`
+- Create: `src/ui/client/query-client.ts`
+- Create: `src/ui/client/api-client.ts`
+- Create: `src/ui/client/query-options.ts`
+- Create: `src/ui/client/routes/root.tsx`
+- Create: `src/ui/client/routes/existing-tasks.tsx`
+- Create: `src/ui/client/routes/preflight.tsx`
+- Create: `src/ui/client/routes/campaigns.tsx`
+- Create: `src/ui/client/routes/campaign-detail.tsx`
+- Create: `src/ui/client/routes/task-history.tsx`
+- Modify: `src/ui/client/app.tsx`
+- Create: `test/ui/client/query-contract.test.ts`
+
+**Interfaces:**
+- Consumes: all bounded read APIs and the opaque token vault.
+- Produces: code-based typed routes `/`, `/preflight/$campaignId`, `/campaigns`, `/campaigns/$campaignId`, `/tasks/$taskId/history`; finite Query keys and explicit freshness/error states.
+
+- [ ] **Step 1: Write the failing query contract test**
+
+```ts
+// test/ui/client/query-contract.test.ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import { queryKeys } from "../../../src/ui/client/query-options.js";
+
+test("query keys contain bounded identity only", () => {
+  assert.deepEqual(queryKeys.existingTasks(), ["ui", "existing-tasks"]);
+  assert.deepEqual(queryKeys.preflight("C-1"), ["ui", "preflight", "C-1"]);
+  assert.deepEqual(queryKeys.taskHistory("QK-1"), ["ui", "task-history", "QK-1"]);
+  const serialized = JSON.stringify([
+    queryKeys.existingTasks(),
+    queryKeys.preflight("C-1"),
+    queryKeys.taskHistory("QK-1"),
+  ]);
+  assert.doesNotMatch(serialized, /token|digest|qkui_/i);
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `node --test test/ui/client/query-contract.test.ts`
+
+Expected: FAIL with missing module.
+
+- [ ] **Step 3: Implement the code-based route tree**
+
+Use `createRootRouteWithContext`, `createRoute`, and `createRouter`; register `typeof router` through TanStack Router declaration merging. Code-based routing is deliberate: five fixed shell routes need no generated route tree, watcher, code splitting, or framework plugin, which preserves the single-bundle/CSP boundary.
+
+The root renders navigation and `Outlet`. Each route validates path params against the same length/character bounds as its server handler. `notFoundComponent`, `pendingComponent`, and `errorComponent` render local text only. Set `defaultPreload: false`; route navigation must not trigger speculative projection requests.
+
+- [ ] **Step 4: Implement Query ownership and API closures**
+
+Create one `QueryClient` with:
+
+```ts
+{
+  defaultOptions: {
+    queries: { retry: false, refetchOnWindowFocus: false, staleTime: 5_000, gcTime: 60_000 },
+    mutations: { retry: false },
+  },
+}
+```
+
+The router context contains the `QueryClient` and an `ApiClient` whose private fetch closure reads the token vault. It does not contain the vault or token. Query keys contain only fixed route identity; query data is a replaceable server projection and is never persisted. Every success displays `refreshedAt`/sync freshness; errors do not fall back to stale durable truth.
+
+- [ ] **Step 5: Build, test, and commit**
+
+Run: `pnpm build && node --test dist/test/ui/client/query-contract.test.js`
+
+Expected: PASS; the route declaration compiles with typed params and no generated/server framework files.
+
+```bash
+git add src/ui/client
+git commit -m "feat: add typed local routes and projection queries"
+```
+
+---
+
+### Task 14: Table, Form, views, and visual states
+
+**Files:**
+- Create: `src/ui/client/components/data-table.tsx`
+- Create: `src/ui/client/components/status-badge.tsx`
+- Create: `src/ui/client/components/sync-banner.tsx`
+- Create: `src/ui/client/components/approval-form.tsx`
+- Create: `src/ui/client/views/existing-tasks-view.tsx`
+- Create: `src/ui/client/views/preflight-view.tsx`
+- Create: `src/ui/client/views/campaigns-view.tsx`
+- Create: `src/ui/client/views/task-history-view.tsx`
 - Create: `src/ui/client/visual-states.ts`
-- Create: `src/ui/client/views/existing-tasks.ts`
-- Create: `src/ui/client/views/preflight.ts`
-- Create: `src/ui/client/views/campaigns.ts`
-- Create: `src/ui/client/views/task-history.ts`
-- Create: `src/ui/client/render.ts`
+- Modify: `src/ui/client/routes/*.tsx`
 - Create: `test/ui/client/visual-states.test.ts`
 
 **Interfaces:**
-- Consumes: all read APIs; `escapeHtml`, `classifyUrl`, visual state map.
-- Produces: client routes `/`, `/preflight/:campaignId`, `/campaigns`, `/campaigns/:id`, `/tasks/:taskId/history`; visual states for readiness, sync health, campaign state, approval result, unavailable refs.
+- Consumes: Task 13 route/query contracts, `classifyUrl`, and all projection types.
+- Produces: the approved Existing Tasks, Preflight Proposal, Campaigns, Campaign Detail, and Task History workspace using TanStack Table/Form without client-owned canonical state.
 
-- [ ] **Step 1: Write failing visual-state test**
+- [ ] **Step 1: Write the failing visual-state test**
 
 ```ts
 // test/ui/client/visual-states.test.ts
@@ -898,55 +1121,53 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readinessBadge } from "../../../src/ui/client/visual-states.js";
 
-test("maps readiness to accessible labels", () => {
-  assert.equal(readinessBadge("ready").label, "Ready");
-  assert.equal(readinessBadge("conflict").tone, "danger");
+test("maps readiness to text and tone rather than color alone", () => {
+  assert.deepEqual(readinessBadge("ready"), { label: "Ready", tone: "success" });
+  assert.deepEqual(readinessBadge("conflict"), { label: "Conflict", tone: "danger" });
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the test to verify it fails**
 
 Run: `node --test test/ui/client/visual-states.test.ts`
 
-Expected: FAIL.
+Expected: FAIL with missing module.
 
-- [ ] **Step 3: Implement views**
+- [ ] **Step 3: Implement Table-backed views**
 
-`render.ts` builds DOM via `document.createElement` and `textContent` only—no `innerHTML` with untrusted strings, no `dangerouslySetInnerHTML` equivalent.
+Use `useReactTable` with explicit column definitions for Existing Tasks, Campaigns, commits, pull requests, verification, and history. All cells return ordinary React text nodes or internal controls; there is no `dangerouslySetInnerHTML`, raw HTML prop, remote image, or automatic URL fetch. `classifyUrl` permits external anchors only for parsed `https:` URLs with `rel="noreferrer noopener"`; file/Git actions navigate to fixed internal routes.
 
-Preflight view sections match design 22 numbered list (what will run, delegated judgment, landing, push, authority, models/spend, verification, stops/residuals, approval digest).
+Existing Tasks displays readiness, dependencies, route suggestion, source revision, sync freshness, `Local coordination only`, and `No shared lease`. Campaigns defaults to the current repository and requires an explicit control to show all projects. Task History preserves distinct operator/participant/Git/provider identities and visibly unavailable historical refs.
 
-Fixed approval area shows exact `campaignId` + `envelopeDigest`; approve button disabled until digest visible and checkbox acknowledged.
+- [ ] **Step 4: Implement Form-backed approval without widening mutation authority**
 
-Campaigns view defaults to current repository filter with explicit all-projects toggle.
+Preflight renders every section in design section 22: exact tasks/order, delegated judgment, landing/push, authority, models/spend, verification, stop conditions/residuals, unsupported capabilities, and fixed campaign/digest binding.
 
-Task History view renders unavailable badges and distinct identity rows.
+Use TanStack Form only for local task filters/selection controls and the approval acknowledgement. Once a canonical envelope is displayed, its fields are read-only: client edits cannot change the envelope, digest, or durable campaign state. The approval form values contain only `acknowledged: boolean`; the campaign ID and digest come from the validated projection, and the token is obtained inside the `ApiClient` closure at submit time. Submission calls only `POST /api/v1/approval` as JSON, never a native form action; its mutation has `retry: false`. Disable the approve button until the digest is visible and acknowledgement is true. On success disable the mutation permanently and invalidate only the current campaign/preflight queries; the vault remains in page memory for those bounded reads until expiry. Clear it on authentication failure, expiry, or workspace close.
 
-`visual-states.ts` centralizes tone colors (`neutral`, `info`, `success`, `warning`, `danger`) and `aria-label`s.
+`visual-states.ts` centralizes labels and tones (`neutral`, `info`, `success`, `warning`, `danger`) so status is never conveyed by color alone.
 
-- [ ] **Step 4: Run visual-state unit tests and rebuild bundle**
+- [ ] **Step 5: Build, test, and commit**
 
 Run: `pnpm build && node --test dist/test/ui/client/visual-states.test.js`
 
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
+Expected: PASS; `rg -n 'dangerouslySetInnerHTML|innerHTML|<form[^>]+action=' src/ui/client` returns no matches.
 
 ```bash
 git add src/ui/client
-git commit -m "feat: add local control UI views and visual states"
+git commit -m "feat: add TanStack control workspace views"
 ```
 
 ---
 
-### Task 13: Focused API security suite (QK-UI-002 gate)
+### Task 15: Focused API security suite (QK-UI-002 gate)
 
 **Files:**
 - Create: `test/ui/security/api-abuse.test.ts`
 
 **Interfaces:**
 - Consumes: `createTestUiServer` with fake ports.
-- Produces: regression tests for wrong-host, cross-origin, replay, stale-digest, GET mutation, form POST, missing token, oversize body.
+- Produces: regression tests for unauthenticated reads, wrong-host, cross-origin, replay, stale-digest, GET mutation, form POST, missing token, redirects, and oversize bodies.
 
 - [ ] **Step 1: Write failing abuse tests**
 
@@ -968,6 +1189,8 @@ test("GET /api/v1/approval does not mutate", async () => {
 
 Add cases for: replay second POST, digest mismatch, expired token (clock injection), `Host: 127.0.0.1:wrong`, `Origin: null`, missing `Sec-Fetch-Site`, body over 1 MiB.
 
+Also request every read route without `Authorization`, with an unknown bearer, and after token expiry; expect `401` and zero port calls. After approval consumption, reads still succeed until the original expiry while a second approval returns `replay`. Verify API responses never redirect and never echo the bearer/token.
+
 - [ ] **Step 2: Run tests**
 
 Run: `pnpm build && node --test dist/test/ui/security/api-abuse.test.js`
@@ -976,7 +1199,7 @@ Expected: initially FAIL any missing guard; then PASS after fixes.
 
 - [ ] **Step 3: Fix any gaps found**
 
-Implement missing guards in router/approval only; do not broaden API surface.
+Implement missing guards in router/approval only; do not broaden API surface. All route matching is server-owned—TanStack Router has no API-route authority.
 
 - [ ] **Step 4: Re-run full UI security tests**
 
@@ -993,58 +1216,64 @@ git commit -m "test: cover local UI approval API abuse cases"
 
 ---
 
-### Task 14: Hostile projection and render tests (QK-UI-003 gate)
+### Task 16: Hostile projection and React render tests (QK-UI-003 gate)
 
 **Files:**
-- Create: `test/ui/security/hostile-render.test.ts`
-- Create: `test/ui/client/render-hostile.test.ts`
+- Create: `test/ui/security/hostile-render.test.tsx`
+- Create: `test/ui/security/no-raw-html.test.ts`
+- Modify: `test/ui/fixtures/hostile-tasks.json`
 
 **Interfaces:**
-- Consumes: hostile fixtures, `render.ts` via jsdom-less string snapshot of `renderTextNode` helpers exported for test.
+- Consumes: all hostile projection fixtures and the actual React view components.
+- Produces: proof that React text rendering and URL classification contain hostile titles, paths, headers, Git metadata, provider fields, traffic/log strings, bidi controls, and link schemes.
 
 - [ ] **Step 1: Write failing hostile render tests**
 
-```ts
-// test/ui/client/render-hostile.test.ts
+```tsx
+// test/ui/security/hostile-render.test.tsx
 import assert from "node:assert/strict";
+import { renderToStaticMarkup } from "react-dom/server";
 import test from "node:test";
-import { renderText } from "../../../src/ui/client/render.js";
+import { ExistingTasksView } from "../../../src/ui/client/views/existing-tasks-view.js";
+import { hostileExistingTasksProjection } from "../support/hostile-projections.js";
 
-test("renderText never emits raw HTML from task titles", () => {
-  const out = renderText(`<img src=x onerror=alert(1)>`);
-  assert.doesNotMatch(out, /<img/);
-  assert.match(out, /&lt;img/);
+test("renders hostile task fields as text, never active markup", () => {
+  const html = renderToStaticMarkup(<ExistingTasksView projection={hostileExistingTasksProjection()} />);
+  assert.doesNotMatch(html, /<script|<img|onerror\s*=/i);
+  assert.match(html, /&lt;script&gt;/);
 });
 ```
 
-`hostile-render.test.ts` loads hostile fixture through each read model and asserts JSON fields unchanged while `renderText` output is escaped.
+`no-raw-html.test.ts` recursively scans `src/ui/client/**/*.tsx` and fails on `dangerouslySetInnerHTML`, `.innerHTML`, `javascript:`, `data:text/html`, or a component prop named `html`/`markup`.
 
 - [ ] **Step 2: Run tests to verify failures**
 
-Run: `node --test test/ui/client/render-hostile.test.ts`
+Run: `node --test test/ui/security/hostile-render.test.tsx test/ui/security/no-raw-html.test.ts`
 
-Expected: FAIL until `renderText` exists.
+Expected: FAIL until the React views and scan helper exist.
 
-- [ ] **Step 3: Export testable render helpers**
+- [ ] **Step 3: Exercise every projection and link state**
 
-Extract `renderText`, `renderLink` from `render.ts`; `renderLink` uses `classifyUrl` and drops rejected URLs to plain text with `unavailable` suffix.
+Render Existing Tasks, Preflight, Campaign Detail, and Task History through `renderToStaticMarkup` using hostile fixtures. Assert untrusted JSON remains unchanged in read models but becomes escaped text in markup. Cover `javascript:`, `data:`, protocol-relative, credential-bearing, malformed, and non-loopback `http:` URLs; each renders as plain unavailable text. Cover a valid `https:` link and exact internal Git action; each gets the expected safe target/route.
+
+This test-only `react-dom/server` import does not enter `src/ui`, the Node UI server, or the browser bundle and does not authorize SSR.
 
 - [ ] **Step 4: Run hostile suites**
 
-Run: `pnpm build && node --test dist/test/ui/client/render-hostile.test.js dist/test/ui/security/hostile-render.test.js`
+Run: `pnpm build && node --test dist/test/ui/security/hostile-render.test.js dist/test/ui/security/no-raw-html.test.js`
 
-Expected: PASS.
+Expected: PASS for every view and scheme; bundle boundary test from Task 12 remains green.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add test/ui/security/hostile-render.test.ts test/ui/client/render-hostile.test.ts src/ui/client/render.ts
-git commit -m "test: escape hostile task and metadata in UI renderers"
+git add test/ui/security/hostile-render.test.tsx test/ui/security/no-raw-html.test.ts test/ui/fixtures/hostile-tasks.json test/ui/support/hostile-projections.ts
+git commit -m "test: contain hostile data in React views"
 ```
 
 ---
 
-### Task 15: Playwright browser harness and security scenarios
+### Task 17: Playwright browser harness and security scenarios
 
 **Files:**
 - Create: `playwright.config.ts`
@@ -1054,7 +1283,7 @@ git commit -m "test: escape hostile task and metadata in UI renderers"
 
 **Interfaces:**
 - Consumes: running `createTestUiServer` on known port passed via `QUIRKS_UI_TEST_PORT`.
-- Produces: automated browser verification of CSP, headers, nonce propagation, no remote requests, no cached proposal, clickjacking (`frame-ancestors`), approval flow.
+- Produces: automated browser verification of CSP, headers, nonce propagation, fragment removal, no remote requests, no persisted Query/router/form token state, clickjacking (`frame-ancestors`), and approval flow.
 
 - [ ] **Step 1: Add Playwright dev dependency and failing spec**
 
@@ -1082,9 +1311,9 @@ Expected: FAIL until harness exists.
 
 - [ ] **Step 3: Implement browser launch harness**
 
-`launch-ui.ts` starts test server, opens preflight with `#token=...`, exposes helpers for approval click, network request log asserting zero non-loopback hosts.
+`launch-ui.ts` starts the real test server and actual bundled React client, opens preflight with `#token=...`, and exposes helpers for approval click plus a network log that fails on every non-loopback request.
 
-Add scenarios: stale digest button, replay after approve, hostile task title visible as text not script, no `localStorage` token.
+Add scenarios: fragment absent immediately after boot, unauthenticated read rejected, stale digest result, replay after approve, hostile task title visible as text not script, history/search/storage free of the token, and no token/digest in TanStack Query keys. Install no Router or Query devtools and expose no debug globals merely to inspect state; observe requests/storage/history and use the unit contracts instead.
 
 - [ ] **Step 4: Run browser security suite**
 
@@ -1096,21 +1325,23 @@ Expected: PASS.
 
 ```bash
 git add playwright.config.ts test/browser package.json pnpm-lock.yaml
-git commit -m "test: add Playwright local UI security harness"
+git commit -m "test: add Playwright React UI security harness"
 ```
 
 ---
 
-### Task 16: Responsive layout and accessibility verification (QK-UI-004 gate)
+### Task 18: Responsive, accessibility, and 1,000-row performance gate (QK-UI-004)
 
 **Files:**
 - Create: `test/browser/ui-responsive.spec.ts`
 - Create: `test/browser/ui-a11y.spec.ts`
+- Create: `test/browser/ui-table-performance.spec.ts`
 - Create: `test/browser/support/viewports.ts`
+- Create: `test/ui/fixtures/thousand-history-items.json`
 
 **Interfaces:**
-- Consumes: Playwright harness; views from Task 12.
-- Produces: screenshot/layout assertions at `1280x800` and `390x844`; axe-less manual checks for focus order, approval button `aria-disabled`, digest `aria-live`, table scroll containment.
+- Consumes: Playwright harness; views from Task 14.
+- Produces: layout assertions at `1280x800` and `390x844`; semantic focus/label/status checks; an explicit gate deciding whether TanStack Virtual is justified.
 
 - [ ] **Step 1: Write failing responsive spec**
 
@@ -1136,15 +1367,21 @@ for (const viewport of VIEWPORTS) {
 
 - [ ] **Step 2: Run specs to verify failures**
 
-Run: `pnpm exec playwright test test/browser/ui-responsive.spec.ts test/browser/ui-a11y.spec.ts`
+Run: `pnpm exec playwright test test/browser/ui-responsive.spec.ts test/browser/ui-a11y.spec.ts test/browser/ui-table-performance.spec.ts`
 
-Expected: FAIL on layout/a11y gaps.
+Expected: FAIL on layout, accessibility, or 1,000-row budget gaps.
 
 - [ ] **Step 3: Fix layout and accessibility**
 
 Add responsive CSS grid/flex rules inside nonce style block: task map stacks on compact, inspector becomes full-width panel, commit tables use `overflow-x: auto` on panel not page.
 
 Approval control: keyboard-focusable, `aria-describedby` pointing to digest hash element, `role="status"` on sync freshness banner.
+
+The a11y spec verifies landmark/heading hierarchy, table names, text labels for every tone, focus order, visible focus, and an approval result announcement using role/name assertions. Do not call this a full WCAG audit or add an unreviewed accessibility package.
+
+The performance spec loads the fixed 1,000-row history fixture, warms one filter interaction, then measures five filter-and-render cycles from click to two animation frames. The median must be at most 250 ms on the pinned Chromium/CI runner at both viewports, with the correct final row count each time. This is an acceptance budget, not a benchmark claim.
+
+TanStack Virtual remains absent when the gate passes. If it fails reproducibly on the pinned runner, stop this task and amend the approved spec/plan with exact `@tanstack/react-virtual` version, affected tables, keyboard/screen-reader behavior, and new tests before adding it; do not silently add the package.
 
 - [ ] **Step 4: Run full browser suite**
 
@@ -1155,13 +1392,13 @@ Expected: PASS all specs.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add test/browser src/ui/client
-git commit -m "test: verify responsive layout and approval accessibility"
+git add test/browser test/ui/fixtures/thousand-history-items.json src/ui/client
+git commit -m "test: verify responsive accessible table performance"
 ```
 
 ---
 
-### Task 17: `quirks-campaign ui open` integration and projection persistence guard
+### Task 19: `quirks-campaign ui open` integration and projection persistence guard
 
 **Files:**
 - Modify: `src/cli/quirks-campaign.ts`
@@ -1171,7 +1408,7 @@ git commit -m "test: verify responsive layout and approval accessibility"
 
 **Interfaces:**
 - Consumes: control-plane preflight session handle when available; falls back to explicit error message if ports unavailable.
-- Produces: `quirks-campaign ui open --campaign <id> [--json]` prints `{ ok, authority, campaignId, expiresAt }` and opens browser only when stdout is a TTY; never writes HTML files under `AppPaths`.
+- Produces: `quirks-campaign ui open --campaign <id> [--json]` prints `{ ok, authority, campaignId, expiresAt }`, launches the OS browser only when stdout is a TTY and `--json` is absent, and never writes HTML/client state under `AppPaths`.
 
 - [ ] **Step 1: Write failing CLI and persistence tests**
 
@@ -1202,11 +1439,11 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement open workspace**
 
-`open-workspace.ts` starts UI server with injected ports from control plane factory.
+`open-workspace.ts` starts the framework-independent UI server with injected ports from the control-plane factory and loads the already built local client bundle. It does not import React, TanStack packages, CLI scaffold output, or Intent at Node runtime.
 
 `quirks-campaign ui open --campaign <id>` validates args, issues token via `ApprovalWritePort`, prints JSON when `--json`, uses `open`/`xdg-open` only on TTY.
 
-Search campaign artifact dir after open; assert no `.html` files created.
+Search campaign artifact and state directories after navigation/approval; assert no `.html`, client cache, router state, form state, or token file was created.
 
 - [ ] **Step 4: Run CLI tests**
 
@@ -1228,9 +1465,11 @@ git commit -m "feat: open ephemeral local control workspace from CLI"
 - [ ] Run `pnpm check` and `pnpm exec playwright test test/browser` from a clean worktree; record commands and exit codes.
 - [ ] Confirm no file under `AppPaths.campaigns/**` gains `.html` artifacts during UI tests.
 - [ ] Run hostile fixture suite: titles, paths, logs, Git identities, provider metadata render escaped in browser snapshots.
-- [ ] Verify approval cannot occur without token, with replay, with stale digest, via GET/form, or from cross-origin fetch.
+- [ ] Verify no read projection or approval can occur without the live in-memory token; approval also fails on replay, stale digest, GET/form, or cross-origin fetch.
 - [ ] Confirm projections expose `Local coordination only` and `No shared lease` on Existing Tasks and Campaigns views.
-- [ ] Search `src/ui` for `TODO`, `TBD`, `FIXME`, `innerHTML`, remote `http` except loopback authority, and production `dependencies` additions.
+- [ ] Run `pnpm dlx @tanstack/intent@0.3.6 list --json`; confirm only the four exact allowed packages surface and the `AGENTS.md` commands/versions remain current.
+- [ ] Search `src/ui` for `TODO`, `TBD`, `FIXME`, `dangerouslySetInnerHTML`, `innerHTML`, remote `http` except loopback authority, and runtime imports of Start/Store/Pacer/Virtual/devtools.
+- [ ] Inspect `package.json` and the esbuild metafile: production dependencies match Task 11 exactly, the Node UI server imports none of them, and the browser artifact has one output with zero imports/source maps.
 - [ ] Request independent review against design sections 12, 17, 20, 22, and 23.7 before marking QK-UI-002..004 complete.
 
 ## Self-Review
@@ -1240,19 +1479,22 @@ git commit -m "feat: open ephemeral local control workspace from CLI"
 | Spec requirement | Task |
 |---|---|
 | Loopback bind + Host authority | 3 |
-| One-time 15-minute fragment token | 5, 11 |
-| No proposal data in initial shell | 11 |
-| JSON approval only, fetch metadata | 6, 13 |
-| Security headers + nonce CSP | 4, 15 |
-| Escaped hostile content | 2, 14, 15 |
-| Existing Tasks read model | 7, 12 |
-| Preflight proposal sections | 8, 12 |
-| Campaigns journal view | 9, 12 |
-| Task History compact provenance | 10, 12 |
+| One-time 15-minute fragment token | 5, 12, 15, 17, 19 |
+| No proposal data in initial shell | 12 |
+| JSON approval only, fetch metadata | 6, 14, 15, 17 |
+| Security headers + nonce CSP | 4, 12, 17 |
+| Escaped hostile content | 2, 14, 16, 17 |
+| Existing Tasks read model/view | 7, 13, 14 |
+| Preflight proposal sections | 8, 13, 14 |
+| Campaigns journal view | 9, 13, 14 |
+| Task History compact provenance | 10, 13, 14 |
 | Local coordination notices | 7, 9 |
-| No HTML persistence | 17 |
-| Browser tests 23.7 | 15, 16 |
-| Responsive layouts | 16 |
+| Framework-independent server; no Start | 3, 6, 11, 12, 19 |
+| Focused Router/Query/Table/Form stack | 11, 13, 14 |
+| Exact Intent trust and shipped guidance | 11 |
+| No HTML/client-state persistence | 19 |
+| Browser tests 23.7 | 17, 18 |
+| Responsive layouts and Virtual gate | 18 |
 
 ### Placeholder scan
 
@@ -1263,9 +1505,14 @@ No `TBD`, `TODO`, or "implement later" steps remain. Each task includes concrete
 - `envelopeDigest` is used consistently in token store, approval API, preflight proposal, and client approval view.
 - Port names `ApprovalWritePort`, `PreflightReadPort`, `CampaignReadPort` are stable for the control-plane plan to implement.
 - UI schema names follow `ui-*-v1` and are registered in `SchemaName`.
+- Router params use `$campaignId`/`$taskId`; server paths use `:campaignId`/`:taskId`; both validate the same bounded identifier grammar.
+- Query keys contain projection identity only; approval Form values contain acknowledgement only; the bearer token stays in the closure-backed vault.
 
 ### Concerns carried to execution
 
-1. **Control-plane dependency:** Tasks 8–10 and 17 require real port implementations from `2026-07-21-quirks-campaign-control-plane.md`; until then fakes unblock UI development but end-to-end preflight approval needs CTL-002/003.
-2. **Client bundling:** esbuild is dev-only; `pnpm build` must run `bundle-ui-client.mjs` before `tsc` so shell tests and Playwright use the same bundle.
-3. **Playwright in CI:** Chromium download adds CI time; gate browser suite behind `pnpm test:browser` script while keeping `pnpm check` for Node tests only unless CI image preinstalls browsers.
+1. **Control-plane dependency:** Tasks 8–10 and 19 require real port implementations from `2026-07-21-quirks-campaign-control-plane.md`; until then fakes unblock UI development but end-to-end preflight approval needs CTL-002/003.
+2. **Client bundling:** esbuild is dev-only; `pnpm build` must compile TypeScript and rebuild `dist/ui/client.bundle.js` from source before shell/Playwright tests. A stale checked-in browser artifact is not allowed.
+3. **Client state:** Query cache, Router state, React state, and Form state are disposable projections. Any implementation that makes them authoritative or persists them is a design violation even if the UI appears to work.
+4. **TanStack guidance:** CLI and Intent are alpha-era development tools invoked at exact recorded versions. They do not become production dependencies or runtime commands, and newly discovered skill sources require a reviewed allow-list change.
+5. **Virtualization:** v1 deliberately starts without TanStack Virtual. A reproducible failure of Task 18 is a plan-amendment trigger, not permission to add the dependency ad hoc.
+6. **Playwright in CI:** Chromium download adds CI time; expose the suite through `pnpm test:browser` and make the release gate provision the pinned browser rather than silently skipping browser tests.

@@ -4,7 +4,7 @@ Date: 2026-07-20
 
 Last revised: 2026-07-21
 
-Status: APPROVED WRITTEN SPEC — UI stack amendment awaiting written review
+Status: APPROVED WRITTEN SPEC — focused TanStack UI stack approved
 
 Repository: `brunomazzardo/quirks`
 
