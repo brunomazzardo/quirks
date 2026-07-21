@@ -1,8 +1,12 @@
 import { QuirksError } from "../core/errors.js";
 import type { ProjectContext } from "../project/types.js";
 import type { CredentialResolver } from "./credentials.js";
+import {
+  DEFAULT_ADAPTER_TIMEOUT_MS,
+  ExternalTaskSource,
+} from "./external/external-task-source.js";
 import { JsonTaskSource } from "./json/json-task-source.js";
-import type { TaskSource } from "./task-source.js";
+import { MAX_PROTOCOL_BYTES, type TaskSource } from "./task-source.js";
 
 export interface CreateTaskSourceOptions {
   credentialResolver?: CredentialResolver;
@@ -30,5 +34,16 @@ export async function createTaskSource(
     return JsonTaskSource.open(context.root);
   }
 
-  throw new QuirksError("UNSUPPORTED_VERSION", "External task source driver is not yet implemented");
+  const credentialVariables =
+    taskSource.credentialAlias && options.credentialResolver
+      ? await options.credentialResolver.resolve(taskSource.credentialAlias, [])
+      : {};
+
+  return new ExternalTaskSource({
+    command: taskSource.command,
+    timeoutMs: DEFAULT_ADAPTER_TIMEOUT_MS,
+    maxOutputBytes: MAX_PROTOCOL_BYTES,
+    repositoryRoot: context.root,
+    credentialVariables,
+  });
 }

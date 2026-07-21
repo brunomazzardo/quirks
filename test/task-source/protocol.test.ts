@@ -72,14 +72,12 @@ test("createTaskSource accepts an injected credential resolver for external sour
     command: ["node", "adapter.mjs"],
     credentialAlias: "linear-prod",
   });
-  await assert.rejects(
-    () => createTaskSource(context, {
-      credentialResolver: {
-        async resolve() {
-          return { LINEAR_API_KEY: "injected" };
-        },
+  const source = await createTaskSource(context, {
+    credentialResolver: {
+      async resolve() {
+        return { LINEAR_API_KEY: "injected" };
       },
-    }),
-    (error: QuirksError) => error.code === "UNSUPPORTED_VERSION",
-  );
+    },
+  });
+  assert.ok(source);
 });
