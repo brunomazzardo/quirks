@@ -1,5 +1,5 @@
 import type { UiExistingTasksV1 } from "../read-models/existing-tasks.js";
-import type { UiCampaignDetail, UiCampaignSummaryItem } from "../ports/campaign-read.js";
+import type { UiCampaignDetail, UiCampaignSummaryItem, UiPlanProgressV1 } from "../ports/campaign-read.js";
 import type { UiTaskHistoryV1 } from "../read-models/task-history.js";
 import type { UiPreflightProposalV1 } from "../types/preflight-proposal.js";
 import { createApprovalFetcher, createReadFetcher } from "./fetch-json.js";
@@ -27,6 +27,7 @@ export interface ApiClient {
   getCampaigns(input?: { repositoryId?: string }): Promise<UiCampaignSummaryV1>;
   getCampaignDetail(campaignId: string): Promise<UiCampaignDetailV1>;
   getTaskHistory(taskId: string): Promise<UiTaskHistoryV1>;
+  getPlanProgress(taskId: string, campaignId: string): Promise<UiPlanProgressV1>;
   submitApproval(input: { campaignId: string; envelopeDigest: string }): Promise<UiApprovalResponseV1>;
 }
 
@@ -60,6 +61,10 @@ export function createApiClient(vault: TokenVault): ApiClient {
     },
     async getTaskHistory(taskId) {
       return readJson(await fetchRead(`/api/v1/tasks/${encodeURIComponent(taskId)}/history`));
+    },
+    async getPlanProgress(taskId, campaignId) {
+      const params = new URLSearchParams({ campaignId });
+      return readJson(await fetchRead(`/api/v1/tasks/${encodeURIComponent(taskId)}/plan-progress?${params.toString()}`));
     },
     async submitApproval(input) {
       return readJson(

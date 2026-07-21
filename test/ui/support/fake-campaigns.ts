@@ -1,4 +1,6 @@
-import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem } from "../../../src/ui/ports/campaign-read.js";
+import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem, UiPlanProgressV1 } from "../../../src/ui/ports/campaign-read.js";
+import { buildPlanProgressProjection } from "../../../src/ui/read-models/plan-progress.js";
+import { fixtureWithReportedCompletion } from "../../../src/ui/api/plan-progress.js";
 
 const SUMMARIES: UiCampaignSummaryItem[] = [
   {
@@ -55,6 +57,12 @@ export function fakeCampaignReadPort(overrides?: {
       const detail = details[campaignId];
       if (!detail) throw new Error(`Unknown campaign ${campaignId}`);
       return detail;
+    },
+    getPlanProgress: async ({ taskId, campaignId }) => {
+      if (campaignId === "C-1" && taskId === "QK-1") {
+        return buildPlanProgressProjection(fixtureWithReportedCompletion());
+      }
+      return buildPlanProgressProjection({ campaignId, taskId, refreshedAt: new Date().toISOString() });
     },
   };
 }

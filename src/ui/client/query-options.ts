@@ -10,6 +10,7 @@ export const queryKeys = {
       : (["ui", "campaigns", repositoryId] as const),
   campaignDetail: (campaignId: string) => ["ui", "campaign-detail", campaignId] as const,
   taskHistory: (taskId: string) => ["ui", "task-history", taskId] as const,
+  planProgress: (taskId: string, campaignId: string) => ["ui", "plan-progress", taskId, campaignId] as const,
 };
 
 export function existingTasksQueryOptions(api: ApiClient) {
@@ -44,5 +45,18 @@ export function taskHistoryQueryOptions(api: ApiClient, taskId: string) {
   return queryOptions({
     queryKey: queryKeys.taskHistory(taskId),
     queryFn: () => api.getTaskHistory(taskId),
+  });
+}
+
+export function planProgressQueryOptions(api: ApiClient, taskId: string, campaignId: string) {
+  return queryOptions({
+    queryKey: queryKeys.planProgress(taskId, campaignId),
+    queryFn: () => api.getPlanProgress(taskId, campaignId),
+    refetchInterval: (query) => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return false;
+      const status = query.state.data?.execution.status;
+      if (status === "failed" || status === "cancelled") return false;
+      return 2000;
+    },
   });
 }

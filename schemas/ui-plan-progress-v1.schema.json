@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/ui-plan-progress-v1",
+  "type": "object",
+  "required": ["schemaVersion", "refreshedAt", "campaignId", "taskId", "plan", "execution", "steps", "completionAuthority", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "refreshedAt": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "plan": {
+      "type": "object",
+      "required": ["path", "commit", "taskNumber", "taskTitle"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "commit": { "type": "string", "minLength": 40, "maxLength": 64 },
+        "taskNumber": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "taskTitle": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["jobId", "agentLabel", "runnerKind", "model", "status", "stage", "tddPhase", "currentStepKey", "note", "workerReportedAt", "controllerObservedAt", "progressAgeSeconds"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "agentLabel": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runnerKind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "status": { "enum": ["queued", "running", "blocked", "awaiting_review", "fixing", "verifying", "reported_complete", "failed", "cancelled"] },
+        "stage": { "enum": ["setup", "implement", "commit", "review", "fix", "verification"] },
+        "tddPhase": { "enum": ["red", "green", "refactor", null] },
+        "currentStepKey": { "type": ["string", "null"], "maxLength": 64 },
+        "note": { "type": ["string", "null"], "maxLength": 256 },
+        "workerReportedAt": { "type": ["string", "null"], "format": "date-time", "maxLength": 64 },
+        "controllerObservedAt": { "type": "string", "format": "date-time", "maxLength": 64 },
+        "progressAgeSeconds": { "type": "integer", "minimum": 0, "maximum": 31536000 }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": ["key", "number", "label", "status", "reportedAt", "reviewedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "number": { "type": "integer", "minimum": 1, "maximum": 1000 },
+          "label": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "status": { "enum": ["pending", "active", "reported_complete", "reviewed", "blocked", "failed", "cancelled"] },
+          "reportedAt": { "type": ["string", "null"], "format": "date-time", "maxLength": 64 },
+          "reviewedAt": { "type": ["string", "null"], "format": "date-time", "maxLength": 64 }
+        }
+      }
+    },
+    "completionAuthority": { "const": "controller" },
+    "source": { "enum": ["controller-journal", "legacy-best-effort"] }
+  }
+}
