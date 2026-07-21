@@ -1,16 +1,6 @@
 import type { ResolvedRoute } from "../../../src/campaign/routing.js";
+import type { RunnerPort as CampaignRunnerPort } from "../../../src/campaign/ports.js";
 import type { RunnerJobResult } from "../../../src/runner/types.js";
-
-export interface RunnerPort {
-  dispatch(input: {
-    jobId: string;
-    taskId: string;
-    role: "supervisor" | "implementer" | "reviewer";
-    route: ResolvedRoute;
-    briefPath: string;
-    worktreePath: string;
-  }): Promise<RunnerJobResult>;
-}
 
 export interface FakeRunnerDispatch {
   jobId: string;
@@ -21,7 +11,7 @@ export interface FakeRunnerDispatch {
   worktreePath: string;
 }
 
-export class FakeRunnerPort implements RunnerPort {
+export class FakeRunnerPort implements CampaignRunnerPort {
   readonly dispatches: FakeRunnerDispatch[] = [];
   private readonly results = new Map<string, RunnerJobResult>();
   private defaultResult: RunnerJobResult | undefined;

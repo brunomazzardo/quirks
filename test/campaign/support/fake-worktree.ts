@@ -1,8 +1,4 @@
-export interface WorktreePort {
-  prepareTaskWorktree(taskId: string, baseCommit: string): Promise<{ path: string; branch: string }>;
-  listModifiedFiles(path: string): Promise<readonly string[]>;
-  readCommit(path: string): Promise<string | undefined>;
-}
+import type { WorktreePort as CampaignWorktreePort } from "../../../src/campaign/ports.js";
 
 export interface FakeWorktreeRecord {
   path: string;
@@ -11,7 +7,7 @@ export interface FakeWorktreeRecord {
   commit?: string;
 }
 
-export class FakeWorktreePort implements WorktreePort {
+export class FakeWorktreePort implements CampaignWorktreePort {
   readonly prepared: Array<{ taskId: string; baseCommit: string; record: FakeWorktreeRecord }> = [];
   private readonly records = new Map<string, FakeWorktreeRecord>();
 
