@@ -1,10 +1,14 @@
+import path from "node:path";
+import type { CampaignStatus } from "../../../src/campaign/types.js";
+import { loadProjectContext } from "../../../src/project/config.js";
 import { createLoopbackAuthority } from "../../../src/ui/authority.js";
 import { InMemoryApprovalTokenStore } from "../../../src/ui/approval/token-store.js";
 import { InMemoryViewerSessionStore } from "../../../src/ui/auth/viewer-session-store.js";
 import { createUiServer } from "../../../src/ui/server.js";
 import { FakeApprovalWritePort } from "./fake-approval-write.js";
+import { fakePreflightPort } from "./fake-preflight.js";
 
-export type TestCampaign = { repositoryId: string; envelopeDigest: string };
+export type TestCampaign = { repositoryId: string; envelopeDigest: string; status?: CampaignStatus };
 
 export type TestUiServer = {
   authority: Awaited<ReturnType<typeof createLoopbackAuthority>>;
@@ -32,8 +36,11 @@ export async function createTestUiServer(options?: {
   let readPortCalls = 0;
   let approvePortCalls = 0;
   const ensureCampaign = (campaignId: string, envelopeDigest: string) => {
-    if (!campaigns.has(campaignId)) campaigns.set(campaignId, { repositoryId, envelopeDigest });
+    if (!campaigns.has(campaignId)) {
+      campaigns.set(campaignId, { repositoryId, envelopeDigest, status: "awaiting_approval" });
+    }
   };
+  const projectRoot = path.resolve("test/fixtures/json-project");
   const server = await createUiServer({
     authority,
     repositoryId,
@@ -41,6 +48,8 @@ export async function createTestUiServer(options?: {
     approval,
     now: getNow,
     getCampaign: (campaignId) => campaigns.get(campaignId),
+    getProjectContext: () => loadProjectContext(projectRoot, { mode: "inspection" }),
+    preflightRead: fakePreflightPort(),
     onRead: () => {
       readPortCalls += 1;
     },
