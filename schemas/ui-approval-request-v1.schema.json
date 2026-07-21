@@ -14,8 +14,8 @@
     },
     "approvalToken": {
       "type": "string",
-      "pattern": "^qkui_[A-Za-z0-9_-]{43}$",
-      "maxLength": 48
+      "pattern": "^qkapprove_[A-Za-z0-9_-]{43}$",
+      "maxLength": 53
     }
   }
 }

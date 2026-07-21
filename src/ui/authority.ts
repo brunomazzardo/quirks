@@ -16,7 +16,7 @@ export async function createLoopbackAuthority(): Promise<LoopbackAuthority> {
     probe.listen(0, "127.0.0.1", resolve);
   });
   const address = probe.address() as AddressInfo;
-  await new Promise<void>((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => probe.close((error) => (error ? reject(error) : resolve())));
   const host = "127.0.0.1" as const;
   const origin = `http://${host}:${address.port}`;
   return {
