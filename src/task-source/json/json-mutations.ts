@@ -1,4 +1,5 @@
 import { QuirksError } from "../../core/errors.js";
+import { sha256 } from "../../core/hash.js";
 import { validateSchema } from "../../schema/validate.js";
 import type { CompletionBoundary, EvidenceKind } from "../../project/types.js";
 import type { MutationRequest, TaskSourceOperation, TaskSourceResponse } from "../types.js";
@@ -102,9 +103,17 @@ export function applyAttachProvenance(
   const iteration = validated.iterations[0]!;
   const provenance = task.provenance as { schemaVersion: 1; iterations: Array<Record<string, unknown>> };
   const existing = provenance.iterations.find((entry) => entry.id === iteration.id);
-  if (!existing) {
-    provenance.iterations.push(iteration);
+  if (existing) {
+    if (sha256(existing) !== sha256(iteration)) {
+      return failure(
+        "attach-provenance",
+        "SOURCE_CONFLICT",
+        `Provenance iteration ${iteration.id} already exists with different content`,
+      );
+    }
+    return;
   }
+  provenance.iterations.push(iteration);
 }
 
 export function applyPropose(

@@ -212,20 +212,28 @@ export class JsonTaskSource implements TaskSource {
     await this.journal.append(event);
   }
 
+  private resolveIdempotentResponse(
+    request: MutationRequest,
+    requestHash: string,
+    cached: { requestHash: string; response: TaskSourceResponse } | undefined,
+  ): TaskSourceResponse | undefined {
+    if (!cached) return undefined;
+    if (cached.requestHash !== requestHash) {
+      return failure(request.operation, "SOURCE_CONFLICT", "Idempotency key reused with different request");
+    }
+    return cached.response;
+  }
+
   private async applyProposeMutation(
     request: Extract<MutationRequest, { operation: "propose" }>,
   ): Promise<TaskSourceResponse> {
     const requestHash = mutationRequestHash(request);
-    const cached = await this.lookupIdempotency(request.idempotencyKey);
-    if (cached) {
-      if (cached.requestHash !== requestHash) {
-        return failure(request.operation, "SOURCE_CONFLICT", "Idempotency key reused with different request");
-      }
-      return cached.response;
-    }
 
     const lock = await RepositoryLock.acquire(this.lockPath, { campaignId: extractCampaignId(request) });
     try {
+      const cached = this.resolveIdempotentResponse(request, requestHash, await this.lookupIdempotency(request.idempotencyKey));
+      if (cached) return cached;
+
       const envelope = await this.loadEnvelope();
       const proposed = applyPropose(envelope, request);
       if (!("task" in proposed)) return proposed;
@@ -248,16 +256,12 @@ export class JsonTaskSource implements TaskSource {
 
   private async applyTaskMutation(request: MutationRequest): Promise<TaskSourceResponse> {
     const requestHash = mutationRequestHash(request);
-    const cached = await this.lookupIdempotency(request.idempotencyKey);
-    if (cached) {
-      if (cached.requestHash !== requestHash) {
-        return failure(request.operation, "SOURCE_CONFLICT", "Idempotency key reused with different request");
-      }
-      return cached.response;
-    }
 
     const lock = await RepositoryLock.acquire(this.lockPath, { campaignId: extractCampaignId(request) });
     try {
+      const cached = this.resolveIdempotentResponse(request, requestHash, await this.lookupIdempotency(request.idempotencyKey));
+      if (cached) return cached;
+
       const envelope = await this.loadEnvelope();
       const taskIndex = envelope.tasks.findIndex((task) => task.id === request.taskId);
       if (taskIndex < 0) return failure(request.operation, "NOT_FOUND", `Unknown task ${request.taskId}`);
