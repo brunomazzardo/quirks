@@ -1068,7 +1068,7 @@
         {
           "kind": "spec",
           "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
-          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
           "sections": [
             10,
             11,
@@ -1085,14 +1085,14 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b"
         }
       ],
       "deliverables": [
         "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
       ],
       "acceptanceCriteria": [
-        "Plan campaign state, approval, scheduling, runner IPC, recovery, budgets, and fake-runner acceptance with TDD steps"
+        "Plan campaign state, approval, scheduling, runner IPC, live plan progress, recovery, budgets, and fake-runner acceptance with TDD steps"
       ],
       "verification": [
         "Self-review every control-plane trust boundary against the approved spec"
@@ -1117,6 +1117,29 @@
             ],
             "finishedAt": "2026-07-21T13:15:00-03:00",
             "outcomeReason": "Campaign control-plane and runner implementation plan authored"
+          },
+          {
+            "id": "QK-CTL-001-I2",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+            "artifactRefs": [
+              {
+                "kind": "spec",
+                "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
+                "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b"
+              },
+              {
+                "kind": "plan",
+                "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+                "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b"
+              }
+            ],
+            "commitRefs": [
+              "8a4b28f690d482c4851b3386a415e52e4d5e825b"
+            ],
+            "finishedAt": "2026-07-21T14:38:26-03:00",
+            "outcomeReason": "Approved immutable plan-step and controller-observed live progress contracts incorporated"
           }
         ]
       }
@@ -1189,7 +1212,7 @@
     },
     {
       "id": "QK-CTL-003",
-      "title": "Implement preflight, dependency scheduling, and the supervisor state machine",
+      "title": "Implement preflight, dependency scheduling, and routing",
       "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
@@ -1223,17 +1246,30 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 5
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 6
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 7
         }
       ],
       "deliverables": [
-        "Deterministic campaign control plane and immutable approval envelope"
+        "Read-only preflight assembly, dependency waves, conflict lanes, and bounded model routing"
       ],
       "acceptanceCriteria": [
-        "No task claim or dispatch is possible before durable exact-envelope approval"
+        "Preflight remains non-mutating and produces deterministic waves, conflict lanes, and forbidden-downgrade routing"
       ],
       "verification": [
-        "Run scheduler, approval replay, drift, and interruption suites"
+        "Run preflight immutability, scheduler, conflict-lane, and routing suites"
       ],
       "provenance": {
         "schemaVersion": 1,
@@ -1277,7 +1313,20 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 8
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 9
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 10
         }
       ],
       "deliverables": [
@@ -1330,7 +1379,20 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 11
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 12
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 13
         }
       ],
       "deliverables": [
@@ -1349,8 +1411,8 @@
     },
     {
       "id": "QK-CTL-004",
-      "title": "Verify the campaign control plane with fake runners and hosts",
-      "kind": "verification",
+      "title": "Implement and verify supervisor, recovery, CLI, and live plan progress",
+      "kind": "implementation",
       "priority": "P0",
       "status": "proposed",
       "dependsOn": [
@@ -1384,17 +1446,36 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 14
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 15
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 16
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 17
         }
       ],
       "deliverables": [
-        "Deterministic fake-runner and fake-host acceptance evidence"
+        "Recoverable campaign supervisor, CLI, deterministic acceptance fixtures, and isolated per-job live progress transport"
       ],
       "acceptanceCriteria": [
-        "All control-plane failure and recovery paths pass without real provider access"
+        "All control-plane failure and recovery paths pass without real provider access, and worker telemetry can never complete canonical task state"
       ],
       "verification": [
-        "Run the full fake-runner integration matrix"
+        "Run the full fake-runner integration matrix plus concurrent mailbox, controller-observation, and restart recovery tests"
       ],
       "provenance": {
         "schemaVersion": 1,
@@ -1436,7 +1517,7 @@
         {
           "kind": "spec",
           "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
-          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
           "sections": [
             12,
             17,
@@ -1448,14 +1529,14 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
-          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b"
         }
       ],
       "deliverables": [
         "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"
       ],
       "acceptanceCriteria": [
-        "Plan loopback security, approval API, task/history views, visual states, and browser tests with TDD steps"
+        "Plan split viewer/approval security, task/history/live-progress views, visual states, and browser tests with TDD steps"
       ],
       "verification": [
         "Self-review every UI authorization and hostile-data boundary against the approved spec"
@@ -1503,6 +1584,29 @@
             ],
             "finishedAt": "2026-07-21T14:03:18-03:00",
             "outcomeReason": "Approved focused TanStack client stack incorporated into the UI implementation plan"
+          },
+          {
+            "id": "QK-UI-001-I3",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+            "artifactRefs": [
+              {
+                "kind": "spec",
+                "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
+                "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b"
+              },
+              {
+                "kind": "plan",
+                "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+                "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b"
+              }
+            ],
+            "commitRefs": [
+              "8a4b28f690d482c4851b3386a415e52e4d5e825b"
+            ],
+            "finishedAt": "2026-07-21T14:38:26-03:00",
+            "outcomeReason": "Approved split viewer and approval credentials plus live Plan Progress UI contract incorporated"
           }
         ]
       }
@@ -1544,14 +1648,57 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
-          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 1
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 2
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 3
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 4
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 5
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 6
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 15
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 19
         }
       ],
       "deliverables": [
-        "Loopback-only server, security headers, nonce CSP, authenticated projections, one-time approval, and JSON API"
+        "Loopback-only server, nonce CSP, repository-bound viewer sessions, independent one-time approval, and JSON API"
       ],
       "acceptanceCriteria": [
-        "Unauthenticated reads, cross-origin, wrong-host, replay, stale-digest, form, GET mutation, and hostile-content tests fail closed"
+        "Viewer and approval credentials are non-interchangeable; idle/absolute expiry, repository mismatch, cross-origin, wrong-host, replay, stale digest, form, GET mutation, and hostile-content tests fail closed"
       ],
       "verification": [
         "Run focused UI security and API tests"
@@ -1563,13 +1710,13 @@
     },
     {
       "id": "QK-UI-003",
-      "title": "Implement Existing Tasks, Preflight, Campaigns, and Task History views",
+      "title": "Implement Existing Tasks, Preflight, Campaigns, Task History, and Plan Progress views",
       "kind": "implementation",
       "priority": "P1",
       "status": "proposed",
       "dependsOn": [
         "QK-UI-002",
-        "QK-CTL-003"
+        "QK-CTL-004"
       ],
       "workflow": {
         "family": "superpowers",
@@ -1596,17 +1743,72 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
-          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 7
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 8
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 9
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 10
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 11
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 12
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 13
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 14
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 16
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 20
         }
       ],
       "deliverables": [
-        "Provider-neutral React and TanStack task, proposal, campaign, and provenance workspace"
+        "Provider-neutral React and TanStack task, proposal, campaign, provenance, and controller-observed live plan-progress workspace"
       ],
       "acceptanceCriteria": [
-        "Views show exact tasks, ordering, ownership, source freshness, commits, PRs, identities, and unavailable references without copying source content"
+        "Views show exact tasks, ordering, ownership, source freshness, commits, PRs, identities, immutable plan steps, worker-reported versus reviewed progress, and unavailable references without copying source content"
       ],
       "verification": [
-        "Run component/read-model tests with hostile paths, metadata, logs, and task text"
+        "Run component/read-model tests with hostile paths, metadata, logs, task text, progress notes, and parallel-job events"
       ],
       "provenance": {
         "schemaVersion": 1,
@@ -1648,17 +1850,24 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
-          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 17
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 18
         }
       ],
       "deliverables": [
         "Automated browser evidence across approved desktop/narrow layouts and the 1,000-row performance fixture"
       ],
       "acceptanceCriteria": [
-        "No overlap, clipping, unsafe rendering, inaccessible approval controls, authorization regression, or unexplained 1,000-row budget failure remains"
+        "No overlap, clipping, unsafe rendering, inaccessible approval controls, authorization regression, live-progress polling leak, or unexplained 1,000-row budget failure remains"
       ],
       "verification": [
-        "Run browser, accessibility, CSP, header, replay, and screenshot suites"
+        "Run browser, accessibility, CSP, header, credential separation, live-progress polling, replay, and screenshot suites"
       ],
       "provenance": {
         "schemaVersion": 1,
