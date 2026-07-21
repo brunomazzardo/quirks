@@ -4,7 +4,7 @@ Date: 2026-07-20
 
 Last revised: 2026-07-21
 
-Status: APPROVED WRITTEN SPEC — focused TanStack UI stack approved
+Status: APPROVED WRITTEN SPEC — focused TanStack UI and live plan-progress contracts approved
 
 Repository: `brunomazzardo/quirks`
 
@@ -411,6 +411,18 @@ Task IDs are unique and stable within the source. The JSON driver derives the
 normalized `source` block and `nativeRevision` from canonical task content; those
 derived fields are not stored or hand-edited in the file. Exact workflow and
 execution subfields are validated by their referenced schemas.
+
+When a canonical task is governed by a Superpowers implementation plan, its
+immutable `sourceRefs` identify the exact plan path, Git commit, and plan task
+number. A canonical task spanning multiple plan tasks carries one plan reference
+per number; Quirks does not infer this mapping from a prose inventory table or a
+mutable current file. Preflight verifies that every referenced `### Task N`
+exists at the stated commit and freezes the ordered mapping in the campaign
+envelope. Within each referenced task, checkbox headings matching
+`- [ ] **Step M:` receive stable execution keys `task-N/step-M`; duplicate,
+missing, or non-numeric task/step identities fail preflight when live progress is
+required. The plan body remains in Git—the campaign stores only the immutable
+reference and bounded outline labels needed for navigation.
 
 Future built-in/provider drivers such as `github`, `linear`, `jira`, or
 `clickup` carry only non-secret provider locators in project configuration.
@@ -1092,6 +1104,78 @@ On silence or timeout the control plane checks, in order:
 
 No blind PID polling, broad kill, or invented session identifier is allowed.
 
+### 16.4 Live plan-progress mailbox
+
+Each dispatched execution job receives one controller-created progress mailbox:
+
+```text
+campaigns/<campaign-id>/artifacts/<job-id>/progress.json
+```
+
+There is no shared writable queue file. A worker can update only its assigned
+mailbox through `quirks-campaign progress set`; the command resolves the binding
+from the scrubbed, non-secret `QUIRKS_PROGRESS_CONTEXT` environment entry and
+does not accept an arbitrary output path, campaign ID, task ID, or job ID from
+the worker. The controller owns queue order, campaign/task state, review gates,
+and completion. Progress is telemetry and cannot claim, approve, review,
+complete, merge, push, or synchronize a task.
+
+The current snapshot uses `quirks-runner-progress-v1`:
+
+```json
+{
+  "schemaVersion": 1,
+  "protocol": "quirks-runner-progress-v1",
+  "campaignId": "cmp-123",
+  "taskId": "QK-CTL-003",
+  "jobId": "job-456",
+  "attempt": 1,
+  "revision": 7,
+  "plan": {
+    "path": "docs/superpowers/plans/control-plane.md",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "task": 14,
+    "step": 3
+  },
+  "status": "running",
+  "stage": "implement",
+  "tddPhase": "green",
+  "completedStepIds": ["task-14/step-1", "task-14/step-2"],
+  "note": "Focused test passes",
+  "reportedAt": "2026-07-21T18:00:00.000Z"
+}
+```
+
+Allowed status values are `queued`, `running`, `blocked`, `awaiting_review`,
+`fixing`, `verifying`, `reported_complete`, `failed`, and `cancelled`. Allowed
+stages are `setup`, `implement`, `commit`, `review`, `fix`, and `verification`;
+`tddPhase` is absent or `red`, `green`, or `refactor`. The controller derives
+task/step labels from the commit-pinned plan; a worker supplies only numeric
+identities, a cumulative bounded completed-step set, and an optional 256-byte
+note treated as hostile display text. Full test output, logs, prompts, diffs,
+reasoning, task bodies, credentials, and secret-shaped strings are forbidden.
+
+The progress command reads the previous valid snapshot, increments `revision`,
+validates the plan binding and legal transition, writes no more than 16 KiB to a
+mode-`0600` same-directory temporary file, fsyncs it, renames it atomically, and
+fsyncs the directory. The watchdog observes revisions and appends a normalized
+`quirks-runner-progress-event-v1` frame to campaign `progress.jsonl` with its own
+`observedAt` timestamp and source (`worker`, `controller`, or
+`legacy-superpowers-ledger`). Worker time and terminal claims remain reported
+evidence; only controller review/verification events can mark accepted progress.
+The ordinary runner heartbeat remains the liveness authority, so a quiet
+long-running step is shown with its last progress age and heartbeat rather than
+misclassified as failed.
+
+Quirks updates the assigned mailbox at dispatch and instructs workers to report
+before each plan step, after completing a step, on RED/GREEN/refactor changes,
+before commit, and immediately on a block or failure. The controller itself
+records review, fix, verification, and accepted-task transitions. Existing
+`.superpowers/sdd/progress.md` files may be projected as task-level historical
+completion with an explicit `legacy/best-effort` label; because that file is
+gitignored and records only post-review task completion, it is never treated as
+live or canonical evidence.
+
 ## 17. Durable state and recovery
 
 Campaign state is stored in the platform-appropriate user application-state
@@ -1102,11 +1186,12 @@ campaigns/<campaign-id>/
   campaign.json
   approvals.jsonl
   events.jsonl
+  progress.jsonl
   sync-outbox.jsonl
   state.json
   sessions.json
   tasks/<task-id>.json
-  artifacts/<job-id>/
+  artifacts/<job-id>/progress.json
   lessons.jsonl
   final-report.md
 ```
@@ -1115,6 +1200,8 @@ campaigns/<campaign-id>/
 - `approvals.jsonl` records digest-bound operator approval events and token-use
   results; it contains no reusable approval secret.
 - `events.jsonl` is the append-only recovery/audit sequence.
+- `progress.jsonl` is the append-only sequence of controller-observed live-plan
+  telemetry; it never authorizes a task or substitutes for lifecycle events.
 - `sync-outbox.jsonl` stores idempotent task-source mutation intents,
   acknowledgements, conflicts, and native revisions.
 - `state.json` is a derived atomic snapshot and can be rebuilt from events.
@@ -1122,7 +1209,8 @@ campaigns/<campaign-id>/
 - task files store normalized snapshots, sync status, native revision tokens,
   and a derived compact provenance read model from canonical source metadata and
   validated campaign events.
-- artifacts are bounded, redacted, and excluded from secret/raw-log capture.
+- job progress snapshots and all other artifacts are bounded, redacted, mode
+  `0600`, and excluded from secret/raw-log capture.
 - the final report is sanitized and may optionally be copied to a project path
   only when project workflow policy declares that deliverable.
 
@@ -1161,6 +1249,11 @@ truth:
 - **Task History** combines the task's compact provenance index with immutable
   campaign journals to show iterations, governing files, commits, pull requests,
   verification, deviations, attribution, follow-ups, and supersession.
+- **Plan Progress** joins the exact plan-at-commit outline with controller-
+  observed progress to show plan tasks, checkbox steps, current worker/model,
+  TDD/review/fix/verification stage, completed steps, commit candidates,
+  heartbeat, and last-update freshness. Worker-reported completion is visibly
+  distinct from controller-reviewed acceptance.
 
 Past campaign journals and task iterations are append-only. `Run again` creates
 a new preflight and digest; it never edits a completed campaign or reuses its
@@ -1241,15 +1334,28 @@ The local control UI is an authorization boundary, not a decorative report:
 
 - it binds only to loopback and generates an exact `127.0.0.1` authority with a
   random port; requests with another `Host` authority fail;
-- a cryptographically random, single-use token that expires after at most 15
-  minutes is bound to one campaign ID and envelope digest; it is delivered in
-  the URL fragment, kept in page memory, and never written to history state,
-  logs, cookies, or local storage;
+- `quirks-campaign ui open` creates a cryptographically random read-only viewer
+  token bound to the canonical repository. It has an eight-hour idle timeout and
+  a non-extendable 24-hour absolute lifetime; successful authenticated reads may
+  advance the idle deadline but never the absolute deadline. Reopening the UI
+  through the local CLI creates a new viewer session without granting approval;
+- when the selected campaign is awaiting approval, the control plane separately
+  creates a cryptographically random single-use approval token that expires
+  after at most 15 minutes and is bound to that campaign ID and envelope digest.
+  A viewer token can never be exchanged for or used as an approval token;
+- the initial URL fragment carries `viewToken` and, only when applicable,
+  `approvalToken`. Both are consumed once into separate closure-backed page-
+  memory vaults and immediately removed with `history.replaceState`; neither is
+  written to subsequent history state, logs, stdout JSON, cookies,
+  `sessionStorage`, or `localStorage`;
 - the initial shell contains no proposal data; authenticated same-origin JSON
-  requests fetch the envelope projection and submit approval;
+  reads require the repository-bound viewer token. Approval additionally
+  requires the independent campaign/digest-bound approval token;
 - approval accepts only JSON, the exact origin, `Sec-Fetch-Site: same-origin`,
-  the session-bound token, and the displayed digest. There are no form or GET
-  mutation endpoints, and replay fails after the first terminal result;
+  the viewer session, the approval token, and the displayed digest. There are no
+  form or GET mutation endpoints, and replay fails after the first terminal
+  result. A successful or terminal approval result clears only the approval
+  vault; the viewer session may continue read-only live tracking until expiry;
 - every response uses `Cache-Control: no-store`, `Referrer-Policy: no-referrer`,
   `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`,
   and `Cross-Origin-Opener-Policy: same-origin`;
@@ -1346,6 +1452,16 @@ commits, pull requests, verification, reports, and sync state. The default scope
 is the current repository; all-project history is an explicit filter. `Run
 again` always creates a new candidate envelope.
 
+An active campaign and its selected-task inspector include **Plan Progress**.
+The view renders the plan-at-commit task/step outline as a vertical execution
+ledger, highlights the current job, stage and TDD phase, distinguishes worker-
+reported from controller-observed/reviewed states, shows runner heartbeat and
+progress-update age separately, and links commits/reviews without copying their
+contents. TanStack Query polls its authenticated JSON projection every two
+seconds only while the campaign is active and the document is visible; it stops
+on a terminal campaign or expired viewer session. No worker mailbox is read by
+the browser directly.
+
 **Task History** shows the compact provenance index without copying its sources:
 governing spec/plan/review links at their executed commits, iteration outcomes,
 accepted and partial commits, pull requests, verification, deviations,
@@ -1370,7 +1486,8 @@ The browser client uses React and these focused TanStack libraries:
 
 - **TanStack Router** for the five fixed local views and typed URL/search state;
 - **TanStack Query** for bounded authenticated projection fetches, explicit
-  freshness, refetch, and invalidation after an approval result;
+  freshness, refetch, invalidation after an approval result, and the two-second
+  active-campaign Plan Progress poll;
 - **TanStack Table** for Existing Tasks, Campaigns, commit, pull-request, and
   history tables; and
 - **TanStack Form** for task selection, editable preflight inputs, and the exact
@@ -1455,6 +1572,13 @@ Dependency-free tests cover:
   historical-reference failure, and rejection of duplicated content;
 - one-time approval token binding, expiry, replay rejection, digest mismatch,
   exact Host/Origin/Fetch Metadata checks, and zero mutation before approval;
+- read-only viewer-session repository binding, eight-hour idle/24-hour absolute
+  expiry, renewal only through local UI open, separation from approval authority,
+  and continued read-only tracking after approval-token consumption;
+- progress mailbox path binding, mode/size/atomic-replacement guarantees,
+  monotonic revisions, valid plan task/step transitions, per-job writer
+  isolation, controller observation, and rejection of worker completion as
+  authoritative state;
 - task dependency cycles, exact-set selection, and phase gates;
 - lane scheduling, parallelism keys, and task-count/concurrency budgets;
 - model tier resolution and forbidden downgrades;
@@ -1480,6 +1604,13 @@ Fake Claude, Codex, and Cursor runners simulate:
 - fabricated test evidence;
 - session cancellation and orphan cleanup; and
 - quota/model fallback decisions.
+
+Each fake also exercises progress updates at setup, RED, GREEN, refactor,
+commit, blocked, review, fix, verification, and reported-complete boundaries.
+Parallel fake jobs prove their per-job snapshots cannot overwrite one another;
+malformed, oversized, secret-shaped, wrong-job, wrong-plan, skipped-revision,
+and illegal-transition updates fail closed without corrupting the last valid
+snapshot or campaign progress journal.
 
 Fake host launchers additionally simulate foreground completion, host
 conversation loss after durable start, later attach by campaign ID, and scoped
@@ -1552,6 +1683,18 @@ security headers, no remote requests, no cached proposal response, clickjacking
 protection, and no approval via form, GET, cross-origin request, stale token, or
 replay.
 
+Viewer/approval tests prove the two token classes are non-interchangeable, the
+viewer idle timeout cannot cross its absolute deadline, terminal approval clears
+only the approval vault, a reopened active campaign receives read-only access,
+and no fragment token enters Router state, Query keys/data, Form values, history,
+storage, stdout JSON, logs, or persisted files.
+
+Plan Progress tests use a commit-pinned hostile plan and concurrent fake jobs.
+They verify exact task/step mapping, two-second visible-document polling,
+terminal-stop behavior, heartbeat versus progress-age labeling, legacy-ledger
+degradation, escaped notes/headings, worker-reported versus reviewed acceptance,
+and zero browser access to artifact mailbox paths.
+
 Projection tests prove that proposal HTML is derived only from the canonical
 envelope, that the displayed digest equals the approved digest, and that no HTML
 file is persisted. Responsive checks cover the task map, lanes, task list,
@@ -1603,23 +1746,29 @@ Version one is acceptable when:
     files, commits, pull requests, verification, iterations, deviations,
     follow-ups, and distinct human/agent/Git/provider attribution link to
     authoritative sources without copying their contents.
-14. The loopback UI binds approval to a short-lived single-use token and exact
-    digest, enforces Host/Origin/Fetch Metadata and the documented CSP/security
-    headers, escapes hostile data, makes no remote asset requests, and persists
-    no rendered HTML.
-15. Existing Tasks, Campaigns, and Task History read models remain
+14. The loopback UI separates a repository-bound read-only viewer session from
+    a short-lived single-use digest-bound approval token, enforces their expiry
+    and non-interchangeability plus Host/Origin/Fetch Metadata and the documented
+    CSP/security headers, escapes hostile data, makes no remote asset requests,
+    and persists neither tokens nor rendered HTML.
+15. Existing Tasks, Campaigns, Plan Progress, and Task History read models remain
     provider-neutral, show sync freshness and unavailable historical references
     honestly, and state that version-one coordination is local only.
-16. Crash recovery reconstructs the campaign and sync outbox without lost
+16. Every instrumented runner writes only its atomically replaced bounded
+    per-job progress mailbox; the controller journals observed plan/step changes,
+    the UI shows live stage/agent/review state, and no worker progress claim can
+    authorize canonical completion.
+17. Crash recovery reconstructs the campaign, progress projection, and sync
+    outbox without lost
     accepted work, duplicated task dispatch, or rewritten history.
-17. Merge reaches only the approved target and push reaches only the explicitly
-   approved remote/branch after final verification.
-18. Credentials, secrets, project-specific names, personal paths, and account
+18. Merge reaches only the approved target and push reaches only the explicitly
+    approved remote/branch after final verification.
+19. Credentials, secrets, project-specific names, personal paths, and account
     identifiers are absent from shipped plugin artifacts and campaign evidence.
-19. Skill baseline/forward tests, schema tests, task-source contract tests,
+20. Skill baseline/forward tests, schema tests, task-source contract tests,
     sync/provenance tests, local UI security/browser tests, fake-runner
     integration, package validation, and portability fixtures all pass.
-20. The final report distinguishes completed, rejected, blocked, held, skipped,
+21. The final report distinguishes completed, rejected, blocked, held, skipped,
     and newly proposed work, with exact commits and reproducible evidence.
 
 ## 25. Delivery sequence
@@ -1634,21 +1783,24 @@ approved. The required delivery order is:
 4. implement the provider-neutral `TaskSource` contract, built-in JSON driver,
    external-executable driver, project workflow policy, manual/boundary sync,
    and two portability fixtures;
-5. implement the ephemeral loopback UI/API and provider-neutral Existing Tasks,
-   Preflight Proposal, Campaigns, and Task History read models;
-6. baseline-test and author `dispatching-external-agents`, including versioned
+5. implement per-job live-progress mailboxes, controller-observed progress
+   journaling, and the instrumented runner command contract;
+6. implement the ephemeral loopback UI/API, split viewer/approval sessions, and
+   provider-neutral Existing Tasks, Preflight Proposal, Campaigns, Plan Progress,
+   and Task History read models;
+7. baseline-test and author `dispatching-external-agents`, including versioned
    Claude, Codex, and Cursor runner references;
-7. baseline-test and author `delegated-brainstorming`;
-8. baseline-test and author `running-agent-campaigns`;
-9. implement fake runners/hosts, watchdog, resume, budgets, quota-pool routing,
+8. baseline-test and author `delegated-brainstorming`;
+9. baseline-test and author `running-agent-campaigns`;
+10. implement fake runners/hosts, watchdog, resume, budgets, quota-pool routing,
    and circuit breakers;
-10. implement Git integration, merge, approved push, and validated provenance
+11. implement Git integration, merge, approved push, and validated provenance
     write-back;
-11. implement and validate Claude Code, Codex, and Cursor installation/control
+12. implement and validate Claude Code, Codex, and Cursor installation/control
     integrations without copying the canonical skills;
-12. run portable fixture end-to-end acceptance, task-source/sync/provenance/UI
+13. run portable fixture end-to-end acceptance, task-source/sync/provenance/UI
     suites, and the dated nine-cell real host/runner smoke matrix;
-13. install through the personal plugin marketplace and expose canonical skills
+14. install through the personal plugin marketplace and expose canonical skills
     to supported harnesses; and
-14. run one bounded real project campaign only after the disposable acceptance
+15. run one bounded real project campaign only after the disposable acceptance
     suite passes.

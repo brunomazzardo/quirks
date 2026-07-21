@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver the ephemeral loopback local control workspace—secure approval API, provider-neutral Existing Tasks / Preflight Proposal / Campaigns / Task History projections, nonce-CSP client shell, visual states, and browser-backed security tests—without making rendered HTML a state store.
+**Goal:** Deliver the ephemeral loopback local control workspace—secure approval API, provider-neutral Existing Tasks / Preflight Proposal / Campaigns / Task History / Plan Progress projections, nonce-CSP client shell, visual states, and browser-backed security tests—without making rendered HTML a state store.
 
-**Architecture:** Plan 3 of the Quirks v1 suite. A framework-independent Node `http` server binds only to `127.0.0.1`, serves a nonce-CSP shell with zero embedded proposal data, and exposes bounded JSON read APIs plus a single `POST /api/v1/approval` mutation. The browser is a single locally built React bundle using code-based TanStack Router, TanStack Query, TanStack Table, and TanStack Form; TanStack Start and framework-owned server routes are intentionally absent. Read models are pure projections over the frozen kernel (`TaskSource`, `syncBoundary`, `buildTaskHistory`) and over control-plane ports defined here but implemented in `2026-07-21-quirks-campaign-control-plane.md`. Approval consumes a one-time fragment-delivered token bound to campaign ID and envelope digest; the control plane records the durable approval event.
+**Architecture:** Plan 3 of the Quirks v1 suite. A framework-independent Node `http` server binds only to `127.0.0.1`, serves a nonce-CSP shell with zero embedded proposal data, and exposes bounded JSON read APIs plus a single `POST /api/v1/approval` mutation. The browser is a single locally built React bundle using code-based TanStack Router, TanStack Query, TanStack Table, and TanStack Form; TanStack Start and framework-owned server routes are intentionally absent. Read models are pure projections over the frozen kernel (`TaskSource`, `syncBoundary`, `buildTaskHistory`) and over control-plane ports defined here but implemented in `2026-07-21-quirks-campaign-control-plane.md`. A repository-bound viewer session authorizes reads for an 8-hour idle window capped by a non-extendable 24-hour lifetime; an independent one-time approval token authorizes only the exact campaign/digest mutation for at most 15 minutes. The control plane records the durable approval event and exposes controller-observed live plan progress without trusting worker claims as completion.
 
 **Tech Stack:** Node.js 24 LTS (`>=24.18.0`), TypeScript 7.0.2, ESM, pnpm 10.30.3, Node `node:test`, React/React DOM 19.2.8, TanStack Router 1.170.18, TanStack Query 5.101.4, TanStack Table 8.21.3, TanStack Form 1.33.2, Ajv 8.20.0 (build-time validators only), Oxlint 1.74.0, esbuild 0.25.9 (dev-only UI client bundle), Playwright 1.54.2 (dev-only browser tests), TanStack CLI 0.69.6 and Intent 0.3.6 (one-shot development tooling only).
 
@@ -26,10 +26,13 @@ This plan **does not** implement campaign scheduling, runner dispatch, envelope 
 |---|---|---|
 | `PreflightReadPort.getProposal(campaignId)` | control plane | Preflight Proposal JSON + digest display |
 | `ApprovalWritePort.issueToken(campaignId, envelopeDigest)` | control plane | URL fragment token minting at `awaiting_approval` |
-| `ApprovalWritePort.approve({ campaignId, token, envelopeDigest, operator })` | control plane | sole durable mutation path |
+| `ApprovalWritePort.approve({ campaignId, approvalToken, envelopeDigest, operator })` | control plane | sole durable mutation path |
 | `CampaignReadPort.listSummaries(filter)` | control plane | Campaigns list |
 | `CampaignReadPort.getDetail(campaignId)` | control plane | Campaign detail + sync state |
+| `CampaignReadPort.getPlanProgress(taskId, campaignId)` | control plane | controller-observed task/step progress projection |
 | `CampaignJournalEvents` (read-only) | control plane | Task History join with kernel provenance |
+
+The local UI owns `ViewerSessionPort`: `ui open` issues repository-bound viewer credentials, and the server authorizes/touches them before calling any read port. Viewer credentials never satisfy `ApprovalWritePort`; approval credentials never satisfy `ViewerSessionPort`.
 
 Until the control-plane plan lands, Tasks 8–10 and 19 use in-memory fakes under `test/ui/support/` that mirror the port signatures frozen here. Task 6 approval API calls the port; it never writes `approvals.jsonl` itself.
 
@@ -42,13 +45,14 @@ Kernel contracts consumed directly (already shipped in foundation):
 ## Global Constraints
 
 - Node server, security, schema, read-model, and control-plane runtime modules import zero third-party production dependencies. Browser production dependencies are limited to React, React DOM, TanStack Router, Query, Table, and Form; esbuild bundles them into the one local client asset. TanStack Start, Store, Pacer, Virtual, router devtools, and Query devtools are absent.
-- The local control UI is an authorization boundary: loopback-only bind, exact `127.0.0.1` Host authority, one-time approval token expiring within 15 minutes, fragment delivery only, no cookies/localStorage/history persistence of the token.
+- The local control UI is an authorization boundary: loopback-only bind, exact `127.0.0.1` Host authority, repository-bound viewer sessions with an 8-hour idle expiry and non-extendable 24-hour absolute expiry, and independent one-time approval tokens expiring within 15 minutes. Both arrive by fragment only and neither may enter cookies, local/session storage, browser history, logs, JSON output, or serializable client state.
 - Initial HTML shell contains no proposal, task, campaign, or history payload; authenticated same-origin `fetch` loads JSON projections.
-- Approval accepts only `POST` JSON with `Content-Type: application/json`, exact loopback `Origin`, `Sec-Fetch-Site: same-origin`, valid session token, and displayed digest; no form endpoints, no GET mutations, replay fails after first terminal result.
+- Every API read requires a live repository-bound viewer bearer. Approval additionally accepts only `POST` JSON with `Content-Type: application/json`, exact loopback `Origin`, `Sec-Fetch-Site: same-origin`, an independent live approval token, and the displayed campaign/digest binding; no form endpoints, no GET mutations, and replay fails after the first terminal result. The two credential classes are never interchangeable.
 - Every response sets `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`, `Cross-Origin-Opener-Policy: same-origin`, and CSP: `default-src 'none'; script-src 'nonce-<random>'; style-src 'nonce-<random>'; img-src 'self' data:; connect-src 'self'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`.
 - Task text, paths, headers, Git metadata, provider data, logs, and traffic data render as escaped text; remote links require `https`, file/Git actions use internal app routes, `http` is accepted only for the exact loopback UI authority; no attacker-controlled HTML/CSS/script/image URL/automatic remote fetch.
 - Rendered HTML is ephemeral and is never persisted as a campaign artifact; only canonical envelope, digest, and terminal approval event are durable.
 - Projections are provider-neutral, show sync freshness, state `Local coordination only` and `No shared lease`, and never copy specification/plan/log/diff/provider bodies into the UI model.
+- Plan Progress is a replaceable read projection of the immutable plan outline plus controller-observed per-job progress. Worker-reported phase, note, and timestamps are visibly labeled as reported evidence; only controller review/verification may mark a task accepted.
 - Missing historical Git objects, provider records, or URLs remain visibly unavailable; never substitute current content.
 - Operator/runner/Git/provider attribution is evidence, not authorization; `verified` only for valid signature or authenticated provider identity.
 - Unknown schema fields, unsupported versions, stale approval digest, expired/consumed tokens, wrong Host/Origin, and cross-origin requests fail closed with no side effects.
@@ -59,7 +63,7 @@ Kernel contracts consumed directly (already shipped in foundation):
 | Inventory task | Plan tasks |
 |---|---|
 | QK-UI-002 ephemeral loopback UI security + approval API | Tasks 1–6, 15, 19 |
-| QK-UI-003 Existing Tasks / Preflight / Campaigns / Task History views | Tasks 7–14, 16, 19 |
+| QK-UI-003 Existing Tasks / Preflight / Campaigns / Task History / Plan Progress views | Tasks 7–14, 16, 20 |
 | QK-UI-004 UI security/a11y/responsive verification | Tasks 17–18 |
 
 ---
@@ -145,7 +149,7 @@ Each schema uses draft 2020-12, stable `$id` `quirks://schemas/<name>-v1`, `addi
 
 `ui-task-history-v1`: `taskId`, `iterations[]` with compact refs only (`path`, `commit`, `sha`, `url`, `availability`, identities with `evidence`/`verified`), `actions` enum `open-as-executed|open-current|compare` per artifact, no `content`/`body`/`patch` fields.
 
-`ui-approval-request-v1`: `{ schemaVersion: 1, campaignId, envelopeDigest, token }`.
+`ui-approval-request-v1`: `{ schemaVersion: 1, campaignId, envelopeDigest, approvalToken }`.
 
 `ui-approval-response-v1`: discriminated `result: "approved"|"rejected"|"stale"|"expired"|"replay"|"invalid"` plus optional `approvalEventId`.
 
@@ -417,34 +421,43 @@ git commit -m "feat: add per-response UI security headers and CSP"
 
 ---
 
-### Task 5: One-time approval token lifecycle
+### Task 5: Read-only viewer sessions and approval-token separation
 
 **Files:**
 - Create: `src/ui/ports/approval-write.ts`
-- Create: `src/ui/ports/ui-session.ts`
+- Create: `src/ui/ports/viewer-session.ts`
+- Create: `src/ui/auth/viewer-session-store.ts`
 - Create: `src/ui/approval/token-store.ts`
+- Create: `test/ui/auth/viewer-session-store.test.ts`
 - Create: `test/ui/approval/token-store.test.ts`
 - Create: `test/ui/support/fake-approval-write.ts`
 
 **Interfaces:**
-- Consumes: design section 20 token rules; control-plane `campaignId` + `envelopeDigest`.
+- Consumes: design section 20 credential rules, repository identity, and control-plane `campaignId` + `envelopeDigest`.
 - Produces:
 
 ```ts
-export interface ApprovalWritePort {
-  issueToken(input: { campaignId: string; envelopeDigest: string; now?: string }): Promise<{ token: string; expiresAt: string }>;
-  approve(input: { campaignId: string; envelopeDigest: string; token: string; operator: { label: string; evidence: string } }): Promise<{ result: "approved"; approvalEventId: string } | { result: "stale" | "expired" | "replay" | "invalid" }>;
-}
-
-export interface UiSessionPort {
-  authorize(input: { token: string; now?: string }): Promise<
-    | { result: "authorized"; campaignId: string; envelopeDigest: string; expiresAt: string; approvalConsumed: boolean }
+export interface ViewerSessionPort {
+  issue(input: { repositoryId: string; now?: string }): Promise<{
+    viewerToken: string;
+    idleExpiresAt: string;
+    absoluteExpiresAt: string;
+  }>;
+  authorize(input: { viewerToken: string; repositoryId: string; now?: string }): Promise<
+    | { result: "authorized"; repositoryId: string; idleExpiresAt: string; absoluteExpiresAt: string }
     | { result: "expired" | "invalid" }
   >;
 }
+
+export interface ApprovalWritePort {
+  issueToken(input: { campaignId: string; envelopeDigest: string; now?: string }): Promise<{ approvalToken: string; expiresAt: string }>;
+  approve(input: { campaignId: string; envelopeDigest: string; approvalToken: string; operator: { label: string; evidence: string } }): Promise<{ result: "approved"; approvalEventId: string } | { result: "stale" | "expired" | "replay" | "invalid" }>;
+}
 ```
 
-`InMemoryApprovalTokenStore` enforces: 15-minute TTL, single approval use, binding to exact `{campaignId, envelopeDigest}`, constant-time compare, and no persistence of the token secret. `authorize` is side-effect free and gates every projection read; `consume` is the sole approval transition to terminal use.
+`InMemoryViewerSessionStore` gates reads only. A successful read authorization advances idle expiry by 8 hours capped at the issuance time plus 24 hours; no request, UI reopen, or clock skew may move `absoluteExpiresAt`. It binds the credential to one canonical `repositoryId` and stores only a SHA-256 hash of the secret.
+
+`InMemoryApprovalTokenStore` gates approval only. It enforces a 15-minute TTL, single use, binding to exact `{campaignId, envelopeDigest}`, constant-time compare, and no persistence of the secret. Viewer credentials never pass approval parsing or lookup, and approval credentials never pass viewer parsing or lookup.
 
 - [ ] **Step 1: Write failing token tests**
 
@@ -452,45 +465,54 @@ export interface UiSessionPort {
 // test/ui/approval/token-store.test.ts
 import assert from "node:assert/strict";
 import test from "node:test";
+import { InMemoryViewerSessionStore } from "../../../src/ui/auth/viewer-session-store.js";
 import { InMemoryApprovalTokenStore } from "../../../src/ui/approval/token-store.js";
 
-test("consumes token once and rejects replay", async () => {
+test("caps sliding viewer idle expiry at its absolute lifetime", async () => {
+  const store = new InMemoryViewerSessionStore();
+  const issued = await store.issue({ repositoryId: "repo-1", now: "2026-07-21T00:00:00.000Z" });
+  const touched = await store.authorize({ viewerToken: issued.viewerToken, repositoryId: "repo-1", now: "2026-07-21T23:00:00.000Z" });
+  assert.equal(touched.result, "authorized");
+  if (touched.result === "authorized") assert.equal(touched.idleExpiresAt, issued.absoluteExpiresAt);
+});
+
+test("consumes approval token once and rejects replay", async () => {
   const store = new InMemoryApprovalTokenStore();
   const issued = await store.issue({ campaignId: "C-1", envelopeDigest: "sha256:abc", now: "2026-07-21T12:00:00.000Z" });
-  const first = await store.consume({ campaignId: "C-1", envelopeDigest: "sha256:abc", token: issued.token, now: "2026-07-21T12:00:30.000Z" });
+  const first = await store.consume({ campaignId: "C-1", envelopeDigest: "sha256:abc", approvalToken: issued.approvalToken, now: "2026-07-21T12:00:30.000Z" });
   assert.equal(first, "ok");
-  const second = await store.consume({ campaignId: "C-1", envelopeDigest: "sha256:abc", token: issued.token, now: "2026-07-21T12:00:31.000Z" });
+  const second = await store.consume({ campaignId: "C-1", envelopeDigest: "sha256:abc", approvalToken: issued.approvalToken, now: "2026-07-21T12:00:31.000Z" });
   assert.equal(second, "replay");
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test test/ui/approval/token-store.test.ts`
+Run: `node --test test/ui/auth/viewer-session-store.test.ts test/ui/approval/token-store.test.ts`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement token store and port adapter**
+- [ ] **Step 3: Implement both stores and their port adapters**
 
-Token format: `qkui_` + 32 bytes base64url random; store keyed by SHA-256 hash of token.
+Token formats are disjoint: `qkview_` + 32 bytes base64url random for viewer sessions and `qkapprove_` + 32 bytes base64url random for approval. Both stores key records by SHA-256 hash; neither stores the bearer secret.
 
-`consume` returns `expired` when `now > expiresAt`, `stale` when digest mismatch, `invalid` when unknown token, `replay` when `consumedAt` already set, `ok` once.
+Viewer `authorize` requires the exact repository binding, rejects at idle or absolute expiry, and atomically touches only `idleExpiresAt = min(now + 8h, absoluteExpiresAt)`. Add injected-clock tests at both boundaries, repeated touch tests, repository mismatch, and a proof that an expired session cannot be revived.
 
-`authorize` accepts the same hashed token until expiry, returns its campaign/digest binding plus `approvalConsumed` without the secret, and remains read-authorized after approval so Query can refresh the now-terminal campaign. Add tests proving repeated authorization does not consume the token, authorization after approval remains read-only, and a second `consume` returns `replay`.
+Approval `consume` returns `expired` when `now > expiresAt`, `stale` when digest mismatch, `invalid` for unknown or viewer-prefixed credentials, `replay` when `consumedAt` is already set, and `ok` once. Add reciprocal non-interchangeability tests and prove that consuming approval has no effect on the independent viewer session.
 
 `FakeApprovalWritePort` in test support delegates to store and appends approval events to an in-memory array for assertions.
 
 - [ ] **Step 4: Run token tests**
 
-Run: `pnpm build && node --test dist/test/ui/approval/token-store.test.js`
+Run: `pnpm build && node --test dist/test/ui/auth/viewer-session-store.test.js dist/test/ui/approval/token-store.test.js`
 
-Expected: PASS including expiry at 15 minutes, digest mismatch, post-approval read authorization, and mutation replay rejection.
+Expected: PASS including 8-hour idle/24-hour absolute viewer expiry, repository binding, 15-minute approval expiry, digest mismatch, credential non-interchangeability, post-approval reads, and mutation replay rejection.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/ports/approval-write.ts src/ui/ports/ui-session.ts src/ui/approval/token-store.ts test/ui/approval test/ui/support/fake-approval-write.ts
-git commit -m "feat: add one-time approval token lifecycle"
+git add src/ui/ports/approval-write.ts src/ui/ports/viewer-session.ts src/ui/auth/viewer-session-store.ts src/ui/approval/token-store.ts test/ui/auth test/ui/approval test/ui/support/fake-approval-write.ts
+git commit -m "feat: separate viewer and approval credentials"
 ```
 
 ---
@@ -505,7 +527,7 @@ git commit -m "feat: add one-time approval token lifecycle"
 - Create: `test/ui/api/approval.test.ts`
 
 **Interfaces:**
-- Consumes: Tasks 3–5, `validateSchema` for request/response, `ApprovalWritePort`, and `UiSessionPort`.
+- Consumes: Tasks 3–5, `validateSchema` for request/response, `ApprovalWritePort`, and `ViewerSessionPort`.
 - Produces: `POST /api/v1/approval` only mutation route; `GET`/`PUT`/`DELETE` on `/api/*` return `405`; `GET` on `/api/v1/*` read routes added in later tasks return JSON only.
 
 - [ ] **Step 1: Write failing approval API tests**
@@ -518,16 +540,16 @@ import { createTestUiServer } from "../support/test-server.js";
 
 test("rejects cross-origin and form POST approval", async () => {
   const { authority, close, issue } = await createTestUiServer();
-  const { token } = await issue("C-1", "sha256:abc");
+  const { viewerToken, approvalToken } = await issue("C-1", "sha256:abc");
   const xhr = await fetch(`${authority.baseUrl}/api/v1/approval`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Origin: "http://evil.test", Host: authority.hostHeader, "Sec-Fetch-Site": "cross-site" },
-    body: JSON.stringify({ schemaVersion: 1, campaignId: "C-1", envelopeDigest: "sha256:abc", token }),
+    headers: { Authorization: `Bearer ${viewerToken}`, "Content-Type": "application/json", Origin: "http://evil.test", Host: authority.hostHeader, "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ schemaVersion: 1, campaignId: "C-1", envelopeDigest: "sha256:abc", approvalToken }),
   });
   assert.equal(xhr.status, 403);
   const form = await fetch(`${authority.baseUrl}/api/v1/approval`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded", Origin: authority.origin, Host: authority.hostHeader, "Sec-Fetch-Site": "same-origin" },
+    headers: { Authorization: `Bearer ${viewerToken}`, "Content-Type": "application/x-www-form-urlencoded", Origin: authority.origin, Host: authority.hostHeader, "Sec-Fetch-Site": "same-origin" },
     body: "campaignId=C-1",
   });
   assert.equal(form.status, 415);
@@ -543,9 +565,9 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement approval route**
 
-The server router checks exact Host first, then requires `Authorization: Bearer <token>` and `UiSessionPort.authorize` before invoking any `/api/v1/*` read-model or control-plane port. Missing/unknown/expired tokens return `401` with a fixed body and zero projection/approval port calls. A token whose approval was consumed remains valid for bounded reads until its original expiry but can never authorize another mutation. Do not log or echo the header.
+The server router checks exact Host first, then requires `Authorization: Bearer <viewerToken>` and `ViewerSessionPort.authorize({ viewerToken, repositoryId })` before invoking any `/api/v1/*` read-model or control-plane port. The repository binding is taken from the server-owned workspace context, and campaign/task lookups must resolve to that same repository before data is returned. Missing, unknown, wrong-prefix, wrong-repository, idle-expired, or absolute-expired credentials return `401`/`403` with a fixed body and zero projection/approval port calls. Successful reads touch only the viewer idle deadline. Do not log or echo the header.
 
-`approval.ts` additionally checks in order: method `POST`, `Content-Type: application/json`, `Origin === authority.origin`, `Sec-Fetch-Site === "same-origin"`, body schema, constant-time equality between bearer and body token, exact authorized campaign/digest binding, then token consume via the approval port. It returns `ui-approval-response-v1`.
+`approval.ts` additionally checks in order: method `POST`, `Content-Type: application/json`, `Origin === authority.origin`, `Sec-Fetch-Site === "same-origin"`, body schema, repository ownership of the campaign, exact campaign/digest binding, then consumes the body `approvalToken` through the approval port. The bearer and body credentials must have different valid prefixes; equality is an error, not a binding check. It returns `ui-approval-response-v1`.
 
 No `/api/v1/approval` GET handler. Wrong digest → `{ result: "stale" }` without port mutation.
 
@@ -555,7 +577,7 @@ No `/api/v1/approval` GET handler. Wrong digest → `{ result: "stale" }` withou
 
 Run: `pnpm build && node --test dist/test/ui/api/approval.test.js`
 
-Expected: PASS for authenticated reads, happy-path approval, replay, stale digest, expired token, bearer/body mismatch, GET mutation attempt, and missing `Sec-Fetch-Site`.
+Expected: PASS for viewer-authenticated reads, happy-path approval, repository mismatch, replay, stale digest, either credential expired, credential-class interchange attempts, GET mutation attempt, and missing `Sec-Fetch-Site`.
 
 - [ ] **Step 5: Commit**
 
@@ -961,18 +983,22 @@ test("shell contains no projection data and nonces its only script and style", (
 // test/ui/client/token-vault.test.ts
 import assert from "node:assert/strict";
 import test from "node:test";
-import { consumeFragmentToken } from "../../../src/ui/client/token-vault.js";
+import { consumeFragmentTokens } from "../../../src/ui/client/token-vault.js";
 
-test("consumes the fragment once and strips it without history state", () => {
+test("consumes split fragment credentials and strips them without history state", () => {
   const replaced: unknown[][] = [];
-  const vault = consumeFragmentToken({
-    href: "http://127.0.0.1:9123/preflight/C-1#token=qkui_secret",
+  const vault = consumeFragmentTokens({
+    href: "http://127.0.0.1:9123/preflight/C-1#viewToken=qkview_read&approvalToken=qkapprove_write",
     replaceState: (...args: unknown[]) => replaced.push(args),
   });
-  assert.equal(vault.withToken((token) => token), "qkui_secret");
+  assert.equal(vault.withViewerToken((token) => token), "qkview_read");
+  assert.equal(vault.withApprovalToken((token) => token), "qkapprove_write");
   assert.deepEqual(replaced, [[null, "", "/preflight/C-1"]]);
-  vault.clear();
-  assert.equal(vault.withToken(() => "present"), undefined);
+  vault.clearApproval();
+  assert.equal(vault.withApprovalToken(() => "present"), undefined);
+  assert.equal(vault.withViewerToken((token) => token), "qkview_read");
+  vault.clearAll();
+  assert.equal(vault.withViewerToken(() => "present"), undefined);
 });
 ```
 
@@ -988,9 +1014,9 @@ Expected: FAIL with missing modules.
 
 The Node router serves this shell only for `GET /`, `GET /preflight/:campaignId`, `GET /campaigns`, `GET /campaigns/:campaignId`, and `GET /tasks/:taskId/history`, after exact Host validation. Add table-driven shell tests for all five patterns and every other method. Unknown paths—including `/health`, `/_next/*`, `/assets/*`, and malformed IDs—return fixed `404`/`405` responses with the same security headers; there is no framework fallback, server component, or broad static-file handler.
 
-`consumeFragmentToken` accepts only one `token` parameter, immediately calls `history.replaceState(null, "", pathname + search)`, and returns an object whose token exists only in a private closure. The vault exposes `withToken(callback)` and `clear()`; it has no serializable token property. Never place the token in React state/props, TanStack Router context/search, Query keys/data/meta, Form values, logs, cookies, `sessionStorage`, or `localStorage`.
+`consumeFragmentTokens` accepts exactly one `viewToken` and at most one `approvalToken`, rejects duplicates/unknown fragment keys, immediately calls `history.replaceState(null, "", pathname + search)`, and returns an object whose secrets exist only in private closures. The vault exposes `withViewerToken(callback)`, `withApprovalToken(callback)`, `clearApproval()`, and `clearAll()`; it has no serializable credential property. Approval success clears only the approval closure so authenticated read refreshes continue. Authentication failure, absolute viewer expiry, or workspace close calls `clearAll()`. Never place either credential in React state/props, TanStack Router context/search, Query keys/data/meta, Form values, logs, cookies, `sessionStorage`, or `localStorage`.
 
-`fetch-json.ts` accepts only relative paths beginning `/api/v1/`, obtains the bearer from the vault inside the request closure, and sets `Authorization`, `Accept: application/json`, `credentials: "omit"`, `cache: "no-store"`, and `redirect: "error"`. It never accepts a caller-provided origin.
+`fetch-json.ts` accepts only relative paths beginning `/api/v1/`, obtains the viewer bearer from the vault inside the request closure, and sets `Authorization`, `Accept: application/json`, `credentials: "omit"`, `cache: "no-store"`, and `redirect: "error"`. The approval client separately obtains `approvalToken` only while constructing the one JSON mutation body. Neither helper accepts a caller-provided origin or returns either credential.
 
 - [ ] **Step 4: Build one local IIFE and prove the bundle boundary**
 
@@ -1004,7 +1030,7 @@ Configure TypeScript for `jsx: "react-jsx"`. `main.tsx` calls `createRoot`, supp
 
 Run: `pnpm build && node --test dist/test/ui/shell.test.js dist/test/ui/client/token-vault.test.js dist/test/ui/client/bundle-boundary.test.js`
 
-Expected: PASS with one local bundle, no source map, and no projection/token material in HTML.
+Expected: PASS with one local bundle, no source map, and no projection/credential material in HTML.
 
 ```bash
 git add src/ui/shell.ts src/ui/styles.ts src/ui/client scripts/bundle-ui-client.mjs package.json tsconfig.json tsconfig.build.json test/ui/shell.test.ts test/ui/client/token-vault.test.ts test/ui/client/bundle-boundary.test.ts
@@ -1030,7 +1056,7 @@ git commit -m "feat: add nonce-bound React shell and bundle"
 - Create: `test/ui/client/query-contract.test.ts`
 
 **Interfaces:**
-- Consumes: all bounded read APIs and the opaque token vault.
+- Consumes: all bounded read APIs and the opaque split-credential vault.
 - Produces: code-based typed routes `/`, `/preflight/$campaignId`, `/campaigns`, `/campaigns/$campaignId`, `/tasks/$taskId/history`; finite Query keys and explicit freshness/error states.
 
 - [ ] **Step 1: Write the failing query contract test**
@@ -1050,7 +1076,7 @@ test("query keys contain bounded identity only", () => {
     queryKeys.preflight("C-1"),
     queryKeys.taskHistory("QK-1"),
   ]);
-  assert.doesNotMatch(serialized, /token|digest|qkui_/i);
+  assert.doesNotMatch(serialized, /token|digest|qkview_|qkapprove_/i);
 });
 ```
 
@@ -1079,7 +1105,7 @@ Create one `QueryClient` with:
 }
 ```
 
-The router context contains the `QueryClient` and an `ApiClient` whose private fetch closure reads the token vault. It does not contain the vault or token. Query keys contain only fixed route identity; query data is a replaceable server projection and is never persisted. Every success displays `refreshedAt`/sync freshness; errors do not fall back to stale durable truth.
+The router context contains the `QueryClient` and an `ApiClient` whose private read closure obtains only the viewer credential and whose private approval closure obtains only the approval credential. It does not contain the vault or either secret. Query keys contain only fixed route identity; query data is a replaceable server projection and is never persisted. Every success displays `refreshedAt`/sync freshness; errors do not fall back to stale durable truth.
 
 - [ ] **Step 5: Build, test, and commit**
 
@@ -1143,7 +1169,7 @@ Existing Tasks displays readiness, dependencies, route suggestion, source revisi
 
 Preflight renders every section in design section 22: exact tasks/order, delegated judgment, landing/push, authority, models/spend, verification, stop conditions/residuals, unsupported capabilities, and fixed campaign/digest binding.
 
-Use TanStack Form only for local task filters/selection controls and the approval acknowledgement. Once a canonical envelope is displayed, its fields are read-only: client edits cannot change the envelope, digest, or durable campaign state. The approval form values contain only `acknowledged: boolean`; the campaign ID and digest come from the validated projection, and the token is obtained inside the `ApiClient` closure at submit time. Submission calls only `POST /api/v1/approval` as JSON, never a native form action; its mutation has `retry: false`. Disable the approve button until the digest is visible and acknowledgement is true. On success disable the mutation permanently and invalidate only the current campaign/preflight queries; the vault remains in page memory for those bounded reads until expiry. Clear it on authentication failure, expiry, or workspace close.
+Use TanStack Form only for local task filters/selection controls and the approval acknowledgement. Once a canonical envelope is displayed, its fields are read-only: client edits cannot change the envelope, digest, or durable campaign state. The approval form values contain only `acknowledged: boolean`; the campaign ID and digest come from the validated projection, and the approval credential is obtained inside the `ApiClient` closure at submit time. Submission calls only `POST /api/v1/approval` as JSON, never a native form action; its mutation has `retry: false`. Disable the approve button until the digest is visible and acknowledgement is true. On success disable the mutation permanently, clear only the approval credential, and invalidate only the current campaign/preflight queries; the viewer credential remains in page memory for bounded reads until idle or absolute expiry. Clear both credentials on authentication failure, viewer expiry, or workspace close.
 
 `visual-states.ts` centralizes labels and tones (`neutral`, `info`, `success`, `warning`, `danger`) so status is never conveyed by color alone.
 
@@ -1167,7 +1193,7 @@ git commit -m "feat: add TanStack control workspace views"
 
 **Interfaces:**
 - Consumes: `createTestUiServer` with fake ports.
-- Produces: regression tests for unauthenticated reads, wrong-host, cross-origin, replay, stale-digest, GET mutation, form POST, missing token, redirects, and oversize bodies.
+- Produces: regression tests for unauthenticated reads, wrong-host, wrong-repository, cross-origin, replay, stale-digest, GET mutation, form POST, missing or interchanged credentials, redirects, and oversize bodies.
 
 - [ ] **Step 1: Write failing abuse tests**
 
@@ -1187,9 +1213,9 @@ test("GET /api/v1/approval does not mutate", async () => {
 });
 ```
 
-Add cases for: replay second POST, digest mismatch, expired token (clock injection), `Host: 127.0.0.1:wrong`, `Origin: null`, missing `Sec-Fetch-Site`, body over 1 MiB.
+Add cases for: replay second POST, digest mismatch, viewer idle expiry, viewer absolute expiry despite recent traffic, approval expiry, viewer/approval prefix interchange, equal bearer/body credentials, wrong repository binding, `Host: 127.0.0.1:wrong`, `Origin: null`, missing `Sec-Fetch-Site`, and body over 1 MiB. Use an injected clock; no wall-clock sleeps.
 
-Also request every read route without `Authorization`, with an unknown bearer, and after token expiry; expect `401` and zero port calls. After approval consumption, reads still succeed until the original expiry while a second approval returns `replay`. Verify API responses never redirect and never echo the bearer/token.
+Also request every read route without `Authorization`, with an unknown viewer bearer, with an approval bearer, and after either viewer deadline; expect `401` and zero read/control-plane port calls. Prove repeated successful reads slide the idle deadline but never the absolute deadline. After approval consumption, reads still succeed under the independent viewer session while a second approval returns `replay`. Verify API responses never redirect and never echo either credential.
 
 - [ ] **Step 2: Run tests**
 
@@ -1283,7 +1309,7 @@ git commit -m "test: contain hostile data in React views"
 
 **Interfaces:**
 - Consumes: running `createTestUiServer` on known port passed via `QUIRKS_UI_TEST_PORT`.
-- Produces: automated browser verification of CSP, headers, nonce propagation, fragment removal, no remote requests, no persisted Query/router/form token state, clickjacking (`frame-ancestors`), and approval flow.
+- Produces: automated browser verification of CSP, headers, nonce propagation, split-fragment removal, no remote requests, no persisted Query/router/form credential state, clickjacking (`frame-ancestors`), live progress polling, and approval flow.
 
 - [ ] **Step 1: Add Playwright dev dependency and failing spec**
 
@@ -1311,9 +1337,9 @@ Expected: FAIL until harness exists.
 
 - [ ] **Step 3: Implement browser launch harness**
 
-`launch-ui.ts` starts the real test server and actual bundled React client, opens preflight with `#token=...`, and exposes helpers for approval click plus a network log that fails on every non-loopback request.
+`launch-ui.ts` starts the real test server and actual bundled React client, opens preflight with `#viewToken=...&approvalToken=...`, and exposes helpers for approval click plus a network log that fails on every non-loopback request. The fixture injects a deterministic clock so idle and absolute viewer expiry can be tested without sleeping.
 
-Add scenarios: fragment absent immediately after boot, unauthenticated read rejected, stale digest result, replay after approve, hostile task title visible as text not script, history/search/storage free of the token, and no token/digest in TanStack Query keys. Install no Router or Query devtools and expose no debug globals merely to inspect state; observe requests/storage/history and use the unit contracts instead.
+Add scenarios: both fragment fields absent immediately after boot, unauthenticated read rejected, approval credential rejected as bearer, viewer credential rejected as approval body, stale digest result, replay after approve, continued viewer reads after approval, forced 8-hour idle expiry, non-extendable 24-hour absolute expiry under repeated reads, hostile task/progress text visible as text not script, history/search/storage free of both credentials, and no credential/digest in TanStack Query keys. Install no Router or Query devtools and expose no debug globals merely to inspect state; observe requests/storage/history and use the unit contracts instead.
 
 - [ ] **Step 4: Run browser security suite**
 
@@ -1408,7 +1434,7 @@ git commit -m "test: verify responsive accessible table performance"
 
 **Interfaces:**
 - Consumes: control-plane preflight session handle when available; falls back to explicit error message if ports unavailable.
-- Produces: `quirks-campaign ui open --campaign <id> [--json]` prints `{ ok, authority, campaignId, expiresAt }`, launches the OS browser only when stdout is a TTY and `--json` is absent, and never writes HTML/client state under `AppPaths`.
+- Produces: `quirks-campaign ui open --campaign <id> [--json]` prints only non-secret `{ ok, authority, repositoryId, campaignId, viewerIdleExpiresAt, viewerAbsoluteExpiresAt, approvalExpiresAt? }`, launches the OS browser only when stdout is a TTY and `--json` is absent, and never writes HTML/client state under `AppPaths`.
 
 - [ ] **Step 1: Write failing CLI and persistence tests**
 
@@ -1441,9 +1467,9 @@ Expected: FAIL.
 
 `open-workspace.ts` starts the framework-independent UI server with injected ports from the control-plane factory and loads the already built local client bundle. It does not import React, TanStack packages, CLI scaffold output, or Intent at Node runtime.
 
-`quirks-campaign ui open --campaign <id>` validates args, issues token via `ApprovalWritePort`, prints JSON when `--json`, uses `open`/`xdg-open` only on TTY.
+`quirks-campaign ui open --campaign <id>` validates args, resolves the campaign's repository, always issues a viewer session through `ViewerSessionPort`, and issues an approval token only when the campaign is exactly `awaiting_approval`. The launch URL uses `#viewToken=...` plus optional `&approvalToken=...`; `--json` never returns a launch URL, fragment, or secret and therefore cannot be used to ferry either credential. A non-JSON TTY invocation uses `open`/`xdg-open`; a non-TTY invocation reports the non-secret authority and requires the user to rerun interactively. Reopening an active or terminal campaign creates a fresh viewer session only and can never mint approval authority.
 
-Search campaign artifact and state directories after navigation/approval; assert no `.html`, client cache, router state, form state, or token file was created.
+Viewer sessions exist only in the UI server's memory and disappear when it exits. Search campaign artifact and state directories after navigation/approval; assert no `.html`, client cache, router state, form state, launch URL, or credential file was created.
 
 - [ ] **Step 4: Run CLI tests**
 
@@ -1460,12 +1486,128 @@ git commit -m "feat: open ephemeral local control workspace from CLI"
 
 ---
 
+### Task 20: Live Plan Progress projection and UI
+
+**Files:**
+- Create: `schemas/ui-plan-progress-v1.schema.json`
+- Modify: `src/schema/validate.ts`
+- Modify: `src/ui/ports/campaign-read.ts`
+- Create: `src/ui/read-models/plan-progress.ts`
+- Create: `src/ui/api/plan-progress.ts`
+- Modify: `src/ui/router.ts`
+- Modify: `src/ui/client/query-options.ts`
+- Create: `src/ui/client/components/plan-progress-ledger.tsx`
+- Modify: `src/ui/client/views/campaigns-view.tsx`
+- Modify: `src/ui/client/routes/campaign-detail.tsx`
+- Create: `test/ui/read-models/plan-progress.test.ts`
+- Create: `test/ui/client/plan-progress.test.tsx`
+
+**Interfaces:**
+- Consumes: control-plane Task 17 immutable `PlanOutline`, controller-observed `quirks-runner-progress-event-v1` journal, and `CampaignReadPort`.
+- Produces: `GET /api/v1/tasks/:taskId/plan-progress?campaignId=<id>` and a read-only `ui-plan-progress-v1` projection rendered inside the active Campaign inspector.
+
+```ts
+export interface UiPlanProgressV1 {
+  schemaVersion: 1;
+  refreshedAt: string;
+  campaignId: string;
+  taskId: string;
+  plan: {
+    path: string;
+    commit: string;
+    taskNumber: number;
+    taskTitle: string;
+  };
+  execution: {
+    jobId: string;
+    agentLabel: string;
+    runnerKind: string;
+    model: string;
+    status: "queued" | "running" | "blocked" | "awaiting_review" | "fixing" | "verifying" | "reported_complete" | "failed" | "cancelled";
+    stage: "setup" | "implement" | "commit" | "review" | "fix" | "verification";
+    tddPhase: "red" | "green" | "refactor" | null;
+    currentStepKey: string | null;
+    note: string | null;
+    workerReportedAt: string | null;
+    controllerObservedAt: string;
+    progressAgeSeconds: number;
+  };
+  steps: Array<{
+    key: string;
+    number: number;
+    label: string;
+    status: "pending" | "active" | "reported_complete" | "reviewed" | "blocked" | "failed" | "cancelled";
+    reportedAt: string | null;
+    reviewedAt: string | null;
+  }>;
+  completionAuthority: "controller";
+  source: "controller-journal" | "legacy-best-effort";
+}
+```
+
+- [ ] **Step 1: Write failing projection and component tests**
+
+```ts
+// test/ui/read-models/plan-progress.test.ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildPlanProgressProjection } from "../../../src/ui/read-models/plan-progress.js";
+
+test("keeps worker-reported completion distinct from controller review", async () => {
+  const projection = await buildPlanProgressProjection(fixtureWithReportedCompletion());
+  assert.equal(projection.execution.status, "reported_complete");
+  assert.equal(projection.steps.at(-1)?.status, "reported_complete");
+  assert.equal(projection.completionAuthority, "controller");
+  assert.equal(projection.steps.at(-1)?.reviewedAt, null);
+});
+```
+
+Render the component with hostile `agentLabel`, `model`, `note`, plan path, and step labels. Assert they remain React text, progress is not inferred from array position, and a worker `reported_complete` event never renders `Accepted` without a later controller review event.
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `node --test test/ui/read-models/plan-progress.test.ts test/ui/client/plan-progress.test.tsx`
+
+Expected: FAIL with missing schema/modules.
+
+- [ ] **Step 3: Add the bounded controller-owned projection and API**
+
+Add strict `ui-plan-progress-v1` schema bounds: at most 128 steps, 256 bytes for `note`, 512 characters for labels/paths, fixed enums above, and `additionalProperties: false` on every object. Extend `CampaignReadPort` with:
+
+```ts
+getPlanProgress(input: { taskId: string; campaignId: string }): Promise<UiPlanProgressV1>;
+```
+
+The control-plane adapter reads the immutable source ref and controller progress journal through its own bounded API; the browser and UI server never open `artifacts/<job-id>/progress.json` directly. Resolve task and campaign ownership before reading. Reconstruct steps from the immutable plan outline at its recorded commit, overlay only validated controller-observed events, compute age from the server clock, and label missing legacy detail as `legacy-best-effort` rather than inventing progress. Malformed, oversized, missing, or mismatched job events produce a bounded unavailable/error projection and never fall back to the worker snapshot as canonical truth.
+
+Register only `GET /api/v1/tasks/:taskId/plan-progress?campaignId=<id>`. It requires the viewer bearer and the same repository binding as every other read route, validates both IDs, returns `Cache-Control: no-store`, and exposes no raw reports, logs, mailbox paths, tokens, or unbounded journal fields.
+
+- [ ] **Step 4: Render and poll the vertical ledger**
+
+Add `queryKeys.planProgress(taskId, campaignId)` using only those bounded IDs. While a campaign is non-terminal and `document.visibilityState === "visible"`, poll every 2 seconds with TanStack Query; stop polling on terminal campaign state, viewer authentication failure/expiry, unmount, or hidden document. Refetch immediately when visibility returns. Do not use WebSockets, SSE, TanStack Pacer, browser storage, or a client-side event log in v1.
+
+Render a compact vertical ledger under the selected campaign task: immutable task title and numbered plan steps; current agent, runner, model, stage, optional TDD phase; worker-reported timestamp; controller-observed timestamp; progress age; review/fix/verification state; and explicit `Worker reported` versus `Controller reviewed` labels. A stale heartbeat, blocked state, legacy source, or unavailable immutable commit is visible in text and never represented by color alone. Do not display raw worker output or make progress controls mutable.
+
+- [ ] **Step 5: Build, test, and commit**
+
+Run: `pnpm build && node --test dist/test/ui/read-models/plan-progress.test.js dist/test/ui/client/plan-progress.test.js`
+
+Expected: PASS for active polling policy, terminal/hidden/session-expired stop conditions, hostile text, legacy fallback, repository mismatch, and worker/controller authority separation.
+
+```bash
+git add schemas/ui-plan-progress-v1.schema.json src/schema/validate.ts src/ui/ports/campaign-read.ts src/ui/read-models/plan-progress.ts src/ui/api/plan-progress.ts src/ui/router.ts src/ui/client test/ui/read-models/plan-progress.test.ts test/ui/client/plan-progress.test.tsx
+git commit -m "feat: expose controller-observed live plan progress"
+```
+
+---
+
 ## Plan Boundary Verification
 
 - [ ] Run `pnpm check` and `pnpm exec playwright test test/browser` from a clean worktree; record commands and exit codes.
 - [ ] Confirm no file under `AppPaths.campaigns/**` gains `.html` artifacts during UI tests.
 - [ ] Run hostile fixture suite: titles, paths, logs, Git identities, provider metadata render escaped in browser snapshots.
-- [ ] Verify no read projection or approval can occur without the live in-memory token; approval also fails on replay, stale digest, GET/form, or cross-origin fetch.
+- [ ] Verify no read projection can occur without the live repository-bound viewer session; approval additionally requires the independent live approval credential and fails on interchange, replay, stale digest, GET/form, or cross-origin fetch.
+- [ ] Exercise two simultaneous jobs updating separate progress mailboxes; verify the UI shows both without lost updates and never promotes worker-reported completion to controller-reviewed completion.
 - [ ] Confirm projections expose `Local coordination only` and `No shared lease` on Existing Tasks and Campaigns views.
 - [ ] Run `pnpm dlx @tanstack/intent@0.3.6 list --json`; confirm only the four exact allowed packages surface and the `AGENTS.md` commands/versions remain current.
 - [ ] Search `src/ui` for `TODO`, `TBD`, `FIXME`, `dangerouslySetInnerHTML`, `innerHTML`, remote `http` except loopback authority, and runtime imports of Start/Store/Pacer/Virtual/devtools.
@@ -1479,7 +1621,8 @@ git commit -m "feat: open ephemeral local control workspace from CLI"
 | Spec requirement | Task |
 |---|---|
 | Loopback bind + Host authority | 3 |
-| One-time 15-minute fragment token | 5, 12, 15, 17, 19 |
+| 8-hour idle / 24-hour absolute repository-bound viewer | 5, 6, 12, 15, 17, 19 |
+| Independent one-time 15-minute approval credential | 5, 6, 12, 14, 15, 17, 19 |
 | No proposal data in initial shell | 12 |
 | JSON approval only, fetch metadata | 6, 14, 15, 17 |
 | Security headers + nonce CSP | 4, 12, 17 |
@@ -1488,6 +1631,7 @@ git commit -m "feat: open ephemeral local control workspace from CLI"
 | Preflight proposal sections | 8, 13, 14 |
 | Campaigns journal view | 9, 13, 14 |
 | Task History compact provenance | 10, 13, 14 |
+| Live immutable-plan step progress | 20 |
 | Local coordination notices | 7, 9 |
 | Framework-independent server; no Start | 3, 6, 11, 12, 19 |
 | Focused Router/Query/Table/Form stack | 11, 13, 14 |
@@ -1502,15 +1646,15 @@ No `TBD`, `TODO`, or "implement later" steps remain. Each task includes concrete
 
 ### Type consistency
 
-- `envelopeDigest` is used consistently in token store, approval API, preflight proposal, and client approval view.
-- Port names `ApprovalWritePort`, `PreflightReadPort`, `CampaignReadPort` are stable for the control-plane plan to implement.
+- `envelopeDigest` is used consistently in the approval token store, approval API, preflight proposal, and client approval view; it is not part of viewer authorization.
+- Port names `ViewerSessionPort`, `ApprovalWritePort`, `PreflightReadPort`, and `CampaignReadPort` are stable for the UI/control-plane plans to implement.
 - UI schema names follow `ui-*-v1` and are registered in `SchemaName`.
 - Router params use `$campaignId`/`$taskId`; server paths use `:campaignId`/`:taskId`; both validate the same bounded identifier grammar.
-- Query keys contain projection identity only; approval Form values contain acknowledgement only; the bearer token stays in the closure-backed vault.
+- Query keys contain projection identity only; approval Form values contain acknowledgement only; viewer and approval credentials stay in separate closure-backed vault slots.
 
 ### Concerns carried to execution
 
-1. **Control-plane dependency:** Tasks 8–10 and 19 require real port implementations from `2026-07-21-quirks-campaign-control-plane.md`; until then fakes unblock UI development but end-to-end preflight approval needs CTL-002/003.
+1. **Control-plane dependency:** Tasks 8–10, 19, and 20 require real port implementations from `2026-07-21-quirks-campaign-control-plane.md`; until then fakes unblock UI development, but end-to-end preflight approval and live progress need their mapped control-plane tasks.
 2. **Client bundling:** esbuild is dev-only; `pnpm build` must compile TypeScript and rebuild `dist/ui/client.bundle.js` from source before shell/Playwright tests. A stale checked-in browser artifact is not allowed.
 3. **Client state:** Query cache, Router state, React state, and Form state are disposable projections. Any implementation that makes them authoritative or persists them is a design violation even if the UI appears to work.
 4. **TanStack guidance:** CLI and Intent are alpha-era development tools invoked at exact recorded versions. They do not become production dependencies or runtime commands, and newly discovered skill sources require a reviewed allow-list change.

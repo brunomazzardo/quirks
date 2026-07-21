@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the host-independent `quirks-campaign` control plane on top of the frozen task-source kernel: immutable campaign envelopes, digest-bound approval, deterministic scheduling, external CLI runner dispatch, durable recovery, budgets, circuit breakers, and fake-runner acceptance.
+**Goal:** Build the host-independent `quirks-campaign` control plane on top of the frozen task-source kernel: immutable campaign envelopes, digest-bound approval, deterministic scheduling, external CLI runner dispatch, per-job live plan progress, durable recovery, budgets, circuit breakers, and fake-runner acceptance.
 
-**Architecture:** Campaign truth lives in append-only journals under the platform application-state directory keyed by repository identity and campaign ID. Deterministic TypeScript enforces state transitions, envelope hashes, approval binding, lane scheduling, and runner IPC; a separately dispatched supervisor CLI session returns schema-valid decisions but cannot bypass mechanical invariants. Runner profiles resolve from user configuration; argv-array dispatch never shells briefs; the watchdog owns detached child lifecycle. Loopback HTML, CSP, and browser security belong to plan 3; Git worktrees, merge, and push belong to plan 4.
+**Architecture:** Campaign truth lives in append-only journals under the platform application-state directory keyed by repository identity and campaign ID. Deterministic TypeScript enforces state transitions, envelope hashes, approval binding, lane scheduling, runner IPC, and controller-observed progress; a separately dispatched supervisor CLI session returns schema-valid decisions but cannot bypass mechanical invariants. Each worker atomically replaces one bound advisory progress snapshot while the watchdog validates and appends observed transitions to `progress.jsonl`; workers never write the authoritative queue or task status. Runner profiles resolve from user configuration; argv-array dispatch never shells briefs. Loopback HTML, CSP, viewer sessions, and browser rendering belong to plan 3; Git worktrees, merge, and push belong to plan 4.
 
 **Tech Stack:** Node.js 24 LTS (`>=24.18.0`), TypeScript 7.0.2, ESM, pnpm 10.30.3, Node `node:test`, Ajv 8.20.0 plus `ajv-formats` 3.0.1 at build time only, and Oxlint 1.74.0.
 
@@ -25,10 +25,10 @@ This is plan 2 of the Quirks v1 suite. It may be authored alongside the local-co
 | Task inventory ID | Plan tasks |
 |---|---|
 | `QK-CTL-002` | Tasks 1–4 |
-| `QK-CTL-003` | Tasks 5–7, 14 |
+| `QK-CTL-003` | Tasks 5–7 |
 | `QK-RUN-001` | Tasks 8–10 |
 | `QK-RUN-002` | Tasks 11–13 |
-| `QK-CTL-004` | Tasks 15–16 |
+| `QK-CTL-004` | Tasks 14–17 |
 
 ### File structure
 
@@ -41,6 +41,8 @@ schemas/
   host-profile-v1.schema.json
   runner-profile-v1.schema.json
   runner-job-result-v1.schema.json
+  runner-progress-v1.schema.json
+  runner-progress-event-v1.schema.json
 src/campaign/
   types.ts              # envelope, lifecycle, budgets, routing contracts
   envelope.ts           # canonical digest and immutability checks
@@ -56,6 +58,7 @@ src/campaign/
   failures.ts           # failure classification
   supervisor.ts         # claim/dispatch/verify orchestration (no Git landing)
   recovery.ts           # resume revalidation and stale-lock takeover
+  plan-outline.ts       # exact plan-at-commit task/step parser
 src/runner/
   types.ts              # profiles, jobs, sessions
   profiles.ts           # user-config loading and validation
@@ -65,6 +68,7 @@ src/runner/
   dispatcher.ts         # spawn-without-shell dispatch
   sessions.ts           # sessions.json registry
   watchdog.ts           # detached execution and liveness
+  progress.ts           # bound atomic worker mailbox + observed events
 src/cli/
   quirks-campaign.ts    # replace placeholder with real commands
   campaign-args.ts
@@ -87,6 +91,9 @@ test/integration/campaign-control-plane.test.ts
 - Commands are argv arrays. Do not invoke a shell to execute runners, adapters, or briefs.
 - All paths persisted in project data are repository-relative POSIX paths; reject absolute paths, `..` traversal, NUL bytes, and paths outside the canonical repository.
 - Workers cannot mark tasks reviewed or done, broaden scope, merge, push, change campaign state or budgets, or approve their own work.
+- Workers never write a shared queue or campaign journal. Each job may replace
+  only its assigned bounded progress snapshot; every UI-visible progress event
+  is validated and appended by the controller with worker/controller source.
 - Nothing may claim, dispatch, or mutate a task before a durable digest-bound approval event exists.
 - Loopback HTML, CSP, browser tests, and rendered approval UI belong to plan 3—not this plan. This plan exposes schema-valid JSON read models and headless approval consumption for tests and the UI plan.
 - Git worktrees, integration branches, merge, and approved push belong to plan 4. This plan defines a `WorktreePort` interface and uses fakes in tests.
@@ -1891,12 +1898,140 @@ git add src/cli/quirks-campaign.ts src/cli/campaign-args.ts src/index.ts test/in
 git commit -m "feat: expose quirks campaign control plane CLI"
 ```
 
+### Task 17: Per-job live plan-progress mailbox and controller journal
+
+**Files:**
+- Create: `schemas/runner-progress-v1.schema.json`
+- Create: `schemas/runner-progress-event-v1.schema.json`
+- Modify: `src/schema/validate.ts`
+- Create: `src/campaign/plan-outline.ts`
+- Create: `src/runner/progress.ts`
+- Modify: `src/campaign/store.ts`
+- Modify: `src/campaign/types.ts`
+- Modify: `src/campaign/supervisor.ts`
+- Modify: `src/runner/watchdog.ts`
+- Modify: `src/runner/dispatcher.ts`
+- Modify: `src/cli/campaign-args.ts`
+- Modify: `src/cli/quirks-campaign.ts`
+- Create: `test/campaign/plan-outline.test.ts`
+- Create: `test/runner/progress.test.ts`
+- Create: `test/integration/live-progress.test.ts`
+- Create: `test/fixtures/plans/hostile-progress-plan.md`
+- Create: `test/fixtures/sdd/progress.md`
+
+**Interfaces:**
+- Consumes: `CampaignStore`, commit-pinned plan `sourceRefs`, session/job binding, `writeJsonAtomic`, watchdog observation, and the CLI from Task 16.
+- Produces:
+
+```ts
+export interface PlanStep { id: string; task: number; step: number; label: string }
+export interface PlanTaskOutline { task: number; label: string; steps: readonly PlanStep[] }
+export interface PlanOutline { path: string; commit: string; tasks: readonly PlanTaskOutline[] }
+
+export interface ProgressBinding {
+  schemaVersion: 1;
+  repositoryId: string;
+  campaignId: string;
+  taskId: string;
+  jobId: string;
+  attempt: number;
+  planPath: string;
+  planCommit: string;
+  allowedPlanTasks: readonly number[];
+}
+
+export function loadPlanOutline(root: string, refs: readonly ImmutableSourceRef[]): Promise<PlanOutline>;
+export function initializeProgressMailbox(store: CampaignStore, binding: ProgressBinding, now: string): Promise<string>;
+export function updateRunnerProgress(contextPath: string, update: RunnerProgressUpdate, now: string): Promise<RunnerProgress>;
+export function observeRunnerProgress(store: CampaignStore, jobId: string, now: string): Promise<RunnerProgressEvent | undefined>;
+```
+
+- [ ] **Step 1: Write failing plan and mailbox tests**
+
+```ts
+// test/runner/progress.test.ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import { initializeProgressMailbox, updateRunnerProgress } from "../../src/runner/progress.js";
+import { createProgressStoreFixture } from "./support/progress-fixture.js";
+
+test("atomically advances only the bound job and plan step", async () => {
+  const fixture = await createProgressStoreFixture({ jobId: "job-1", allowedPlanTasks: [14] });
+  const contextPath = await initializeProgressMailbox(fixture.store, fixture.binding, fixture.startedAt);
+  const progress = await updateRunnerProgress(contextPath, {
+    status: "running",
+    stage: "implement",
+    planTask: 14,
+    step: 1,
+    tddPhase: "red",
+    completedStepIds: [],
+    note: "Focused test fails as expected",
+  }, "2026-07-21T18:00:01.000Z");
+  assert.equal(progress.revision, 1);
+  assert.deepEqual(progress.plan, { path: fixture.binding.planPath, commit: fixture.binding.planCommit, task: 14, step: 1 });
+  assert.equal(progress.jobId, "job-1");
+});
+
+test("worker reported completion cannot complete canonical task state", async () => {
+  const fixture = await createProgressStoreFixture({ jobId: "job-1", allowedPlanTasks: [14] });
+  await fixture.report({ status: "reported_complete", stage: "commit", planTask: 14, step: 5, completedStepIds: fixture.allStepIds });
+  assert.equal((await fixture.taskSource.show(fixture.binding.taskId)).status, "claimed");
+  assert.equal((await fixture.store.readState()).status, "running");
+});
+```
+
+`plan-outline.test.ts` uses `git show <commit>:<path>` through `execFile`, accepts exact `### Task N` and `- [ ] **Step M:` headings, derives bounded text labels, and rejects duplicate/missing referenced tasks, duplicate steps, traversal paths, missing commits, and mappings not present in task `sourceRefs`.
+
+- [ ] **Step 2: Build and verify progress modules are missing**
+
+Run: `pnpm build && node --test dist/test/campaign/plan-outline.test.js dist/test/runner/progress.test.js`
+
+Expected: FAIL with missing `src/campaign/plan-outline.ts` and `src/runner/progress.ts`.
+
+- [ ] **Step 3: Implement strict schemas, mailbox, and observation**
+
+`runner-progress-v1` matches design section 16.4 exactly. It caps the document at 16 KiB before parsing, `completedStepIds` at 512 unique `task-N/step-M` values, `note` at 256 bytes after UTF-8 encoding, `attempt`/`revision` at non-negative safe integers, and every identity/path/hash with the existing bounded definitions. Reject unknown fields and secret-shaped note values.
+
+`runner-progress-event-v1` contains the validated binding, revision, status/stage/TDD phase/current step, cumulative completed-step IDs, sanitized note, worker `reportedAt`, controller `observedAt`, and source enum `worker|controller|legacy-superpowers-ledger`. It contains no task/plan bodies, logs, prompts, test output, diffs, credentials, or arbitrary evidence map.
+
+`CampaignStore` adds `progressEventsFile`, `appendProgressEvent`, and `readProgressEvents` for `progress.jsonl`; lifecycle replay continues reading only `events.jsonl`. `initializeProgressMailbox` creates `artifacts/<job-id>/progress-context.json` plus `progress.json` with modes `0400` and `0600`. The dispatcher gives the job sandbox write access only to its own artifact directory and passes the context path as `QUIRKS_PROGRESS_CONTEXT`; it never places credentials there.
+
+`updateRunnerProgress` refuses an absent/out-of-root context, validates the context against campaign envelope/session metadata and commit-pinned outline, reads the last snapshot, enforces revision and legal status/stage transitions, derives all binding/plan labels itself, and uses `writeJsonAtomic`. The CLI accepts:
+
+```text
+quirks-campaign progress set --status STATUS --stage STAGE --plan-task N --step M [--tdd red|green|refactor] [--complete-step task-N/step-M ...] [--note TEXT] [--json]
+```
+
+It rejects campaign/task/job/path overrides. The Quirks worker brief requires a call before every plan step, after each completed step, at RED/GREEN/refactor, before commit, and on block/failure.
+
+`observeRunnerProgress` appends at most one event per unseen revision with controller `observedAt`; it never applies a task-source mutation. Supervisor-generated queued/review/fix/verification/accepted progress calls use source `controller`. Watchdog heartbeat and progress age remain separate fields. Parse legacy `.superpowers/sdd/progress.md` only into `legacy-superpowers-ledger` task-complete observations; never synthesize an active step or authoritative acceptance from it.
+
+- [ ] **Step 4: Run concurrency, recovery, and integration tests**
+
+`live-progress.test.ts` launches two fake jobs, updates their distinct mailboxes concurrently, observes both, simulates controller restart, and verifies the projection resumes from `progress.jsonl` plus current snapshots without duplicate observations. Add cases for wrong job/plan/task/step, arbitrary context path, skipped revision, illegal transition, malformed/oversized/secret-shaped content, torn replacement, hostile labels/notes, missing legacy ledger, and worker `reported_complete` without review.
+
+Run: `pnpm build && node --test dist/test/campaign/plan-outline.test.js dist/test/runner/progress.test.js dist/test/integration/live-progress.test.js`
+
+Expected: PASS with isolated per-job files, monotonic observations, restart recovery, and zero authoritative mutation from worker telemetry.
+
+- [ ] **Step 5: Commit live progress transport**
+
+```bash
+git add schemas/runner-progress-v1.schema.json schemas/runner-progress-event-v1.schema.json src/schema/validate.ts src/campaign/plan-outline.ts src/campaign/store.ts src/campaign/types.ts src/campaign/supervisor.ts src/runner/progress.ts src/runner/watchdog.ts src/runner/dispatcher.ts src/cli/campaign-args.ts src/cli/quirks-campaign.ts test/campaign/plan-outline.test.ts test/runner/progress.test.ts test/integration/live-progress.test.ts test/fixtures/plans/hostile-progress-plan.md test/fixtures/sdd/progress.md
+git commit -m "feat: add controller-observed live plan progress"
+```
+
 ## Plan Boundary Verification
 
 - [ ] Run `pnpm check` from a clean worktree and record the command plus exit code in the task provenance candidate.
 - [ ] Run `node --test dist/test/integration/campaign-control-plane.test.js` and the full fake-runner matrix without any real Claude, Codex, or Cursor credentials.
 - [ ] Confirm no task claims, runner dispatches, or task-source mutations occur before a durable digest-bound approval event.
 - [ ] Confirm `quirks-campaign status --json` reports `localCoordinationOnly: true` and never implies a global lease.
+- [ ] Run two concurrent fake jobs and prove each can replace only its own
+  `progress.json`; verify `progress.jsonl` records controller observation and a
+  worker `reported_complete` leaves canonical campaign/task status unchanged.
+- [ ] Verify plan outline/task mappings come only from immutable `sourceRefs` at
+  exact commits; no prose inventory-table inference or mutable-plan fallback.
 - [ ] Search new files for absolute personal paths, credentials, shell command strings, `TODO`, `TBD`, and `FIXME`; only disposable fixture identifiers may appear as project names.
 - [ ] Confirm loopback HTML, CSP, browser tests, Git worktree creation, merge, and push are absent from this diff and remain in plans 3 and 4.
 - [ ] Request an independent review of the full control-plane diff against design sections 10, 11, 12, 13, 14, 16, 17, 19, 21, and 23.2–23.3 before beginning skills/Git integration.
