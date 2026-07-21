@@ -1,0 +1,134 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import {
+  hangForever,
+  oversizedPayload,
+  parseRunnerArgs,
+  wedgeAfterWork,
+  writeArtifact,
+  writePartialArtifact,
+} from "./shared-modes.mjs";
+
+async function writeCodexResult(resultPath, payload) {
+  if (!resultPath) {
+    process.stderr.write("missing -o result path\n");
+    process.exit(2);
+  }
+  await mkdir(path.dirname(resultPath), { recursive: true });
+  await writeFile(resultPath, `${JSON.stringify(payload)}\n`, "utf8");
+}
+
+async function main() {
+  const { mode, sessionId, resultPath } = parseRunnerArgs(process.argv);
+  const outDir = process.env.QUIRKS_FAKE_RUNNER_OUTDIR;
+
+  switch (mode) {
+    case "success": {
+      const artifactPath = await writeArtifact(outDir);
+      await writeCodexResult(resultPath, {
+        status: "success",
+        sessionHandle: sessionId,
+        artifactPaths: artifactPath ? [artifactPath] : [resultPath],
+      });
+      return;
+    }
+    case "success-no-disk": {
+      await writeCodexResult(resultPath, {
+        status: "success",
+        sessionHandle: sessionId,
+        artifactPaths: [],
+      });
+      return;
+    }
+    case "permission-exit-zero":
+    case "exit-zero-denied": {
+      await writeCodexResult(resultPath, {
+        status: "permission_denied",
+        sessionHandle: sessionId,
+        artifactPaths: [],
+        failure: "permission denied",
+      });
+      return;
+    }
+    case "partial": {
+      const artifactPath = await writePartialArtifact(outDir);
+      await writeCodexResult(resultPath, {
+        status: "failure",
+        sessionHandle: sessionId,
+        artifactPaths: artifactPath ? [artifactPath] : [],
+        failure: "honest_partial",
+      });
+      return;
+    }
+    case "malformed": {
+      await writeArtifact(outDir);
+      process.stdout.write("All done. Task complete.\n");
+      return;
+    }
+    case "oversized": {
+      process.stdout.write(oversizedPayload());
+      return;
+    }
+    case "transient": {
+      await writeCodexResult(resultPath, {
+        status: "failure",
+        sessionHandle: sessionId,
+        artifactPaths: [],
+        failure: "transient_runner",
+      });
+      process.exitCode = 1;
+      return;
+    }
+    case "usage-limit": {
+      await writeCodexResult(resultPath, {
+        status: "usage_limit",
+        sessionHandle: sessionId,
+        artifactPaths: [],
+        failure: "usage limit reached",
+      });
+      return;
+    }
+    case "silence":
+    case "timeout":
+      hangForever();
+      return;
+    case "wedge-after-work":
+      await wedgeAfterWork(outDir, async () => {
+        await writeCodexResult(resultPath, {
+          status: "success",
+          sessionHandle: sessionId,
+          artifactPaths: outDir ? [path.join(outDir, "result.json")] : [],
+        });
+      });
+      return;
+    case "non-resumable": {
+      await writeCodexResult(resultPath, {
+        status: "failure",
+        sessionHandle: "invalid-resume-handle",
+        artifactPaths: [],
+        failure: "non-resumable",
+      });
+      return;
+    }
+    case "fabricated-tests": {
+      await writeCodexResult(resultPath, {
+        status: "success",
+        sessionHandle: sessionId,
+        artifactPaths: [],
+        failure: "fabricated_evidence",
+      });
+      return;
+    }
+    case "cancel":
+      process.exitCode = 130;
+      return;
+    case "orphan":
+      hangForever();
+      return;
+    default:
+      process.stderr.write(`unknown mode: ${mode}\n`);
+      process.exit(2);
+  }
+}
+
+await main();

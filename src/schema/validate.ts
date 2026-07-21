@@ -17,13 +17,17 @@ export type SchemaName =
   | "host-profile-v1"
   | "runner-profile-v1"
   | "runner-job-result-v1"
+  | "runner-progress-v1"
+  | "runner-progress-event-v1"
+  | "runner-progress-binding-v1"
   | "ui-existing-tasks-v1"
   | "ui-preflight-proposal-v1"
   | "ui-campaign-summary-v1"
   | "ui-campaign-detail-v1"
   | "ui-task-history-v1"
   | "ui-approval-request-v1"
-  | "ui-approval-response-v1";
+  | "ui-approval-response-v1"
+  | "ui-plan-progress-v1";
 
 type Validator = ((value: unknown) => boolean) & {
   errors?: readonly { instancePath?: string; message?: string }[] | null;

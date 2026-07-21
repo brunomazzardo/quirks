@@ -59,3 +59,23 @@ export interface CampaignApproval {
   tokenId: string;
   evidence: Record<string, string>;
 }
+
+export interface ProgressBinding {
+  schemaVersion: 1;
+  repositoryId: string;
+  campaignId: string;
+  taskId: string;
+  jobId: string;
+  attempt: number;
+  planPath: string;
+  planCommit: string;
+  allowedPlanTasks: readonly number[];
+}
+
+export interface StoredProgressEvent {
+  schemaVersion: 1;
+  jobId: string;
+  revision: number;
+  observedAt: string;
+  event: Record<string, unknown>;
+}

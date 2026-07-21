@@ -12,27 +12,29 @@ function emitInit(sessionId) {
     type: "system",
     subtype: "init",
     session_id: sessionId,
+    threadId: sessionId,
   })}\n`);
 }
 
-function emitSuccessResult(sessionId, extra = {}) {
+function emitResult(sessionId, extra = {}) {
   process.stdout.write(`${JSON.stringify({
     type: "result",
     subtype: "success",
     session_id: sessionId,
+    threadId: sessionId,
     is_error: false,
-    result: "Done.",
     ...extra,
   })}\n`);
 }
 
-function emitErrorResult(sessionId, extra = {}) {
+function emitErrorResult(sessionId, message, extra = {}) {
   process.stdout.write(`${JSON.stringify({
     type: "result",
     subtype: "error",
     session_id: sessionId,
+    threadId: sessionId,
     is_error: true,
-    result: "Runner failed.",
+    error: message,
     ...extra,
   })}\n`);
 }
@@ -45,23 +47,21 @@ async function main() {
     case "success":
       emitInit(sessionId);
       await writeArtifact(outDir);
-      emitSuccessResult(sessionId);
+      emitResult(sessionId);
       return;
     case "success-no-disk":
       emitInit(sessionId);
-      emitSuccessResult(sessionId);
+      emitResult(sessionId);
       return;
     case "permission-exit-zero":
     case "exit-zero-denied":
-      await writeArtifact(outDir);
-      emitSuccessResult(sessionId, {
-        permission_denials: [{ tool_name: "Bash", tool_use_id: "toolu_1", tool_input: {} }],
-      });
+      emitInit(sessionId);
+      emitErrorResult(sessionId, "permission denied by host", { message: "permission denied" });
       return;
     case "partial":
       emitInit(sessionId);
       await writePartialArtifact(outDir);
-      emitErrorResult(sessionId, { result: "honest_partial" });
+      emitErrorResult(sessionId, "honest_partial");
       return;
     case "malformed":
       await writeArtifact(outDir);
@@ -72,14 +72,12 @@ async function main() {
       return;
     case "transient":
       emitInit(sessionId);
-      emitErrorResult(sessionId, { result: "transient_runner" });
+      emitErrorResult(sessionId, "transient_runner");
       process.exitCode = 1;
       return;
     case "usage-limit":
-      process.stdout.write(`${JSON.stringify({
-        type: "rate_limit_event",
-        rate_limit_info: { requests_remaining: 0, tokens_remaining: 100 },
-      })}\n`);
+      emitInit(sessionId);
+      emitErrorResult(sessionId, "usage limit reached", { message: "rate limit exceeded" });
       return;
     case "silence":
     case "timeout":
@@ -87,15 +85,15 @@ async function main() {
       return;
     case "wedge-after-work":
       emitInit(sessionId);
-      await wedgeAfterWork(outDir, () => emitSuccessResult(sessionId));
+      await wedgeAfterWork(outDir, () => emitResult(sessionId));
       return;
     case "non-resumable":
       emitInit(sessionId);
-      emitErrorResult(sessionId, { result: "non-resumable", session_id: "invalid-resume-handle" });
+      emitErrorResult(sessionId, "non-resumable", { threadId: "invalid-resume-handle" });
       return;
     case "fabricated-tests":
       emitInit(sessionId);
-      emitSuccessResult(sessionId, { result: "All tests passed." });
+      emitResult(sessionId, { message: "tests passed" });
       return;
     case "cancel":
       process.exitCode = 130;

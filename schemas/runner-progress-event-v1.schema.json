@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/runner-progress-event-v1",
+  "type": "object",
+  "required": ["schemaVersion", "binding", "revision", "status", "stage", "completedStepIds", "observedAt", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "binding": {
+      "type": "object",
+      "required": ["schemaVersion", "repositoryId", "campaignId", "taskId", "jobId", "attempt", "planPath", "planCommit", "allowedPlanTasks"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "repositoryId": { "type": "string", "pattern": "^sha256:[A-Za-z0-9._-]{1,128}$", "maxLength": 135 },
+        "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "taskId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "attempt": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "planPath": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "planCommit": { "type": "string", "minLength": 40, "maxLength": 64 },
+        "allowedPlanTasks": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "type": "integer", "minimum": 1, "maximum": 10000 }
+        }
+      }
+    },
+    "revision": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "status": {
+      "enum": ["queued", "running", "blocked", "awaiting_review", "fixing", "verifying", "reported_complete", "failed", "cancelled"]
+    },
+    "stage": { "enum": ["setup", "implement", "commit", "review", "fix", "verification"] },
+    "tddPhase": { "enum": ["red", "green", "refactor", null] },
+    "currentStepKey": { "type": ["string", "null"], "maxLength": 64 },
+    "completedStepIds": {
+      "type": "array",
+      "maxItems": 512,
+      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+    },
+    "note": { "type": "string", "maxLength": 256 },
+    "reportedAt": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "observedAt": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "source": { "enum": ["worker", "controller", "legacy-superpowers-ledger"] }
+  }
+}

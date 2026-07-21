@@ -6,7 +6,7 @@ import { parseSessionsDocument } from "../runner/sessions.js";
 import { writeJsonAtomic } from "../state/atomic-file.js";
 import { validateSchema } from "../schema/validate.js";
 import { computeEnvelopeDigest, stripDigest } from "./envelope.js";
-import type { CampaignApproval, CampaignEnvelope, CampaignEvent, CampaignSnapshot } from "./types.js";
+import type { CampaignApproval, CampaignEnvelope, CampaignEvent, CampaignSnapshot, StoredProgressEvent } from "./types.js";
 import type { SessionRecord } from "../runner/sessions.js";
 
 interface StoreOptions { stateDir: string; repositoryId: string; campaignId: string; envelope: CampaignEnvelope }
@@ -45,6 +45,7 @@ export class CampaignStore {
   readonly stateFile: string;
   readonly sessionsFile: string;
   readonly syncOutboxFile: string;
+  readonly progressEventsFile: string;
   readonly tasksPath: string;
   readonly artifactsPath: string;
 
@@ -56,6 +57,7 @@ export class CampaignStore {
     this.stateFile = path.join(this.campaignPath, "state.json");
     this.sessionsFile = path.join(this.campaignPath, "sessions.json");
     this.syncOutboxFile = path.join(this.campaignPath, "sync-outbox.jsonl");
+    this.progressEventsFile = path.join(this.campaignPath, "progress.jsonl");
     this.tasksPath = path.join(this.campaignPath, "tasks");
     this.artifactsPath = path.join(this.campaignPath, "artifacts");
   }
@@ -76,7 +78,7 @@ export class CampaignStore {
     }
     await Promise.all([mkdir(store.tasksPath, { recursive: true, mode: 0o700 }), mkdir(store.artifactsPath, { recursive: true, mode: 0o700 })]);
     await writeJsonAtomic(store.campaignFile, options.envelope);
-    await Promise.all([open(store.eventsFile, "a", 0o600).then((h) => h.close()), open(store.approvalsFile, "a", 0o600).then((h) => h.close()), open(store.syncOutboxFile, "a", 0o600).then((h) => h.close())]);
+    await Promise.all([open(store.eventsFile, "a", 0o600).then((h) => h.close()), open(store.approvalsFile, "a", 0o600).then((h) => h.close()), open(store.syncOutboxFile, "a", 0o600).then((h) => h.close()), open(store.progressEventsFile, "a", 0o600).then((h) => h.close())]);
     await writeJsonAtomic(store.sessionsFile, { schemaVersion: 1, sessions: [] });
     await store.writeState({ schemaVersion: 1, campaignId: options.campaignId, status: "awaiting_approval", digest: options.envelope.digest, updatedAt: new Date().toISOString() });
     return store;
@@ -107,5 +109,19 @@ export class CampaignStore {
   async writeSessionsDocument(document: { schemaVersion: 1; sessions: readonly SessionRecord[] }): Promise<void> {
     if (document.schemaVersion !== 1) throw new QuirksError("PROTOCOL_VIOLATION", "Malformed sessions document");
     await writeJsonAtomic(this.sessionsFile, { schemaVersion: 1, sessions: document.sessions.map((session) => ({ ...session, artifactPaths: [...session.artifactPaths] })) });
+  }
+  async appendProgressEvent(event: StoredProgressEvent): Promise<void> {
+    if (event.schemaVersion !== 1 || typeof event.jobId !== "string" || typeof event.revision !== "number") {
+      throw new QuirksError("PROTOCOL_VIOLATION", "Malformed progress event frame");
+    }
+    await appendFrame(this.progressEventsFile, event);
+  }
+  async readProgressEvents(): Promise<StoredProgressEvent[]> {
+    return (await readFrames(this.progressEventsFile)).map((entry) => {
+      if (typeof entry !== "object" || entry === null) throw new QuirksError("PROTOCOL_VIOLATION", "Malformed progress event frame");
+      const record = entry as StoredProgressEvent;
+      if (record.schemaVersion !== 1) throw new QuirksError("PROTOCOL_VIOLATION", "Malformed progress event frame");
+      return record;
+    });
   }
 }
