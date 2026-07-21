@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24.18.0" },
+  "engines": {
+    "node": ">=24.18.0"
+  },
   "packageManager": "pnpm@10.30.3",
   "bin": {
     "quirks-campaign": "dist/src/cli/quirks-campaign.js",
@@ -16,11 +18,29 @@
     "test": "pnpm build && node scripts/run-tests.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@tanstack/react-form": "1.33.2",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-router": "1.170.18",
+    "@tanstack/react-table": "8.21.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "intent": {
+    "skills": [
+      "@tanstack/react-router",
+      "@tanstack/react-query",
+      "@tanstack/react-table",
+      "@tanstack/react-form"
+    ]
+  },
   "devDependencies": {
     "@types/node": "24.13.3",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "esbuild": "0.25.9",
     "oxlint": "1.74.0",
     "typescript": "7.0.2"
   }
