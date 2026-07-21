@@ -2,10 +2,12 @@ import { access, mkdir, open, readFile } from "node:fs/promises";
 import path from "node:path";
 import { canonicalJson } from "../core/canonical-json.js";
 import { QuirksError } from "../core/errors.js";
+import { parseSessionsDocument } from "../runner/sessions.js";
 import { writeJsonAtomic } from "../state/atomic-file.js";
 import { validateSchema } from "../schema/validate.js";
 import { computeEnvelopeDigest, stripDigest } from "./envelope.js";
 import type { CampaignApproval, CampaignEnvelope, CampaignEvent, CampaignSnapshot } from "./types.js";
+import type { SessionRecord } from "../runner/sessions.js";
 
 interface StoreOptions { stateDir: string; repositoryId: string; campaignId: string; envelope: CampaignEnvelope }
 
@@ -99,4 +101,11 @@ export class CampaignStore {
   async appendApproval(approval: CampaignApproval): Promise<void> { validateSchema<CampaignApproval>("campaign-approval-v1", approval); await appendFrame(this.approvalsFile, approval); }
   async readEvents(): Promise<CampaignEvent[]> { return (await readFrames(this.eventsFile)).map((entry) => validateSchema<CampaignEvent>("campaign-event-v1", entry)); }
   async readApprovals(): Promise<CampaignApproval[]> { return (await readFrames(this.approvalsFile)).map((entry) => validateSchema<CampaignApproval>("campaign-approval-v1", entry)); }
+  async readSessionsDocument(): Promise<{ schemaVersion: 1; sessions: SessionRecord[] }> {
+    return parseSessionsDocument(JSON.parse(await readFile(this.sessionsFile, "utf8")));
+  }
+  async writeSessionsDocument(document: { schemaVersion: 1; sessions: readonly SessionRecord[] }): Promise<void> {
+    if (document.schemaVersion !== 1) throw new QuirksError("PROTOCOL_VIOLATION", "Malformed sessions document");
+    await writeJsonAtomic(this.sessionsFile, { schemaVersion: 1, sessions: document.sessions.map((session) => ({ ...session, artifactPaths: [...session.artifactPaths] })) });
+  }
 }

@@ -1,11 +1,7 @@
 import { useParams } from "@tanstack/react-router";
+import { PreflightView } from "../views/preflight-view.js";
 
 export function PreflightRoute() {
-  const { campaignId } = useParams({ strict: false }) as { campaignId?: string };
-  return (
-    <section>
-      <h1>Preflight</h1>
-      <p>Campaign: {campaignId ?? "unknown"}</p>
-    </section>
-  );
+  const { campaignId } = useParams({ from: "/preflight/$campaignId" });
+  return <PreflightView campaignId={campaignId} />;
 }
