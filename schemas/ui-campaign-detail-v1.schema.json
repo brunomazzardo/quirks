@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/ui-campaign-detail-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "campaignId", "repositoryId", "state", "taskCount",
+    "tasks", "waves", "runners", "commits", "pullRequests", "verification",
+    "sync", "canRunAgain"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "repositoryId": { "$ref": "#/$defs/digest" },
+    "state": {
+      "enum": [
+        "draft", "preflight", "awaiting_approval", "running", "paused", "blocked",
+        "final_review", "landing", "hold", "complete", "cancelled"
+      ]
+    },
+    "taskCount": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "startedAt": { "$ref": "#/$defs/dateTime" },
+    "finishedAt": { "$ref": "#/$defs/dateTime" },
+    "spend": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 31536000000 }
+    },
+    "outcome": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "tasks": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/task" }
+    },
+    "waves": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/wave" }
+    },
+    "runners": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/runner" }
+    },
+    "commits": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/commit" }
+    },
+    "pullRequests": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/pullRequest" }
+    },
+    "verification": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/verification" }
+    },
+    "sync": { "$ref": "#/$defs/sync" },
+    "reportPath": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "canRunAgain": { "const": true }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[A-Za-z0-9._-]{1,128}$", "maxLength": 135 },
+    "dateTime": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "gitCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$", "maxLength": 40 },
+    "httpsUrl": {
+      "type": "string",
+      "pattern": "^https://[^@/?#]+(?:/[^?#]*)?(?:\\?[^#]*)?(?:#.*)?$",
+      "maxLength": 2048
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "title", "status"],
+      "properties": {
+        "taskId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "wave": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "model"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha", "message"],
+      "properties": {
+        "sha": { "$ref": "#/$defs/gitCommit" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "title", "url", "state"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1, "maximum": 999999999 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "url": { "$ref": "#/$defs/httpsUrl" },
+        "state": { "enum": ["open", "closed", "merged", "draft"] }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "outcome"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "outcome": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "sync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pending", "conflicts"],
+      "properties": {
+        "pending": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "conflicts": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+      }
+    }
+  }
+}

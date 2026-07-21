@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/ui-preflight-proposal-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "campaignId", "state", "envelopeDigest", "summary",
+    "waves", "lanes", "tasks", "inspector", "residuals", "humanGates",
+    "unsupportedCapabilities", "approval"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "state": { "const": "awaiting_approval" },
+    "envelopeDigest": { "$ref": "#/$defs/digest" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "waves": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/wave" }
+    },
+    "lanes": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/lane" }
+    },
+    "tasks": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/task" }
+    },
+    "inspector": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/inspector" }
+      ]
+    },
+    "residuals": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "humanGates": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "unsupportedCapabilities": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+    },
+    "approval": { "$ref": "#/$defs/approvalBinding" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[A-Za-z0-9._-]{1,128}$", "maxLength": 135 },
+    "taskId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "maxLength": 128
+    },
+    "gitCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$", "maxLength": 40 },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskCount", "waveCount", "estimatedMinutes", "confidence", "budget", "landing", "push"],
+      "properties": {
+        "taskCount": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "waveCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "estimatedMinutes": { "type": "integer", "minimum": 0, "maximum": 31536000 },
+        "confidence": { "enum": ["low", "medium", "high"] },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxWallClockMs", "maxConcurrency"],
+          "properties": {
+            "maxWallClockMs": { "type": "integer", "minimum": 1, "maximum": 31536000000 },
+            "maxConcurrency": { "type": "integer", "minimum": 1, "maximum": 1000 }
+          }
+        },
+        "landing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseCommit", "campaignBranch", "targetBranch"],
+          "properties": {
+            "baseCommit": { "$ref": "#/$defs/gitCommit" },
+            "campaignBranch": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "targetBranch": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        },
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "remote", "branch"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "remote": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "minLength": 1, "maxLength": 256 }
+              ]
+            },
+            "branch": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "minLength": 1, "maxLength": 256 }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "wave": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "taskIds"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "taskIds": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/taskId" }
+        }
+      }
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "runner", "model", "taskIds"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "runner": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "taskIds": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/taskId" }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "tier", "effort"],
+      "properties": {
+        "profileId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "tier": { "enum": ["mechanical", "standard", "high", "principal"] },
+        "effort": { "enum": ["mechanical", "standard", "high", "principal"] }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "title", "waveId", "laneId", "route", "fallback", "confidence"],
+      "properties": {
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "waveId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "laneId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "route": { "$ref": "#/$defs/route" },
+        "fallback": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/route" }
+          ]
+        },
+        "confidence": { "enum": ["low", "medium", "high"] }
+      }
+    },
+    "inspector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "routingRationale", "tests", "acceptanceProof"],
+      "properties": {
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "routingRationale": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "tests": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+        },
+        "acceptanceProof": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    },
+    "approvalBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["campaignId", "envelopeDigest"],
+      "properties": {
+        "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "envelopeDigest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

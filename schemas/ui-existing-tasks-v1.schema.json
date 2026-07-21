@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/ui-existing-tasks-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "refreshedAt", "source", "coordinationNotice", "leaseNotice", "tasks"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "refreshedAt": { "$ref": "#/$defs/dateTime" },
+    "source": { "$ref": "#/$defs/sourceHealth" },
+    "coordinationNotice": { "const": "Local coordination only" },
+    "leaseNotice": { "const": "No shared lease" },
+    "tasks": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "dateTime": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "taskId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "maxLength": 128
+    },
+    "shortString": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "sourceHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["driver", "protocol", "syncHealth", "pendingWrites", "conflicts"],
+      "properties": {
+        "driver": { "type": "string", "maxLength": 128 },
+        "protocol": { "type": "string", "maxLength": 128 },
+        "syncHealth": { "enum": ["fresh", "stale", "unavailable"] },
+        "pendingWrites": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "conflicts": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "lastError": { "type": "string", "maxLength": 1024 }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "title", "kind", "priority", "status", "readiness", "blockers",
+        "workflowPhase", "designGate", "risk", "effort", "suggestedRoute",
+        "source", "nativeRevision", "dependsOn", "coordination"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/taskId" },
+        "title": { "$ref": "#/$defs/shortString" },
+        "kind": {
+          "enum": ["design", "plan", "implementation", "review", "verification", "documentation", "operations"]
+        },
+        "priority": { "enum": ["P0", "P1", "P2", "P3"] },
+        "status": {
+          "enum": ["proposed", "ready", "claimed", "in_review", "blocked", "completed", "cancelled"]
+        },
+        "readiness": { "enum": ["ready", "blocked", "claimed", "ineligible", "conflict"] },
+        "blockers": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+        },
+        "workflowPhase": {
+          "enum": ["brainstorm", "plan", "execute", "review", "verification"]
+        },
+        "designGate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required", "mode", "delegable"],
+          "properties": {
+            "required": { "type": "boolean" },
+            "mode": { "enum": ["human", "delegated"] },
+            "delegable": { "type": "boolean" }
+          }
+        },
+        "risk": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        "effort": { "enum": ["mechanical", "standard", "high", "principal"] },
+        "suggestedRoute": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tier", "label"],
+          "properties": {
+            "tier": { "enum": ["mechanical", "standard", "high", "principal"] },
+            "label": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["driver", "nativeId", "webUrl"],
+          "properties": {
+            "driver": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "nativeId": { "$ref": "#/$defs/taskId" },
+            "webUrl": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "pattern": "^https://[^@/?#]+(?:/[^?#]*)?(?:\\?[^#]*)?(?:#.*)?$", "maxLength": 2048 }
+              ]
+            }
+          }
+        },
+        "nativeRevision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "dependsOn": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/taskId" }
+        },
+        "coordination": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["scope", "campaignId", "owner"],
+              "properties": {
+                "scope": { "const": "local-clone" },
+                "campaignId": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "owner": { "type": "string", "minLength": 1, "maxLength": 256 }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
