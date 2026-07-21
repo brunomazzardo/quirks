@@ -2874,10 +2874,10 @@
             "id": "QK-RUN-002C-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "0a1f909",
+            "acceptedCommit": "0a1f9094382a70fc0632926c2f73f7afc9b8d98c",
             "commitRefs": [
-              "0a1f909",
-              "beb8579"
+              "0a1f9094382a70fc0632926c2f73f7afc9b8d98c",
+              "beb8579cb76f95cf1a3f579f2864b9f5ada79689"
             ],
             "finishedAt": "2026-07-21T20:00:00-03:00",
             "outcomeReason": "Runner watchdog and detached execution landed"
@@ -2939,10 +2939,10 @@
             "id": "QK-RUN-002D-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "63587cb",
+            "acceptedCommit": "63587cbd9598dbbae24dbe5ae75caae45227eae8",
             "commitRefs": [
-              "63587cb",
-              "beb8579"
+              "63587cbd9598dbbae24dbe5ae75caae45227eae8",
+              "beb8579cb76f95cf1a3f579f2864b9f5ada79689"
             ],
             "finishedAt": "2026-07-21T20:00:00-03:00",
             "outcomeReason": "Resume probes and stale-session recovery"
@@ -3004,10 +3004,10 @@
             "id": "QK-UI-003I-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "b6b3f8f",
+            "acceptedCommit": "b6b3f8f707d2f5ac07ca1e8e4442553a132e47f5",
             "commitRefs": [
-              "b6b3f8f",
-              "beb8579"
+              "b6b3f8f707d2f5ac07ca1e8e4442553a132e47f5",
+              "beb8579cb76f95cf1a3f579f2864b9f5ada79689"
             ],
             "finishedAt": "2026-07-21T20:00:00-03:00",
             "outcomeReason": "Hostile projection React tests"
@@ -3070,12 +3070,12 @@
             "id": "QK-UI-004A-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "4ecb5d0",
+            "acceptedCommit": "4ecb5d0db169499aea4c5f7395f1fc8724d9efaa",
             "commitRefs": [
-              "0302636",
-              "4ecb5d0",
-              "1b79d6d",
-              "beb8579"
+              "03026366a97ef9ef6dd26223fab49f5eca999977",
+              "4ecb5d0db169499aea4c5f7395f1fc8724d9efaa",
+              "1b79d6d55d4d7eb4ab5f5bb0481b78de76653850",
+              "beb8579cb76f95cf1a3f579f2864b9f5ada79689"
             ],
             "finishedAt": "2026-07-21T20:00:00-03:00",
             "outcomeReason": "Playwright browser security harness"
@@ -3133,18 +3133,18 @@
             "id": "QK-W0-REV-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "beb8579",
+            "acceptedCommit": "beb8579cb76f95cf1a3f579f2864b9f5ada79689",
             "commitRefs": [
-              "1b79d6d",
-              "beb8579"
+              "1b79d6d55d4d7eb4ab5f5bb0481b78de76653850",
+              "beb8579cb76f95cf1a3f579f2864b9f5ada79689"
             ],
             "finishedAt": "2026-07-21T20:00:00-03:00",
             "outcomeReason": "Wave 0 independent review complete",
             "artifactRefs": [
               {
-                "kind": "report",
+                "kind": "other",
                 "path": ".superpowers/sdd/wave-2026-07-21-run002cd-ui003i004a/qk-w0-rev-report.md",
-                "commit": "beb8579"
+                "commit": "beb8579cb76f95cf1a3f579f2864b9f5ada79689"
               }
             ]
           }
@@ -3199,10 +3199,10 @@
             "id": "QK-W0-INT-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "beb8579",
+            "acceptedCommit": "beb8579cb76f95cf1a3f579f2864b9f5ada79689",
             "commitRefs": [
-              "1b79d6d",
-              "beb8579"
+              "1b79d6d55d4d7eb4ab5f5bb0481b78de76653850",
+              "beb8579cb76f95cf1a3f579f2864b9f5ada79689"
             ],
             "finishedAt": "2026-07-21T20:00:00-03:00",
             "outcomeReason": "Wave 0 integrated to main"
@@ -3279,7 +3279,7 @@
       "title": "Campaign supervisor orchestration",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-W0-INT",
         "QK-RUN-002"
@@ -3322,11 +3322,24 @@
         "[wave:1] Supervisor claims approved tasks, dispatches jobs, and enforces mechanical invariants"
       ],
       "verification": [
-        "Run focused lane verification suite"
+        "pnpm build && node --test dist/test/campaign/supervisor.test.js"
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-CTL-004A-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "b24bbbb",
+            "commitRefs": [
+              "b24bbbb",
+              "0b71020"
+            ],
+            "finishedAt": "2026-07-21T23:40:00Z",
+            "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
+          }
+        ]
       }
     },
     {
@@ -3334,7 +3347,7 @@
       "title": "Supervisor crash recovery",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-004A"
       ],
@@ -3375,11 +3388,24 @@
         "[wave:1] recoverCampaign replays events and prevents duplicate dispatch after crash"
       ],
       "verification": [
-        "Run focused lane verification suite"
+        "pnpm build && node --test dist/test/campaign/recovery.test.js"
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-CTL-004B-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "05b35d6",
+            "commitRefs": [
+              "05b35d6",
+              "0b71020"
+            ],
+            "finishedAt": "2026-07-21T23:40:00Z",
+            "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
+          }
+        ]
       }
     },
     {
@@ -3387,7 +3413,7 @@
       "title": "Fake runners and failure fixtures",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-004A"
       ],
@@ -3428,11 +3454,24 @@
         "[wave:1] Deterministic fake runners exercise crash, wedge, quota, and timeout paths"
       ],
       "verification": [
-        "Run focused lane verification suite"
+        "pnpm build && node --test dist/test/runner/fake-runner-matrix.test.js"
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-CTL-004C-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "addcf73",
+            "commitRefs": [
+              "addcf73",
+              "0b71020"
+            ],
+            "finishedAt": "2026-07-21T23:40:00Z",
+            "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
+          }
+        ]
       }
     },
     {
@@ -3440,7 +3479,7 @@
       "title": "Live plan-progress transport",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-004A"
       ],
@@ -3480,11 +3519,24 @@
         "[wave:1] Worker telemetry is advisory-only; controller journal is authoritative observation"
       ],
       "verification": [
-        "Run focused lane verification suite"
+        "pnpm build && node --test dist/test/campaign/plan-outline.test.js dist/test/runner/progress.test.js"
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-CTL-004D-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "8452929",
+            "commitRefs": [
+              "8452929",
+              "0b71020"
+            ],
+            "finishedAt": "2026-07-21T23:40:00Z",
+            "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
+          }
+        ]
       }
     },
     {
@@ -3492,7 +3544,7 @@
       "title": "Plan progress projection and UI",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-004D",
         "QK-UI-003"
@@ -3533,11 +3585,24 @@
         "[wave:1] UI shows immutable plan steps and worker-reported versus reviewed progress"
       ],
       "verification": [
-        "Run focused lane verification suite"
+        "pnpm build && node --test dist/test/ui/read-models/plan-progress.test.js dist/test/ui/client/plan-progress.test.js"
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-UI-003J-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "3decc00",
+            "commitRefs": [
+              "3decc00",
+              "0b71020"
+            ],
+            "finishedAt": "2026-07-21T23:40:00Z",
+            "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
+          }
+        ]
       }
     },
     {
@@ -3545,7 +3610,7 @@
       "title": "Responsive, accessibility, and performance gates",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-UI-004A",
         "QK-UI-003"
@@ -3588,11 +3653,24 @@
         "[wave:1] Layouts pass at 1280x800 and 390x844; 1,000-row median filter budget at most 250ms"
       ],
       "verification": [
-        "Run focused lane verification suite"
+        "pnpm build && pnpm exec playwright test test/browser/ui-responsive.spec.ts test/browser/ui-a11y.spec.ts test/browser/ui-table-performance.spec.ts"
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-UI-004B-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "ccf7a7b",
+            "commitRefs": [
+              "ccf7a7b",
+              "0b71020"
+            ],
+            "finishedAt": "2026-07-21T23:40:00Z",
+            "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
+          }
+        ]
       }
     },
     {
@@ -3755,6 +3833,59 @@
       }
     },
     {
+      "id": "QK-UI-004D",
+      "title": "Isolate UI API test task inventory",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-UI-004B"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "ui-test-server-isolation"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 18
+        }
+      ],
+      "deliverables": [
+        "test/ui/support/test-server.ts uses temp git repo like read-model freshRepo"
+      ],
+      "acceptanceCriteria": [
+        "[wave:1-dogfood] createTestUiServer does not load full repo tasks.json via canonicalRepository git toplevel",
+        "[wave:1-dogfood] Task inventory materialization must emit full 40-char git SHAs in provenance"
+      ],
+      "verification": [
+        "node --test dist/test/ui/api/*.test.js"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
       "id": "QK-PLATFORM-REV",
       "title": "Independent platform wave review",
       "kind": "review",
@@ -3831,9 +3962,7 @@
         "humanGates": [],
         "completionBoundary": "accepted-commit"
       },
-      "sourceRefs": [
-        "pnpm check"
-      ],
+      "sourceRefs": [],
       "deliverables": [
         "Platform wave integration tip"
       ],
