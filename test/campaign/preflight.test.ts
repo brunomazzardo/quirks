@@ -42,6 +42,17 @@ test("preflight is read-only, expands dependencies, and flags missing design dep
   assert.match(result.envelope.hashes.instructions, /^sha256:/);
   assert.equal(result.envelope.routing["QK-200"]?.primary.profileId, "placeholder");
   assert.equal(result.syncHealth.ok, true);
+
+  // QK-200: implementation, effort "standard", risk [] -> reviewer must be elevated one tier above.
+  assert.equal(result.envelope.routing["QK-200"]?.primary.tier, "standard");
+  assert.equal(result.envelope.routing["QK-200"]?.primary.effort, "standard");
+  assert.equal(result.envelope.routing["QK-200"]?.fallbacks[0]?.profileId, "placeholder-reviewer");
+  assert.equal(result.envelope.routing["QK-200"]?.fallbacks[0]?.tier, "high");
+
+  // QK-100: design, effort "high", risk ["architecture"] -> judgment-heavy floor keeps reviewer at principal.
+  assert.equal(result.envelope.routing["QK-100"]?.primary.tier, "high");
+  assert.equal(result.envelope.routing["QK-100"]?.fallbacks[0]?.profileId, "placeholder-reviewer");
+  assert.equal(result.envelope.routing["QK-100"]?.fallbacks[0]?.tier, "principal");
 });
 
 test("preflight rejects dependency cycles", async () => {
