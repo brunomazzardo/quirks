@@ -1035,7 +1035,7 @@
       "title": "Write the campaign control-plane and runner implementation plan",
       "kind": "plan",
       "priority": "P0",
-      "status": "ready",
+      "status": "completed",
       "dependsOn": [
         "QK-FND-013"
       ],
@@ -1081,6 +1081,11 @@
             21,
             23
           ]
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1094,7 +1099,26 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-CTL-001-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "382601aef4991da8f3b4e666a63bbef7cad8c680",
+            "artifactRefs": [
+              {
+                "kind": "plan",
+                "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+                "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+              }
+            ],
+            "commitRefs": [
+              "382601aef4991da8f3b4e666a63bbef7cad8c680"
+            ],
+            "finishedAt": "2026-07-21T13:15:00-03:00",
+            "outcomeReason": "Campaign control-plane and runner implementation plan authored"
+          }
+        ]
       }
     },
     {
@@ -1102,7 +1126,7 @@
       "title": "Implement campaign schemas, canonical state, and approval events",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "ready",
       "dependsOn": [
         "QK-CTL-001"
       ],
@@ -1131,8 +1155,9 @@
       },
       "sourceRefs": [
         {
-          "kind": "planned-plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1183,8 +1208,9 @@
       },
       "sourceRefs": [
         {
-          "kind": "planned-plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1236,8 +1262,9 @@
       },
       "sourceRefs": [
         {
-          "kind": "planned-plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1288,8 +1315,9 @@
       },
       "sourceRefs": [
         {
-          "kind": "planned-plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1341,8 +1369,9 @@
       },
       "sourceRefs": [
         {
-          "kind": "planned-plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md"
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1364,7 +1393,7 @@
       "title": "Write the local control UI implementation plan",
       "kind": "plan",
       "priority": "P0",
-      "status": "ready",
+      "status": "completed",
       "dependsOn": [
         "QK-FND-013"
       ],
@@ -1402,6 +1431,11 @@
             22,
             23
           ]
+        },
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1415,7 +1449,26 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-UI-001-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "382601aef4991da8f3b4e666a63bbef7cad8c680",
+            "artifactRefs": [
+              {
+                "kind": "plan",
+                "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+                "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+              }
+            ],
+            "commitRefs": [
+              "382601aef4991da8f3b4e666a63bbef7cad8c680"
+            ],
+            "finishedAt": "2026-07-21T13:15:00-03:00",
+            "outcomeReason": "Local control UI implementation plan authored"
+          }
+        ]
       }
     },
     {
@@ -1453,8 +1506,9 @@
       },
       "sourceRefs": [
         {
-          "kind": "planned-plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1504,8 +1558,9 @@
       },
       "sourceRefs": [
         {
-          "kind": "planned-plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
@@ -1555,8 +1610,9 @@
       },
       "sourceRefs": [
         {
-          "kind": "planned-plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md"
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
         }
       ],
       "deliverables": [
