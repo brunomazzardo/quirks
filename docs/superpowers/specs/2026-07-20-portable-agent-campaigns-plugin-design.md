@@ -4,7 +4,7 @@ Date: 2026-07-20
 
 Last revised: 2026-07-21
 
-Status: APPROVED CONVERSATIONAL DESIGN — awaiting written-spec review
+Status: APPROVED WRITTEN SPEC — implementation planning in progress
 
 Repository: `brunomazzardo/quirks`
 
