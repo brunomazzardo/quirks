@@ -1,0 +1,6 @@
+{
+  "name": "quirks",
+  "version": "0.0.0",
+  "description": "Portable agent campaigns for repository task orchestration",
+  "skills": "./skills"
+}

@@ -18,7 +18,8 @@
     "lint": "oxlint src test scripts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm build && node scripts/run-tests.mjs",
-    "check": "pnpm lint && pnpm typecheck && pnpm test"
+    "validate:skills": "node scripts/validate-skills.mjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm validate:skills && pnpm test"
   },
   "dependencies": {
     "@tanstack/react-form": "1.33.2",
