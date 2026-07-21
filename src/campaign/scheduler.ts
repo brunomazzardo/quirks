@@ -69,5 +69,5 @@ export function selectRunnableTasks(
     return lanesForTask.every((lane) => !activeLanes.has(lane.key));
   });
   const budget = Math.max(0, plan.maxConcurrency - activeTasks.size);
-  return [...runnable].sort((a, b) => a.localeCompare(b)).slice(0, budget);
+  return [...runnable].toSorted((a, b) => a.localeCompare(b)).slice(0, budget);
 }
