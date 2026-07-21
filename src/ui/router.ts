@@ -3,6 +3,7 @@ import type { LoopbackAuthority } from "./authority.js";
 import { handleApproval } from "./api/approval.js";
 import { handleCampaigns, matchesCampaignsRoute } from "./api/campaigns.js";
 import { sendJson, UNAUTHORIZED_BODY } from "./api/errors.js";
+import { handleTaskHistory, matchTaskHistoryRoute, type TaskHistorySource } from "./api/task-history.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
 import type { CampaignReadPort } from "./ports/campaign-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
@@ -16,6 +17,7 @@ export interface UiRouterOptions {
   approval: ApprovalWritePort;
   getCampaign: (campaignId: string) => CampaignRecord | undefined;
   campaignRead?: CampaignReadPort;
+  taskHistory?: TaskHistorySource;
   now?: () => string;
   onRead?: () => void;
   onApproveAttempt?: () => void;
@@ -75,6 +77,10 @@ export async function routeUiRequest(req: IncomingMessage, res: ServerResponse, 
   options.onRead?.();
   if (options.campaignRead && matchesCampaignsRoute(url.pathname)) {
     return handleCampaigns(req, res, { url, port: options.campaignRead });
+  }
+  const taskId = matchTaskHistoryRoute(url.pathname);
+  if (options.taskHistory && taskId) {
+    return handleTaskHistory(req, res, { taskId, source: options.taskHistory });
   }
   return sendJson(res, 200, { schemaVersion: 1, route: url.pathname, refreshedAt: options.now?.() ?? new Date().toISOString() });
 }
