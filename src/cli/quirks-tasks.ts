@@ -14,6 +14,7 @@ import {
   exitCodeForError,
   formatFreshness,
   localCoordinationLine,
+  quirksErrorCodeFromString,
   writeHuman,
   writeJson,
 } from "./output.js";
@@ -26,7 +27,7 @@ async function openOutbox(repositoryId: string): Promise<SyncOutbox> {
 async function readCapabilities(source: TaskSource): Promise<TaskSourceCapabilities> {
   const response = await source.execute({ schemaVersion: 1, operation: "capabilities", input: {} });
   if (!response.ok || response.operation !== "capabilities") {
-    throw new Error("Task source capabilities unavailable");
+    throw new QuirksError("SOURCE_UNAVAILABLE", "Task source capabilities are unavailable");
   }
   return response.data as TaskSourceCapabilities;
 }
@@ -36,7 +37,7 @@ function assertOkResponse<O extends TaskSourceResponse["operation"]>(
   operation: O,
 ): Extract<TaskSourceResponse, { operation: O; ok: true }> {
   if (!response.ok) {
-    throw new QuirksError("PROTOCOL_VIOLATION", response.error.message);
+    throw new QuirksError(quirksErrorCodeFromString(response.error.code), response.error.message);
   }
   if (response.operation !== operation) {
     throw new QuirksError("PROTOCOL_VIOLATION", `Unexpected operation ${response.operation}`);
