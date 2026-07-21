@@ -109,7 +109,7 @@ const approvalRequest = {
   schemaVersion: 1,
   campaignId: "cmp-1",
   envelopeDigest: "sha256:digest",
-  approvalToken: "qkui_" + "a".repeat(43),
+  approvalToken: "qkapprove_" + "a".repeat(43),
 };
 
 const approvalResponse = {
