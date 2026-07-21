@@ -19,7 +19,8 @@ export interface SyncIntent {
 export interface OutboxPort {
   enqueue(intent: SyncIntent): Promise<void>;
   transition(intentId: string, state: SyncState, acknowledgement?: TaskSourceResponse): Promise<void>;
-  listPending?(): Promise<SyncIntent[]>;
+  get(intentId: string): Promise<SyncIntent | undefined>;
+  listPending?(campaignId?: string): Promise<SyncIntent[]>;
 }
 
 export type SyncBoundary =

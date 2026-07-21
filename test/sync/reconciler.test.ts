@@ -52,6 +52,77 @@ test("reconcilePending resolves pending intents via show evidence without retryi
   assert.equal(source.mutationCalls, 0);
 });
 
+test("second reconcileMutation does not re-execute an acknowledged intent", async () => {
+  const outbox = new MemoryOutbox();
+  const source = new AmbiguousThenAcknowledgedSource();
+  const input = { campaignId: "C-1", outbox, source, request: source.claimRequest };
+  const first = await reconcileMutation(input);
+  assert.equal(first.state, "acknowledged");
+  assert.equal(source.mutationCalls, 1);
+
+  const second = await reconcileMutation(input);
+  assert.equal(second.state, "acknowledged");
+  assert.equal(source.mutationCalls, 1);
+});
+
+test("second reconcileMutation does not re-execute a pending intent without safe key retry", async () => {
+  const outbox = new MemoryOutbox();
+  const source = new OutageWithoutEvidenceSource();
+  const input = { campaignId: "C-1", outbox, source, request: source.claimRequest };
+  const first = await reconcileMutation(input);
+  assert.equal(first.state, "pending");
+  assert.equal(source.mutationCalls, 1);
+
+  const second = await reconcileMutation(input);
+  assert.equal(second.state, "pending");
+  assert.equal(source.mutationCalls, 1);
+});
+
+test("safe key retry re-mutates only when lookup proves the operation was not applied", async () => {
+  const outbox = new MemoryOutbox();
+  const source = new KeyLookupSource({ applied: false });
+  const input = { campaignId: "C-1", outbox, source, request: source.claimRequest };
+  const first = await reconcileMutation(input);
+  assert.equal(first.state, "pending");
+  assert.equal(source.mutationCalls, 1);
+
+  const second = await reconcileMutation(input);
+  assert.equal(second.state, "acknowledged");
+  assert.equal(source.mutationCalls, 2);
+});
+
+test("safe key retry acknowledges without re-mutating when lookup proves applied", async () => {
+  const outbox = new MemoryOutbox();
+  const source = new KeyLookupSource({ applied: true });
+  const input = { campaignId: "C-1", outbox, source, request: source.claimRequest };
+  const first = await reconcileMutation(input);
+  assert.equal(first.state, "pending");
+  assert.equal(source.mutationCalls, 1);
+
+  const second = await reconcileMutation(input);
+  assert.equal(second.state, "acknowledged");
+  assert.equal(source.mutationCalls, 1);
+});
+
+test("reconcilePending scopes pending intents by campaignId", async () => {
+  const outbox = new TrackingOutbox();
+  const source = new AmbiguousThenAcknowledgedSource();
+  await outbox.enqueue(pendingIntent(source.claimRequest));
+  await outbox.enqueue({
+    ...pendingIntent({
+      ...source.claimRequest,
+      taskId: "QK-2",
+      idempotencyKey: "C-2:QK-2:claim:evt-9",
+    }),
+    campaignId: "C-2",
+    taskId: "QK-2",
+    intentId: "C-2:QK-2:claim:evt-9",
+  });
+  const resolved = await reconcilePending({ campaignId: "C-1", outbox, source });
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0]?.campaignId, "C-1");
+});
+
 test("syncBoundary blocks final-report while required completion intent stays pending", async () => {
   const outbox = new TrackingOutbox();
   await outbox.enqueue({
@@ -76,6 +147,59 @@ test("syncBoundary blocks final-report while required completion intent stays pe
   assert.equal(result.ok, false);
   assert.match(result.blockedReason ?? "", /pending/i);
 });
+
+class KeyLookupSource implements TaskSource {
+  mutationCalls = 0;
+  private showCalls = 0;
+  readonly claimRequest: MutationRequest = {
+    schemaVersion: 1,
+    operation: "claim",
+    taskId: "QK-1",
+    expectedNativeRevision: "sha256:before",
+    idempotencyKey: "C-1:QK-1:claim:evt-key",
+    input: { campaignId: "C-1", owner: "supervisor:S-1", claimedAt: "2026-07-21T00:00:00.000Z" },
+  };
+
+  constructor(private readonly options: { applied: boolean }) {}
+
+  async execute(request: TaskSourceRequest): Promise<TaskSourceResponse> {
+    if (request.operation === "claim") {
+      this.mutationCalls += 1;
+      if (!this.options.applied && this.mutationCalls > 1) {
+        return {
+          schemaVersion: 1,
+          operation: "claim",
+          ok: true,
+          nativeRevision: "sha256:after",
+          data: { id: "QK-1", status: "claimed" },
+        };
+      }
+      throw Object.assign(new Error("connection lost after write"), { code: "SOURCE_UNAVAILABLE" });
+    }
+    if (request.operation === "show") {
+      this.showCalls += 1;
+      const hasKeyEvidence = this.options.applied && this.showCalls > 1;
+      return {
+        schemaVersion: 1,
+        operation: "show",
+        ok: true,
+        nativeRevision: hasKeyEvidence ? "sha256:after" : "sha256:before",
+        data: {
+          id: "QK-1",
+          status: "ready",
+          coordination: {},
+          sync: {
+            appliedIdempotencyKeys: hasKeyEvidence ? [this.claimRequest.idempotencyKey] : [],
+          },
+        },
+      };
+    }
+    if (request.operation === "capabilities") {
+      return capabilitiesResponse("key");
+    }
+    return { schemaVersion: 1, operation: request.operation, ok: true, data: {} } as TaskSourceResponse;
+  }
+}
 
 class OutageWithoutEvidenceSource implements TaskSource {
   mutationCalls = 0;
@@ -155,6 +279,13 @@ class TrackingOutbox {
   private intents: SyncIntent[] = [];
 
   async enqueue(intent: SyncIntent): Promise<void> {
+    const existing = this.intents.find((entry) => entry.intentId === intent.intentId);
+    if (existing) {
+      if (existing.requestHash !== intent.requestHash) {
+        throw new Error("Idempotency key reused with different request hash");
+      }
+      return;
+    }
     this.intents.push(intent);
   }
 
@@ -169,8 +300,14 @@ class TrackingOutbox {
     };
   }
 
-  async listPending(): Promise<SyncIntent[]> {
-    return this.intents.filter((intent) => intent.state === "pending");
+  async get(intentId: string): Promise<SyncIntent | undefined> {
+    return this.intents.find((intent) => intent.intentId === intentId);
+  }
+
+  async listPending(campaignId?: string): Promise<SyncIntent[]> {
+    return this.intents.filter(
+      (intent) => intent.state === "pending" && (campaignId === undefined || intent.campaignId === campaignId),
+    );
   }
 }
 

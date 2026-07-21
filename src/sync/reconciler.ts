@@ -7,7 +7,7 @@ import type {
   TaskSourceRequest,
   TaskSourceResponse,
 } from "../task-source/types.js";
-import type { OutboxPort, SyncIntent } from "./types.js";
+import type { OutboxPort, SyncIntent, SyncState } from "./types.js";
 
 export interface ReconcileMutationInput {
   campaignId: string;
@@ -18,7 +18,7 @@ export interface ReconcileMutationInput {
 
 export interface ReconcilePendingInput {
   campaignId: string;
-  outbox: OutboxPort & { listPending(): Promise<SyncIntent[]> };
+  outbox: OutboxPort & { listPending(campaignId?: string): Promise<SyncIntent[]> };
   source: TaskSource;
 }
 
@@ -46,6 +46,14 @@ function buildIntent(campaignId: string, request: MutationRequest): SyncIntent {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function isTerminalState(state: SyncState): boolean {
+  return state === "acknowledged" || state === "conflict" || state === "failed";
+}
+
+function canSafeIdempotentRetry(capabilities: TaskSourceCapabilities): boolean {
+  return capabilities.idempotencyLookup === "key";
 }
 
 function isConflictResponse(response: TaskSourceResponse): boolean {
@@ -84,6 +92,14 @@ function showEvidence(request: MutationRequest, response: TaskSourceResponse): b
   }
 }
 
+function keyLookupEvidence(request: MutationRequest, response: TaskSourceResponse): boolean {
+  if (!response.ok || response.operation !== "show") return false;
+  const data = response.data as Record<string, unknown>;
+  const sync = data["sync"] as { appliedIdempotencyKeys?: readonly string[] } | undefined;
+  const appliedKeys = sync?.appliedIdempotencyKeys ?? (data["appliedIdempotencyKeys"] as readonly string[] | undefined);
+  return appliedKeys?.includes(request.idempotencyKey) === true;
+}
+
 async function readCapabilities(source: TaskSource): Promise<TaskSourceCapabilities> {
   const response = await source.execute({ schemaVersion: 1, operation: "capabilities", input: {} });
   if (!response.ok || response.operation !== "capabilities") {
@@ -106,50 +122,85 @@ async function resolveAmbiguousIntent(
 
   if (capabilities.idempotencyLookup === "none") return undefined;
 
-  // State-based lookup uses the canonical show snapshot as the only safe evidence.
-  if (capabilities.idempotencyLookup === "state" || capabilities.idempotencyLookup === "key") {
-    return showEvidence(request, show) ? show : undefined;
-  }
+  // Key lookup uses show state evidence first, then optional idempotency-key markers on show.
+  // The TaskSource protocol has no dedicated idempotency probe; adapters with
+  // idempotencyLookup "key" may also expose applied keys on show for positive proof.
+  if (capabilities.idempotencyLookup === "key" && keyLookupEvidence(request, show)) return show;
 
   return undefined;
 }
 
-export async function reconcileMutation(input: ReconcileMutationInput): Promise<SyncIntent> {
-  const intent = buildIntent(input.campaignId, input.request);
-  await input.outbox.enqueue(intent);
+async function acknowledgeIntent(
+  outbox: OutboxPort,
+  intent: SyncIntent,
+  evidence: TaskSourceResponse,
+): Promise<SyncIntent> {
+  await outbox.transition(intent.intentId, "acknowledged", evidence);
+  return {
+    ...intent,
+    state: "acknowledged",
+    updatedAt: new Date().toISOString(),
+    acknowledgement: evidence,
+  };
+}
 
+async function executeMutation(
+  outbox: OutboxPort,
+  intent: SyncIntent,
+  source: TaskSource,
+  request: MutationRequest,
+): Promise<SyncIntent> {
   let response: TaskSourceResponse;
   try {
-    response = await input.source.execute(input.request as TaskSourceRequest);
+    response = await source.execute(request as TaskSourceRequest);
   } catch (error) {
     if (!isTransportFailure(error)) throw error;
 
-    const capabilities = await readCapabilities(input.source);
-    const evidence = await resolveAmbiguousIntent(input.source, input.request, capabilities);
+    const capabilities = await readCapabilities(source);
+    const evidence = await resolveAmbiguousIntent(source, request, capabilities);
     if (evidence) {
-      await input.outbox.transition(intent.intentId, "acknowledged", evidence);
-      return { ...intent, state: "acknowledged", updatedAt: new Date().toISOString(), acknowledgement: evidence };
+      return acknowledgeIntent(outbox, intent, evidence);
     }
     return intent;
   }
 
   if (isConflictResponse(response)) {
-    await input.outbox.transition(intent.intentId, "conflict");
+    await outbox.transition(intent.intentId, "conflict");
     return { ...intent, state: "conflict", updatedAt: new Date().toISOString() };
   }
 
   if (!response.ok) {
-    await input.outbox.transition(intent.intentId, "failed");
+    await outbox.transition(intent.intentId, "failed");
     return { ...intent, state: "failed", updatedAt: new Date().toISOString() };
   }
 
-  await input.outbox.transition(intent.intentId, "acknowledged", response);
-  return {
-    ...intent,
-    state: "acknowledged",
-    updatedAt: new Date().toISOString(),
-    acknowledgement: response,
-  };
+  return acknowledgeIntent(outbox, intent, response);
+}
+
+export async function reconcileMutation(input: ReconcileMutationInput): Promise<SyncIntent> {
+  const intent = buildIntent(input.campaignId, input.request);
+  const prior = await input.outbox.get(intent.intentId);
+  await input.outbox.enqueue(intent);
+  const current = (await input.outbox.get(intent.intentId)) ?? intent;
+
+  if (prior) {
+    if (isTerminalState(current.state)) {
+      return current;
+    }
+
+    if (current.state === "pending") {
+      const capabilities = await readCapabilities(input.source);
+      const evidence = await resolveAmbiguousIntent(input.source, input.request, capabilities);
+      if (evidence) {
+        return acknowledgeIntent(input.outbox, current, evidence);
+      }
+      if (!canSafeIdempotentRetry(capabilities)) {
+        return current;
+      }
+    }
+  }
+
+  return executeMutation(input.outbox, current, input.source, input.request);
 }
 
 export async function reconcilePending(input: ReconcilePendingInput): Promise<SyncIntent[]> {
@@ -157,16 +208,10 @@ export async function reconcilePending(input: ReconcilePendingInput): Promise<Sy
   if (capabilities.idempotencyLookup === "none") return [];
 
   const resolved: SyncIntent[] = [];
-  for (const intent of await input.outbox.listPending()) {
+  for (const intent of await input.outbox.listPending(input.campaignId)) {
     const evidence = await resolveAmbiguousIntent(input.source, intent.request, capabilities);
     if (!evidence) continue;
-    await input.outbox.transition(intent.intentId, "acknowledged", evidence);
-    resolved.push({
-      ...intent,
-      state: "acknowledged",
-      updatedAt: new Date().toISOString(),
-      acknowledgement: evidence,
-    });
+    resolved.push(await acknowledgeIntent(input.outbox, intent, evidence));
   }
   return resolved;
 }

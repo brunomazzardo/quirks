@@ -6,7 +6,7 @@ import { REQUIRED_ACK_OPERATIONS } from "./types.js";
 export interface SyncBoundaryInput {
   boundary: SyncBoundary;
   campaignId: string;
-  outbox: OutboxPort & { listPending(): Promise<SyncIntent[]> };
+  outbox: OutboxPort & { listPending(campaignId?: string): Promise<SyncIntent[]> };
   source: TaskSource;
   taskIds: readonly string[];
 }
@@ -39,7 +39,7 @@ function blocksCompletion(boundary: SyncBoundary, pendingIntents: readonly SyncI
 export async function syncBoundary(input: SyncBoundaryInput): Promise<SyncBoundaryResult> {
   const refreshedRevisions = await refreshRevisions(input.source, input.taskIds);
   await reconcilePending({ campaignId: input.campaignId, outbox: input.outbox, source: input.source });
-  const pendingIntents = await input.outbox.listPending();
+  const pendingIntents = await input.outbox.listPending(input.campaignId);
   const blockedReason = blocksCompletion(input.boundary, pendingIntents);
 
   return {

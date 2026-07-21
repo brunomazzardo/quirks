@@ -121,8 +121,10 @@ export class SyncOutbox implements OutboxPort {
     return projected.byId.get(intentId);
   }
 
-  async listPending(): Promise<SyncIntent[]> {
+  async listPending(campaignId?: string): Promise<SyncIntent[]> {
     const projected = await projectIntents(this.journal);
-    return [...projected.byId.values()].filter((intent) => intent.state === "pending");
+    return [...projected.byId.values()].filter(
+      (intent) => intent.state === "pending" && (campaignId === undefined || intent.campaignId === campaignId),
+    );
   }
 }
