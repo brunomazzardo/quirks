@@ -6,13 +6,38 @@ import { InMemoryApprovalTokenStore } from "../../../src/ui/approval/token-store
 test("caps sliding viewer idle expiry at its absolute lifetime", async () => {
   const store = new InMemoryViewerSessionStore();
   const issued = await store.issue({ repositoryId: "repo-1", now: "2026-07-21T00:00:00.000Z" });
-  const touched = await store.authorize({
+  const first = await store.authorize({
+    viewerToken: issued.viewerToken,
+    repositoryId: "repo-1",
+    now: "2026-07-21T07:00:00.000Z",
+  });
+  assert.equal(first.result, "authorized");
+  if (first.result === "authorized") assert.equal(first.idleExpiresAt, "2026-07-21T15:00:00.000Z");
+  const second = await store.authorize({
+    viewerToken: issued.viewerToken,
+    repositoryId: "repo-1",
+    now: "2026-07-21T14:00:00.000Z",
+  });
+  assert.equal(second.result, "authorized");
+  if (second.result === "authorized") assert.equal(second.idleExpiresAt, "2026-07-21T22:00:00.000Z");
+  const capped = await store.authorize({
+    viewerToken: issued.viewerToken,
+    repositoryId: "repo-1",
+    now: "2026-07-21T21:00:00.000Z",
+  });
+  assert.equal(capped.result, "authorized");
+  if (capped.result === "authorized") assert.equal(capped.idleExpiresAt, issued.absoluteExpiresAt);
+});
+
+test("does not revive idle-expired viewer session near absolute lifetime", async () => {
+  const store = new InMemoryViewerSessionStore();
+  const issued = await store.issue({ repositoryId: "repo-1", now: "2026-07-21T00:00:00.000Z" });
+  const revived = await store.authorize({
     viewerToken: issued.viewerToken,
     repositoryId: "repo-1",
     now: "2026-07-21T23:00:00.000Z",
   });
-  assert.equal(touched.result, "authorized");
-  if (touched.result === "authorized") assert.equal(touched.idleExpiresAt, issued.absoluteExpiresAt);
+  assert.equal(revived.result, "expired");
 });
 
 test("consumes approval token once and rejects replay", async () => {
