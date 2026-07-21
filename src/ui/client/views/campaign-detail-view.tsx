@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
 import type {
   UiCampaignCommit,
@@ -29,9 +28,9 @@ const taskColumns = [
   taskColumnHelper.accessor("taskId", {
     header: "Task",
     cell: (info) => (
-      <Link to="/tasks/$taskId/history" params={{ taskId: info.getValue() }}>
+      <a href={`/tasks/${encodeURIComponent(info.getValue())}/history`}>
         {info.getValue()}
-      </Link>
+      </a>
     ),
   }),
   taskColumnHelper.accessor("title", { header: "Title", cell: (info) => <span>{info.getValue()}</span> }),
@@ -97,7 +96,7 @@ export function CampaignDetailView({ detail }: CampaignDetailViewProps) {
       </p>
       <SyncBanner pending={detail.sync.pending} conflicts={detail.sync.conflicts} />
       <p>
-        <Link to="/">Run again</Link>
+        <a href="/">Run again</a>
       </p>
       {detail.reportPath ? <p>Report: {detail.reportPath}</p> : null}
 
