@@ -156,11 +156,14 @@ export async function assertTaskSourceContract(
   assertFailure(conflictingClaim);
   assert.equal(conflictingClaim.error.code, "SOURCE_CONFLICT");
 
+  // When capabilities omit an operation, execute must reject it with PROTOCOL_VIOLATION.
+  // Full-capability drivers that advertise every op skip this check — no under-advertising required.
   const unsupported = ALL_OPERATIONS.find((operation) => !capabilities.operations.includes(operation));
-  assert.ok(unsupported, "expected capabilities to omit at least one operation");
-  const unsupportedResponse = await source.execute(buildUnsupportedRequest(unsupported, taskId, showResponse.nativeRevision!));
-  assertFailure(unsupportedResponse);
-  assert.equal(unsupportedResponse.error.code, "PROTOCOL_VIOLATION");
+  if (unsupported) {
+    const unsupportedResponse = await source.execute(buildUnsupportedRequest(unsupported, taskId, showResponse.nativeRevision!));
+    assertFailure(unsupportedResponse);
+    assert.equal(unsupportedResponse.error.code, "PROTOCOL_VIOLATION");
+  }
 }
 
 function buildUnsupportedRequest(
