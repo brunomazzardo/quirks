@@ -7,6 +7,7 @@ import { InMemoryViewerSessionStore } from "../../../src/ui/auth/viewer-session-
 import { loadClientBundle } from "../../../src/ui/shell.js";
 import { createUiServer } from "../../../src/ui/server.js";
 import { FakeApprovalWritePort } from "./fake-approval-write.js";
+import { fakeCampaignReadPort } from "./fake-campaigns.js";
 import { fakePreflightPort } from "./fake-preflight.js";
 
 export type TestCampaign = { repositoryId: string; envelopeDigest: string; status?: CampaignStatus };
@@ -53,6 +54,7 @@ export async function createTestUiServer(options?: {
     getCampaign: (campaignId) => campaigns.get(campaignId),
     getProjectContext: () => loadProjectContext(projectRoot, { mode: "inspection" }),
     preflightRead: fakePreflightPort(),
+    campaignRead: fakeCampaignReadPort(),
     clientScript,
     onRead: () => {
       readPortCalls += 1;

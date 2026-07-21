@@ -152,7 +152,6 @@ function InspectorPanel({ proposal }: { proposal: UiPreflightProposalV1 }) {
 export function PreflightView({ campaignId }: { campaignId: string }) {
   const vault = useTokenVault();
   const { apiClient, queryClient } = useRouteContext({ strict: false }) as RouterRuntime;
-  const [taskFilter, setTaskFilter] = useState("");
   const [approvalSettled, setApprovalSettled] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
@@ -206,11 +205,48 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
   }
 
   const proposal = preflightQuery.data;
-  const summaryConfidence = confidenceBadge(proposal.summary.confidence);
   const digestVisible =
     proposal.envelopeDigest.length > 0 &&
     proposal.approval.envelopeDigest === proposal.envelopeDigest &&
     proposal.approval.campaignId === proposal.campaignId;
+
+  return (
+    <PreflightProposalView
+      proposal={proposal}
+      approvalMessage={approvalMessage}
+      approvalDisabled={approvalSettled || approvalMutation.isSuccess}
+      approvalSubmitting={approvalMutation.isPending}
+      digestVisible={digestVisible}
+      onApprove={async () => {
+        setApprovalMessage(null);
+        await approvalMutation.mutateAsync({
+          campaignId: proposal.approval.campaignId,
+          envelopeDigest: proposal.approval.envelopeDigest,
+        });
+      }}
+    />
+  );
+}
+
+export function PreflightProposalView({
+  proposal,
+  approvalMessage = null,
+  approvalDisabled = true,
+  approvalSubmitting = false,
+  digestVisible = proposal.envelopeDigest.length > 0 &&
+    proposal.approval.envelopeDigest === proposal.envelopeDigest &&
+    proposal.approval.campaignId === proposal.campaignId,
+  onApprove = async () => {},
+}: {
+  proposal: UiPreflightProposalV1;
+  approvalMessage?: string | null;
+  approvalDisabled?: boolean;
+  approvalSubmitting?: boolean;
+  digestVisible?: boolean;
+  onApprove?: () => Promise<void>;
+}) {
+  const [taskFilter, setTaskFilter] = useState("");
+  const summaryConfidence = confidenceBadge(proposal.summary.confidence);
 
   return (
     <article className="preflight-view">
@@ -351,15 +387,9 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
         {approvalMessage ? <p role="status">{approvalMessage}</p> : null}
         <ApprovalForm
           digestVisible={digestVisible}
-          disabled={approvalSettled || approvalMutation.isSuccess}
-          isSubmitting={approvalMutation.isPending}
-          onApprove={async () => {
-            setApprovalMessage(null);
-            await approvalMutation.mutateAsync({
-              campaignId: proposal.approval.campaignId,
-              envelopeDigest: proposal.approval.envelopeDigest,
-            });
-          }}
+          disabled={approvalDisabled}
+          isSubmitting={approvalSubmitting}
+          onApprove={onApprove}
         />
       </Section>
     </article>
