@@ -1,20 +1,26 @@
-import { createContext, useContext } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createApiClient, type ApiClient } from "./api-client.js";
+import { queryClient } from "./query-client.js";
 import type { TokenVault } from "./token-vault.js";
 
-const TokenVaultContext = createContext<TokenVault | null>(null);
+export interface ClientRuntime {
+  queryClient: typeof queryClient;
+  apiClient: ApiClient;
+}
 
-export function App({ vault }: { vault: TokenVault }) {
+export function createClientRuntime(vault: TokenVault): ClientRuntime {
+  return {
+    queryClient,
+    apiClient: createApiClient(vault),
+  };
+}
+
+export function App({ runtime }: { runtime: ClientRuntime }) {
   return (
-    <TokenVaultContext.Provider value={vault}>
+    <QueryClientProvider client={runtime.queryClient}>
       <main className="ui-loading" role="status">
         Loading workspace…
       </main>
-    </TokenVaultContext.Provider>
+    </QueryClientProvider>
   );
-}
-
-export function useTokenVault(): TokenVault {
-  const vault = useContext(TokenVaultContext);
-  if (!vault) throw new Error("Token vault is unavailable");
-  return vault;
 }
