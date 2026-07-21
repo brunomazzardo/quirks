@@ -77,12 +77,22 @@ function cloneCompletionBoundaries(boundaries: readonly CompletionBoundary[]): C
   return [...boundaries];
 }
 
-function hasExplicitWorkflowPolicy(workflowPolicy: ProjectWorkflowPolicy): boolean {
-  return Boolean(
-    (workflowPolicy.nativeStatusMap && Object.keys(workflowPolicy.nativeStatusMap).length > 0) ||
-    (workflowPolicy.evidenceMap && Object.keys(workflowPolicy.evidenceMap).length > 0) ||
-    (workflowPolicy.allowedCompletionBoundaries && workflowPolicy.allowedCompletionBoundaries.length > 0),
-  );
+function hasNonEmptyNativeStatusMap(
+  nativeStatusMap: ProjectWorkflowPolicy["nativeStatusMap"],
+): nativeStatusMap is Readonly<Record<string, TaskStatus>> {
+  return Boolean(nativeStatusMap && Object.keys(nativeStatusMap).length > 0);
+}
+
+function hasNonEmptyEvidenceMap(
+  evidenceMap: ProjectWorkflowPolicy["evidenceMap"],
+): evidenceMap is Readonly<Partial<Record<CompletionBoundary, readonly EvidenceKind[]>>> {
+  return Boolean(evidenceMap && Object.keys(evidenceMap).length > 0);
+}
+
+function hasNonEmptyAllowedCompletionBoundaries(
+  allowedCompletionBoundaries: ProjectWorkflowPolicy["allowedCompletionBoundaries"],
+): allowedCompletionBoundaries is readonly CompletionBoundary[] {
+  return Boolean(allowedCompletionBoundaries && allowedCompletionBoundaries.length > 0);
 }
 
 export interface LoadProjectContextOptions {
@@ -173,11 +183,32 @@ function buildEffectiveWorkflowPolicy(config: ProjectConfig): Required<ProjectWo
   const { workflowPolicy, taskSource } = config;
   assertSkillNames(workflowPolicy.skills);
 
-  if (taskSource.driver === "external" && !hasExplicitWorkflowPolicy(workflowPolicy)) {
-    throw new QuirksError(
-      "PROTOCOL_VIOLATION",
-      "External task sources require explicit workflow policy mappings or capability metadata",
-    );
+  if (taskSource.driver === "external") {
+    if (
+      !hasNonEmptyNativeStatusMap(workflowPolicy.nativeStatusMap) ||
+      !hasNonEmptyEvidenceMap(workflowPolicy.evidenceMap) ||
+      !hasNonEmptyAllowedCompletionBoundaries(workflowPolicy.allowedCompletionBoundaries)
+    ) {
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        "External task sources require explicit workflow policy mappings or capability metadata",
+      );
+    }
+
+    const nativeStatusMap = cloneStatusMap(workflowPolicy.nativeStatusMap);
+    const evidenceMap = cloneEvidenceMap(workflowPolicy.evidenceMap);
+    const allowedCompletionBoundaries = cloneCompletionBoundaries(workflowPolicy.allowedCompletionBoundaries);
+
+    assertNativeStatusMap(nativeStatusMap);
+    assertEvidenceMap(evidenceMap);
+    assertAllowedCompletionBoundaries(allowedCompletionBoundaries);
+
+    return {
+      skills: { ...workflowPolicy.skills },
+      nativeStatusMap,
+      evidenceMap,
+      allowedCompletionBoundaries,
+    };
   }
 
   const nativeStatusMap = cloneStatusMap(workflowPolicy.nativeStatusMap ?? IDENTITY_STATUS_MAP);

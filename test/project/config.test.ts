@@ -166,3 +166,61 @@ test("external task source treats empty workflow maps as absent", async () => {
     (error: Error & { code?: string }) => error.code === "PROTOCOL_VIOLATION",
   );
 });
+
+const completeExternalWorkflowPolicy = {
+  skills: {},
+  nativeStatusMap: { ready: "ready", done: "completed" },
+  evidenceMap: { "accepted-commit": ["commit", "review", "verification"] },
+  allowedCompletionBoundaries: ["accepted-commit"],
+} as const;
+
+test("external task source rejects partial workflow policy without JSON-driver fallbacks", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "quirks-project-"));
+  await initRepo(root);
+
+  const partialPolicies = [
+    { nativeStatusMap: completeExternalWorkflowPolicy.nativeStatusMap },
+    { evidenceMap: completeExternalWorkflowPolicy.evidenceMap },
+    { allowedCompletionBoundaries: completeExternalWorkflowPolicy.allowedCompletionBoundaries },
+    {
+      nativeStatusMap: completeExternalWorkflowPolicy.nativeStatusMap,
+      evidenceMap: completeExternalWorkflowPolicy.evidenceMap,
+    },
+    {
+      nativeStatusMap: completeExternalWorkflowPolicy.nativeStatusMap,
+      allowedCompletionBoundaries: completeExternalWorkflowPolicy.allowedCompletionBoundaries,
+    },
+    {
+      evidenceMap: completeExternalWorkflowPolicy.evidenceMap,
+      allowedCompletionBoundaries: completeExternalWorkflowPolicy.allowedCompletionBoundaries,
+    },
+  ];
+
+  for (const workflowPolicy of partialPolicies) {
+    await writeFile(path.join(root, ".agents/quirks.json"), JSON.stringify({
+      ...minimalConfig,
+      taskSource: { driver: "external", command: ["quirks-tasks", "list"] },
+      workflowPolicy: { skills: {}, ...workflowPolicy },
+    }));
+    await assert.rejects(
+      () => loadProjectContext(root, { mode: "inspection" }),
+      (error: Error & { code?: string }) => error.code === "PROTOCOL_VIOLATION",
+      `expected rejection for partial workflow policy: ${JSON.stringify(workflowPolicy)}`,
+    );
+  }
+});
+
+test("external task source accepts complete explicit workflow policy", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "quirks-project-"));
+  await initRepo(root);
+  await writeFile(path.join(root, ".agents/quirks.json"), JSON.stringify({
+    ...minimalConfig,
+    taskSource: { driver: "external", command: ["quirks-tasks", "list"] },
+    workflowPolicy: completeExternalWorkflowPolicy,
+  }));
+  const context = await loadProjectContext(root, { mode: "inspection" });
+  assert.equal(context.config.taskSource.driver, "external");
+  assert.equal(context.effectiveWorkflowPolicy.nativeStatusMap.ready, "ready");
+  assert.deepEqual(context.effectiveWorkflowPolicy.evidenceMap["accepted-commit"], ["commit", "review", "verification"]);
+  assert.deepEqual(context.effectiveWorkflowPolicy.allowedCompletionBoundaries, ["accepted-commit"]);
+});
