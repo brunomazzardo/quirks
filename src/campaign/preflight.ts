@@ -167,7 +167,7 @@ export async function runPreflight(input: RunPreflightInput): Promise<PreflightR
       git: { baseCommit: git.baseCommit, campaignBranch: `quirks/${campaignId}`, targetBranch: git.branch ?? "main", push: { enabled: false } },
       authority: ["repository", "task-source", "operator", "git"],
       routing,
-      budgets: { maxTasks: tasks.length, maxConcurrency: 1, maxWallClockMs: 0, maxRetries: 0, laneFailureThreshold: 0 },
+      budgets: { maxTasks: Math.max(1, tasks.length), maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
       verification: [...new Set(tasks.flatMap((task) => task.verification))],
       hashes: {
         config: context.configHash,

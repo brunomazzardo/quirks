@@ -2,13 +2,12 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openWorkspace } from "../ui/open-workspace.js";
+import { CampaignCliParseError, parseCampaignArgs } from "./campaign-args.js";
+import { runCampaignCommand } from "./campaign-commands.js";
 import { CliParseError } from "./args.js";
 import { domainErrorCode, exitCodeForError, writeHuman, writeJson } from "./output.js";
 
-const PLACEHOLDER_MESSAGE =
-  "Campaign execution is not installed; implement the approved runner-control and campaign plans.\n";
-
-export { CliParseError };
+export { CliParseError, CampaignCliParseError, parseCampaignArgs };
 
 export type ParsedUiOpenArgs = {
   campaignId: string;
@@ -97,12 +96,49 @@ async function runUiOpen(parsed: ParsedUiOpenArgs): Promise<number> {
   return 0;
 }
 
+function localCoordinationHumanLines(): string[] {
+  return ["Local coordination only", "No shared lease"];
+}
+
+async function runCampaignCli(parsed: Exclude<ReturnType<typeof parseCampaignArgs>, { command: "ui" }>): Promise<number> {
+  const result = await runCampaignCommand(parsed);
+  if (parsed.json) {
+    writeJson(process.stdout, result);
+  } else {
+    const lines = [...localCoordinationHumanLines()];
+    if (typeof result === "object" && result !== null && "campaignId" in result) {
+      lines.push(`campaignId: ${String((result as { campaignId: string }).campaignId)}`);
+    }
+    if (typeof result === "object" && result !== null && "ok" in result) {
+      lines.push(`ok: ${String((result as { ok: boolean }).ok)}`);
+    }
+    writeHuman(process.stdout, lines);
+  }
+  return 0;
+}
+
 async function run(): Promise<number> {
   const argv = process.argv.slice(2);
-  if (argv[0] === "ui") {
-    let parsed: ParsedUiOpenArgs | undefined;
+  if (argv.length === 0) {
+    process.stderr.write("Usage: quirks-campaign <command> [options]\n");
+    return 2;
+  }
+
+  let parsed: ReturnType<typeof parseCampaignArgs>;
+  try {
+    parsed = parseCampaignArgs(argv);
+  } catch (error) {
+    if (error instanceof CampaignCliParseError || error instanceof CliParseError) {
+      process.stderr.write(`${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
+
+  if (parsed.command === "ui") {
+    let uiParsed: ParsedUiOpenArgs;
     try {
-      parsed = parseUiOpenArgs(argv.slice(1));
+      uiParsed = parseUiOpenArgs(parsed.uiArgv);
     } catch (error) {
       if (error instanceof CliParseError) {
         process.stderr.write(`${error.message}\n`);
@@ -111,9 +147,9 @@ async function run(): Promise<number> {
       throw error;
     }
     try {
-      return await runUiOpen(parsed);
+      return await runUiOpen(uiParsed);
     } catch (error) {
-      if (parsed.json) {
+      if (uiParsed.json) {
         writeJson(process.stdout, {
           ok: false,
           error: domainErrorCode(error),
@@ -126,8 +162,21 @@ async function run(): Promise<number> {
     }
   }
 
-  process.stderr.write(PLACEHOLDER_MESSAGE);
-  return 2;
+  try {
+    return await runCampaignCli(parsed);
+  } catch (error) {
+    if (parsed.json) {
+      writeJson(process.stdout, {
+        ok: false,
+        error: domainErrorCode(error),
+        message: error instanceof Error ? error.message : "Unexpected failure",
+        localCoordinationOnly: true,
+      });
+    } else {
+      process.stderr.write(`${error instanceof Error ? error.message : "Unexpected failure"}\n`);
+    }
+    return exitCodeForError(error);
+  }
 }
 
 const isCliEntry =
