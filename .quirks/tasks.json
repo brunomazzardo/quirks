@@ -1126,7 +1126,7 @@
       "title": "Implement campaign schemas, canonical state, and approval events",
       "kind": "implementation",
       "priority": "P0",
-      "status": "ready",
+      "status": "completed",
       "dependsOn": [
         "QK-CTL-001"
       ],
@@ -1171,7 +1171,20 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-CTL-002-I1",
+            "campaignId": "cmp-20260721-ctl002",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "f79434f67dd4d3fd78034b9979afbca13439864b",
+            "commitRefs": [
+              "f79434f67dd4d3fd78034b9979afbca13439864b"
+            ],
+            "finishedAt": "2026-07-21T17:10:26Z",
+            "outcomeReason": "Campaign schemas, immutable state store, replay state machine, and digest-bound approval events implemented and verified"
+          }
+        ]
       }
     },
     {
@@ -1499,7 +1512,7 @@
       "title": "Implement the ephemeral loopback UI security boundary and approval API",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "ready",
       "dependsOn": [
         "QK-UI-001",
         "QK-CTL-002"
