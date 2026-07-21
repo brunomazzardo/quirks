@@ -12,7 +12,8 @@
     "quirks-tasks": "dist/src/cli/quirks-tasks.js"
   },
   "scripts": {
-    "build": "node scripts/generate-validators.mjs && tsc -p tsconfig.build.json",
+    "build": "node scripts/generate-validators.mjs && tsc -p tsconfig.build.json && pnpm bundle:ui",
+    "bundle:ui": "node scripts/bundle-ui-client.mjs",
     "lint": "oxlint src test scripts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm build && node scripts/run-tests.mjs",
