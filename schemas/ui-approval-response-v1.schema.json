@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/ui-approval-response-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "result"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "result": {
+      "enum": ["approved", "rejected", "stale", "expired", "replay", "invalid"]
+    },
+    "approvalEventId": { "type": "string", "minLength": 1, "maxLength": 256 }
+  }
+}
