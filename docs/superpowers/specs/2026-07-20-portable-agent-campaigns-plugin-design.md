@@ -4,7 +4,7 @@ Date: 2026-07-20
 
 Last revised: 2026-07-21
 
-Status: APPROVED WRITTEN SPEC — implementation planning in progress
+Status: APPROVED WRITTEN SPEC — UI stack amendment awaiting written review
 
 Repository: `brunomazzardo/quirks`
 
@@ -1356,6 +1356,50 @@ objects stay visibly missing.
 Every view carries an explicit source/sync freshness indicator. Version one also
 shows `Local coordination only` and `No shared lease`; it does not imply that a
 claim prevents work from another clone or machine.
+
+### 22.1 Local UI implementation stack
+
+The security-sensitive server remains a small framework-independent Node HTTP
+service owned by `quirks-campaign`. TanStack Start is not used: Quirks does not
+need SSR, streaming, framework server functions, framework-owned API routes, or
+a general deployment adapter, and those facilities would enlarge the route and
+build surfaces that must satisfy the exact loopback Host, token, nonce-CSP, and
+approval rules in section 20.
+
+The browser client uses React and these focused TanStack libraries:
+
+- **TanStack Router** for the five fixed local views and typed URL/search state;
+- **TanStack Query** for bounded authenticated projection fetches, explicit
+  freshness, refetch, and invalidation after an approval result;
+- **TanStack Table** for Existing Tasks, Campaigns, commit, pull-request, and
+  history tables; and
+- **TanStack Form** for task selection, editable preflight inputs, and the exact
+  digest-bound approval interaction.
+
+TanStack CLI and TanStack Intent are development tools, not runtime authority.
+Before implementing the client, the UI task creates a disposable Router-only
+reference scaffold with the then-current TanStack CLI, records the exact command
+and versions, installs Intent guidance in the real repository, and loads the
+package-shipped skills that match the change. Generated framework server code,
+demo routes, remote assets, and unrelated integrations are not merged.
+`package.json#intent.skills` uses an explicit package allow-list for the selected
+TanStack packages; wildcard or implicit trust of dependency-provided skills is
+not allowed.
+
+TanStack Store and Pacer are not version-one dependencies: Router, Query, Form,
+and local React state already own their respective state, while correctness,
+rate limits, retries, and approval serialization remain server-side. TanStack
+Virtual is added only if the bounded 1,000-row history/table browser fixture
+cannot meet the approved responsive interaction budget without it. This keeps
+the initial dependency and state model honest while preserving an explicit
+scaling path.
+
+The client remains a locally built single bundle served by the Node UI server.
+The initial HTML shell contains no projection data. The server injects the fresh
+nonce into the script and style elements, and all runtime data still crosses the
+strict JSON projection/approval APIs. React components render hostile strings as
+text; no component accepts raw HTML. No TanStack cache, router state, or form
+state becomes canonical campaign or task state.
 
 ## 23. Testing strategy
 
