@@ -3331,10 +3331,10 @@
             "id": "QK-CTL-004A-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "b24bbbb",
+            "acceptedCommit": "b24bbbb4c3243918f88369f5ea0665e3dbe1c95c",
             "commitRefs": [
-              "b24bbbb",
-              "0b71020"
+              "b24bbbb4c3243918f88369f5ea0665e3dbe1c95c",
+              "0b710200c5709ec41650d962054b2b18a02039a3"
             ],
             "finishedAt": "2026-07-21T23:40:00Z",
             "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
@@ -3397,10 +3397,10 @@
             "id": "QK-CTL-004B-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "05b35d6",
+            "acceptedCommit": "05b35d6f0560f41e37707361fcda12a86996ee61",
             "commitRefs": [
-              "05b35d6",
-              "0b71020"
+              "05b35d6f0560f41e37707361fcda12a86996ee61",
+              "0b710200c5709ec41650d962054b2b18a02039a3"
             ],
             "finishedAt": "2026-07-21T23:40:00Z",
             "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
@@ -3463,10 +3463,10 @@
             "id": "QK-CTL-004C-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "addcf73",
+            "acceptedCommit": "addcf73983dc96affc36860109b999b2a508bdc6",
             "commitRefs": [
-              "addcf73",
-              "0b71020"
+              "addcf73983dc96affc36860109b999b2a508bdc6",
+              "0b710200c5709ec41650d962054b2b18a02039a3"
             ],
             "finishedAt": "2026-07-21T23:40:00Z",
             "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
@@ -3528,10 +3528,10 @@
             "id": "QK-CTL-004D-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "8452929",
+            "acceptedCommit": "84529291662f0af541eb6c4f0169de9393383345",
             "commitRefs": [
-              "8452929",
-              "0b71020"
+              "84529291662f0af541eb6c4f0169de9393383345",
+              "0b710200c5709ec41650d962054b2b18a02039a3"
             ],
             "finishedAt": "2026-07-21T23:40:00Z",
             "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
@@ -3594,10 +3594,10 @@
             "id": "QK-UI-003J-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "3decc00",
+            "acceptedCommit": "3decc00eafd2b1ddc8fd8e381c2a032a3c08cc59",
             "commitRefs": [
-              "3decc00",
-              "0b71020"
+              "3decc00eafd2b1ddc8fd8e381c2a032a3c08cc59",
+              "0b710200c5709ec41650d962054b2b18a02039a3"
             ],
             "finishedAt": "2026-07-21T23:40:00Z",
             "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
@@ -3662,10 +3662,10 @@
             "id": "QK-UI-004B-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "ccf7a7b",
+            "acceptedCommit": "ccf7a7b31c253f6d8fad059081e78c45bc2a9b3b",
             "commitRefs": [
-              "ccf7a7b",
-              "0b71020"
+              "ccf7a7b31c253f6d8fad059081e78c45bc2a9b3b",
+              "0b710200c5709ec41650d962054b2b18a02039a3"
             ],
             "finishedAt": "2026-07-21T23:40:00Z",
             "outcomeReason": "Wave 1 overnight lane landed on wave/w1-ctl-ui"
