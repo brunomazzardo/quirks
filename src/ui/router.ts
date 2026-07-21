@@ -12,6 +12,7 @@ import type { ApprovalWritePort } from "./ports/approval-write.js";
 import type { CampaignReadPort } from "./ports/campaign-read.js";
 import type { PreflightReadPort } from "./ports/preflight-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
+import { matchShellRoute, renderShell } from "./shell.js";
 
 export type CampaignRecord = { repositoryId: string; envelopeDigest: string; status?: CampaignStatus };
 
@@ -28,6 +29,8 @@ export interface UiRouterOptions {
   now?: () => string;
   onRead?: () => void;
   onApproveAttempt?: () => void;
+  clientScript?: string;
+  nonce?: string;
 }
 
 function bearer(req: IncomingMessage): string | undefined {
@@ -46,13 +49,7 @@ function isReadRoute(pathname: string): boolean {
   );
 }
 
-export async function routeUiRequest(req: IncomingMessage, res: ServerResponse, options: UiRouterOptions): Promise<void> {
-  const url = new URL(req.url ?? "/", options.authority.origin);
-  if (!url.pathname.startsWith("/api/")) {
-    res.statusCode = 404;
-    res.end();
-    return;
-  }
+async function routeApiRequest(req: IncomingMessage, res: ServerResponse, options: UiRouterOptions, url: URL): Promise<void> {
   if (url.pathname === "/api/v1/approval" && req.method !== "POST") {
     return sendJson(res, 405, { schemaVersion: 1, result: "invalid" });
   }
@@ -110,4 +107,33 @@ export async function routeUiRequest(req: IncomingMessage, res: ServerResponse, 
     return handleTaskHistory(req, res, { taskId, source: options.taskHistory });
   }
   return sendJson(res, 200, { schemaVersion: 1, route: url.pathname, refreshedAt: options.now?.() ?? new Date().toISOString() });
+}
+
+function routeShellRequest(req: IncomingMessage, res: ServerResponse, options: UiRouterOptions, url: URL): void {
+  if (req.method !== "GET") {
+    res.statusCode = 405;
+    res.end();
+    return;
+  }
+  if (!matchShellRoute(url.pathname)) {
+    res.statusCode = 404;
+    res.end();
+    return;
+  }
+  if (!options.nonce) {
+    res.statusCode = 500;
+    res.end();
+    return;
+  }
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.end(renderShell({ nonce: options.nonce, clientScript: options.clientScript ?? "" }));
+}
+
+export async function routeUiRequest(req: IncomingMessage, res: ServerResponse, options: UiRouterOptions): Promise<void> {
+  const url = new URL(req.url ?? "/", options.authority.origin);
+  if (url.pathname.startsWith("/api/")) {
+    return routeApiRequest(req, res, options, url);
+  }
+  routeShellRequest(req, res, options, url);
 }
