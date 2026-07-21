@@ -34,11 +34,16 @@ export type RunnerJobStatus =
 export interface RunnerJobResult {
   schemaVersion: 1;
   jobId: string;
+  runner: string;
+  runnerType: RunnerProfile["runnerType"];
+  resolvedModel: string;
+  effort: string;
   status: RunnerJobStatus;
-  startedAt: string;
-  finishedAt: string;
-  exitCode: number;
-  sessionId?: string;
-  summary?: string;
-  evidence: Readonly<Record<string, string>>;
+  sessionHandle: string;
+  artifactPaths: readonly string[];
+  usage: Readonly<Record<string, number>>;
+  failure: {
+    code: string;
+    message: string;
+  } | undefined;
 }
