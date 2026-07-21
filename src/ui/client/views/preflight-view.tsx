@@ -84,8 +84,8 @@ function TaskTable({
     return <p>No tasks match the current filter.</p>;
   }
 
-  return (
-    <table>
+    return (
+    <table className="data-table">
       <thead>
         <tr>
           <th scope="col">Task</th>
@@ -274,7 +274,9 @@ export function PreflightProposalView({
             placeholder="Filter by task id, title, wave, or lane"
           />
         </p>
+        <div className="data-table-wrapper">
         <TaskTable proposal={proposal} filter={taskFilter} />
+        </div>
         <p>
           <strong>Execution map:</strong>
         </p>
@@ -376,7 +378,9 @@ export function PreflightProposalView({
 
       <Section title="Approval digest binding">
         <ReadOnlyField label="Campaign ID" value={proposal.approval.campaignId} />
-        <ReadOnlyField label="Envelope digest" value={proposal.approval.envelopeDigest} />
+        <p id="envelope-digest">
+          <strong>Envelope digest:</strong> {proposal.approval.envelopeDigest}
+        </p>
         <p role="status">
           Approval is bound to the displayed campaign ID and envelope digest. Envelope fields are
           read-only.

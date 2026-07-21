@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { CampaignStatus } from "../../../src/campaign/types.js";
+import type { UiPreflightProposalV1 } from "../../../src/ui/types/preflight-proposal.js";
 import { loadProjectContext } from "../../../src/project/config.js";
 import { createLoopbackAuthority } from "../../../src/ui/authority.js";
 import { InMemoryApprovalTokenStore } from "../../../src/ui/approval/token-store.js";
@@ -25,6 +26,7 @@ export type TestUiServer = {
 export async function createTestUiServer(options?: {
   repositoryId?: string;
   campaigns?: Record<string, TestCampaign>;
+  preflightProposals?: Record<string, UiPreflightProposalV1>;
   now?: string;
   clientScript?: string;
 }): Promise<TestUiServer> {
@@ -53,7 +55,7 @@ export async function createTestUiServer(options?: {
     now: getNow,
     getCampaign: (campaignId) => campaigns.get(campaignId),
     getProjectContext: () => loadProjectContext(projectRoot, { mode: "inspection" }),
-    preflightRead: fakePreflightPort(),
+    preflightRead: fakePreflightPort(options?.preflightProposals),
     campaignRead: fakeCampaignReadPort(),
     clientScript,
     onRead: () => {

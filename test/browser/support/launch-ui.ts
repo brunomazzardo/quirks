@@ -1,3 +1,4 @@
+import type { UiPreflightProposalV1 } from "../../../src/ui/types/preflight-proposal.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page } from "@playwright/test";
@@ -26,6 +27,7 @@ export type LaunchUiOptions = {
   campaignId?: string;
   now?: string;
   includeTokens?: boolean;
+  preflightProposals?: Record<string, UiPreflightProposalV1>;
 };
 
 export function attachLoopbackNetworkGuard(page: Page, allowedOrigin: string): { assertLoopbackOnly: () => void } {
@@ -59,6 +61,7 @@ export async function launchUiFixture(options?: LaunchUiOptions): Promise<UiFixt
     campaigns: {
       [campaignId]: { repositoryId: "repo-1", envelopeDigest: ISSUED_DIGEST, status: "awaiting_approval" },
     },
+    ...(options?.preflightProposals ? { preflightProposals: options.preflightProposals } : {}),
   });
 
   process.env.QUIRKS_UI_TEST_PORT = String(server.authority.port);

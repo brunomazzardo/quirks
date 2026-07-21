@@ -10,6 +10,7 @@ export type ApprovalFormProps = {
   disabled: boolean;
   isSubmitting: boolean;
   submitLabel?: string;
+  digestDescriptionId?: string;
   onApprove: () => Promise<void>;
 };
 
@@ -18,6 +19,7 @@ export function ApprovalForm({
   disabled,
   isSubmitting,
   submitLabel = "Approve campaign",
+  digestDescriptionId = "envelope-digest",
   onApprove,
 }: ApprovalFormProps) {
   const acknowledgementId = useId();
@@ -44,6 +46,7 @@ export function ApprovalForm({
             <input
               id={acknowledgementId}
               type="checkbox"
+              aria-describedby={digestDescriptionId}
               checked={field.state.value}
               disabled={disabled || isSubmitting}
               onBlur={field.handleBlur}
