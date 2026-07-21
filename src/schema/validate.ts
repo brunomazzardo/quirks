@@ -16,7 +16,9 @@ export type SchemaName =
   | "campaign-approval-v1"
   | "host-profile-v1"
   | "runner-profile-v1"
-  | "runner-job-result-v1";
+  | "runner-job-result-v1"
+  | "ui-approval-request-v1"
+  | "ui-approval-response-v1";
 
 type Validator = ((value: unknown) => boolean) & {
   errors?: readonly { instancePath?: string; message?: string }[] | null;

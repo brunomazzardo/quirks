@@ -12,10 +12,13 @@ export class FakeApprovalWritePort implements ApprovalWritePort {
   readonly events: RecordedApprovalEvent[] = [];
   #eventCounter = 0;
 
-  constructor(private readonly store: InMemoryApprovalTokenStore) {}
+  constructor(
+    private readonly store: InMemoryApprovalTokenStore,
+    private readonly getNow: () => string = () => new Date().toISOString(),
+  ) {}
 
   issueToken(input: { campaignId: string; envelopeDigest: string; now?: string }) {
-    return this.store.issue(input);
+    return this.store.issue({ ...input, now: input.now ?? this.getNow() });
   }
 
   async approve(input: {
@@ -28,6 +31,7 @@ export class FakeApprovalWritePort implements ApprovalWritePort {
       campaignId: input.campaignId,
       envelopeDigest: input.envelopeDigest,
       approvalToken: input.approvalToken,
+      now: this.getNow(),
     });
     if (result !== "ok") return { result };
     const approvalEventId = `approval-${++this.#eventCounter}`;
