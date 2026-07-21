@@ -1,14 +1,18 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
+import { RouterProvider } from "@tanstack/react-router";
+import { createAppRouter } from "./router.js";
 import type { TokenVault } from "./token-vault.js";
 
 const TokenVaultContext = createContext<TokenVault | null>(null);
 
 export function App({ vault }: { vault: TokenVault }) {
+  const router = useMemo(
+    () => createAppRouter({ context: { queryClient: undefined, apiClient: undefined } }),
+    [],
+  );
   return (
     <TokenVaultContext.Provider value={vault}>
-      <main className="ui-loading" role="status">
-        Loading workspace…
-      </main>
+      <RouterProvider router={router} />
     </TokenVaultContext.Provider>
   );
 }
