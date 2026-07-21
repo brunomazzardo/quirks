@@ -12,7 +12,7 @@ export type {
 } from "./project/types.js";
 export { createTaskSource, type CreateTaskSourceOptions } from "./task-source/factory.js";
 export type { CredentialResolver } from "./task-source/credentials.js";
-export type { TaskSource } from "./task-source/task-source.js";
+export { disposeTaskSource, type TaskSource } from "./task-source/task-source.js";
 export type {
   MutationOperation,
   MutationRequest,

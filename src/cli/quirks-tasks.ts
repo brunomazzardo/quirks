@@ -6,7 +6,7 @@ import { createTaskSource } from "../task-source/factory.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { SyncOutbox } from "../sync/outbox.js";
 import { reconcilePending } from "../sync/reconciler.js";
-import type { TaskSource } from "../task-source/task-source.js";
+import { disposeTaskSource, type TaskSource } from "../task-source/task-source.js";
 import type { TaskSourceCapabilities, TaskSourceResponse } from "../task-source/types.js";
 import { CliParseError, parseArgs } from "./args.js";
 import {
@@ -76,6 +76,7 @@ function withSource<T extends Record<string, unknown>>(
 
 async function run(): Promise<number> {
   let json = false;
+  let source: TaskSource | undefined;
   try {
     const parsed = parseArgs(process.argv.slice(2));
     json = parsed.json;
@@ -84,7 +85,7 @@ async function run(): Promise<number> {
       mode: "inspection",
       ...(parsed.configPath ? { configPath: parsed.configPath } : {}),
     });
-    const source = await createTaskSource(context);
+    source = await createTaskSource(context);
     const capabilities = await readCapabilities(source);
     const driver = capabilities.driver;
     const outbox = await openOutbox(context.repositoryId);
@@ -206,6 +207,8 @@ async function run(): Promise<number> {
       process.stderr.write(`${error instanceof Error ? error.message : "Unexpected failure"}\n`);
     }
     return exitCode;
+  } finally {
+    await disposeTaskSource(source);
   }
 }
 

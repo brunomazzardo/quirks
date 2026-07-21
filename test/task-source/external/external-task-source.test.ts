@@ -207,4 +207,18 @@ test("createTaskSource accepts an injected credential resolver for external sour
   assert.deepEqual(requestedNames, ["LINEAR_API_KEY"]);
   const response = await source.execute({ schemaVersion: 1, operation: "capabilities", input: {} });
   assert.equal(response.ok, true);
+  await source.dispose?.();
+});
+
+test("dispose removes the adapter HOME sandbox and is idempotent", async () => {
+  const { access } = await import("node:fs/promises");
+  const source = fixtureSource();
+  await source.execute({ schemaVersion: 1, operation: "capabilities", input: {} });
+  const sandboxRoot = (source as unknown as { scrubbedEnvironment?: { sandboxRoot: string } }).scrubbedEnvironment
+    ?.sandboxRoot;
+  assert.ok(sandboxRoot, "expected scrubbed sandbox after execute");
+  await access(sandboxRoot);
+  await source.dispose();
+  await assert.rejects(() => access(sandboxRoot), (error: NodeJS.ErrnoException) => error.code === "ENOENT");
+  await source.dispose();
 });

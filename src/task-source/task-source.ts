@@ -5,6 +5,12 @@ import type { MutationRequest, TaskSourceOperation, TaskSourceRequest, TaskSourc
 
 export interface TaskSource {
   execute(request: TaskSourceRequest): Promise<TaskSourceResponse>;
+  /** Release adapter sandboxes and other process-local resources. Idempotent. */
+  dispose?(): Promise<void>;
+}
+
+export async function disposeTaskSource(source: TaskSource | undefined): Promise<void> {
+  await source?.dispose?.();
 }
 
 export const MAX_PROTOCOL_BYTES = 1_048_576;
