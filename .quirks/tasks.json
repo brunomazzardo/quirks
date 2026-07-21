@@ -1928,6 +1928,7 @@
         "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
       ],
       "acceptanceCriteria": [
+        "[wave:2] Skills and Git integration plan lane",
         "Plan skill baseline/forward tests, worktrees, review, merge, approved push, and provenance write-back"
       ],
       "verification": [
@@ -1981,6 +1982,7 @@
         "skills/dispatching-external-agents/SKILL.md and versioned runner references"
       ],
       "acceptanceCriteria": [
+        "[wave:3] dispatching-external-agents skill lane",
         "Skill delegates only through approved runner profiles and deterministic control-plane transitions"
       ],
       "verification": [
@@ -2084,6 +2086,7 @@
         "skills/delegated-brainstorming/SKILL.md"
       ],
       "acceptanceCriteria": [
+        "[wave:4] Baseline-test and author delegated-brainstorming lane",
         "Human-guided design remains default and delegated principal author/reviewer authority stays inside the approved decision envelope"
       ],
       "verification": [
@@ -2139,6 +2142,7 @@
         "skills/running-agent-campaigns/SKILL.md"
       ],
       "acceptanceCriteria": [
+        "[wave:4] Baseline-test and author running-agent-campaigns lane",
         "The parent skill preflights, asks about external routing, renders exact approval, supervises tasks, and reports without bypassing the control plane"
       ],
       "verification": [
@@ -2310,6 +2314,7 @@
         "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
       ],
       "acceptanceCriteria": [
+        "[wave:4] Write the host integration and acceptance implementation plan lane",
         "Plan package installation, three harness integrations, portability fixtures, real smoke evidence, marketplace installation, and bounded first campaign"
       ],
       "verification": [
@@ -2808,6 +2813,2331 @@
       ],
       "verification": [
         "Run shared conformance plus disposable ClickUp integration tests"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-RUN-002C",
+      "title": "Watchdog and detached execution",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "completed",
+      "dependsOn": [
+        "QK-RUN-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "qk_run_002c"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 11
+        }
+      ],
+      "deliverables": [
+        "src/runner/watchdog.ts",
+        "src/cli/quirks-watchdog.ts"
+      ],
+      "acceptanceCriteria": [
+        "[wave:0] Detached watchdog supervises runner jobs without blocking the supervisor"
+      ],
+      "verification": [
+        "node --test dist/test/runner/watchdog.test.js"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-RUN-002C-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "0a1f909",
+            "commitRefs": [
+              "0a1f909",
+              "beb8579"
+            ],
+            "finishedAt": "2026-07-21T20:00:00-03:00",
+            "outcomeReason": "Runner watchdog and detached execution landed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "QK-RUN-002D",
+      "title": "Resume probes and stale-session recovery",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "completed",
+      "dependsOn": [
+        "QK-RUN-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "qk_run_002d"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 11
+        }
+      ],
+      "deliverables": [
+        "src/runner/liveness.ts"
+      ],
+      "acceptanceCriteria": [
+        "[wave:0] probeLiveness detects output growth, process liveness, and permits one bounded resume"
+      ],
+      "verification": [
+        "node --test dist/test/runner/liveness.test.js"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-RUN-002D-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "63587cb",
+            "commitRefs": [
+              "63587cb",
+              "beb8579"
+            ],
+            "finishedAt": "2026-07-21T20:00:00-03:00",
+            "outcomeReason": "Resume probes and stale-session recovery"
+          }
+        ]
+      }
+    },
+    {
+      "id": "QK-UI-003I",
+      "title": "Hostile projection React tests",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "completed",
+      "dependsOn": [
+        "QK-UI-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "qk_ui_003i"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 16
+        }
+      ],
+      "deliverables": [
+        "Hostile-path React component and read-model tests"
+      ],
+      "acceptanceCriteria": [
+        "[wave:0] Hostile metadata, paths, logs, and task text render safely without XSS or canonical state leakage"
+      ],
+      "verification": [
+        "node --test dist/test/ui/**/*.test.js"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-UI-003I-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "b6b3f8f",
+            "commitRefs": [
+              "b6b3f8f",
+              "beb8579"
+            ],
+            "finishedAt": "2026-07-21T20:00:00-03:00",
+            "outcomeReason": "Hostile projection React tests"
+          }
+        ]
+      }
+    },
+    {
+      "id": "QK-UI-004A",
+      "title": "Playwright browser security harness",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "completed",
+      "dependsOn": [
+        "QK-UI-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "qk_ui_004a"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 17
+        }
+      ],
+      "deliverables": [
+        "test/browser/ui-security.spec.ts",
+        "test/browser/support/launch-ui.ts"
+      ],
+      "acceptanceCriteria": [
+        "[wave:0] Playwright harness exercises CSP, credential separation, replay, and stale-digest rejection"
+      ],
+      "verification": [
+        "pnpm exec playwright test test/browser/ui-security.spec.ts"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-UI-004A-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "4ecb5d0",
+            "commitRefs": [
+              "0302636",
+              "4ecb5d0",
+              "1b79d6d",
+              "beb8579"
+            ],
+            "finishedAt": "2026-07-21T20:00:00-03:00",
+            "outcomeReason": "Playwright browser security harness"
+          }
+        ]
+      }
+    },
+    {
+      "id": "QK-W0-REV",
+      "title": "Independent Wave 0 review",
+      "kind": "review",
+      "priority": "P0",
+      "status": "completed",
+      "dependsOn": [
+        "QK-RUN-002C",
+        "QK-RUN-002D",
+        "QK-UI-003I",
+        "QK-UI-004A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "review",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-read"
+        ],
+        "parallelismKeys": [
+          "qk_w0_rev"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": [
+        ".superpowers/sdd/wave-2026-07-21-run002cd-ui003i004a/qk-w0-rev-report.md"
+      ],
+      "acceptanceCriteria": [
+        "[wave:0] [wave:0] Independent review findings resolved or accepted before integration"
+      ],
+      "verification": [
+        "Review report at .superpowers/sdd/wave-2026-07-21-run002cd-ui003i004a/qk-w0-rev-report.md"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-W0-REV-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "beb8579",
+            "commitRefs": [
+              "1b79d6d",
+              "beb8579"
+            ],
+            "finishedAt": "2026-07-21T20:00:00-03:00",
+            "outcomeReason": "Wave 0 independent review complete",
+            "artifactRefs": [
+              {
+                "kind": "report",
+                "path": ".superpowers/sdd/wave-2026-07-21-run002cd-ui003i004a/qk-w0-rev-report.md",
+                "commit": "beb8579"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "QK-W0-INT",
+      "title": "Wave 0 integration",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "completed",
+      "dependsOn": [
+        "QK-W0-REV"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "qk_w0_int"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": [
+        "Wave 0 merge to main"
+      ],
+      "acceptanceCriteria": [
+        "[wave:0] [wave:0] All Wave 0 lanes integrated at tip beb8579 with green gates"
+      ],
+      "verification": [
+        "git log --oneline beb8579",
+        "pnpm check"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": [
+          {
+            "id": "QK-W0-INT-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "beb8579",
+            "commitRefs": [
+              "1b79d6d",
+              "beb8579"
+            ],
+            "finishedAt": "2026-07-21T20:00:00-03:00",
+            "outcomeReason": "Wave 0 integrated to main"
+          }
+        ]
+      }
+    },
+    {
+      "id": "QK-RUN-002E",
+      "title": "Unify dual probeLiveness implementations",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-W0-REV"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "qk_run_002e"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 11
+        }
+      ],
+      "deliverables": [
+        "Single probeLiveness contract shared by watchdog stub and liveness.ts"
+      ],
+      "acceptanceCriteria": [
+        "[wave:0] [wave:0-followup] Watchdog and liveness modules use one probeLiveness implementation"
+      ],
+      "verification": [
+        "node --test dist/test/runner/liveness.test.js dist/test/runner/watchdog.test.js"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-CTL-004A",
+      "title": "Campaign supervisor orchestration",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-W0-INT",
+        "QK-RUN-002"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "campaign-supervisor-orchestration"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 14
+        }
+      ],
+      "deliverables": [
+        "src/campaign/supervisor.ts",
+        "src/campaign/ports.ts",
+        "test/campaign/supervisor.test.ts"
+      ],
+      "acceptanceCriteria": [
+        "[wave:1] Supervisor claims approved tasks, dispatches jobs, and enforces mechanical invariants"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-CTL-004B",
+      "title": "Supervisor crash recovery",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-CTL-004A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "campaign-supervisor-recovery"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 14
+        }
+      ],
+      "deliverables": [
+        "src/campaign/recovery.ts",
+        "test/campaign/recovery.test.ts"
+      ],
+      "acceptanceCriteria": [
+        "[wave:1] recoverCampaign replays events and prevents duplicate dispatch after crash"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-CTL-004C",
+      "title": "Fake runners and failure fixtures",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-CTL-004A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "fake-runners-fixtures"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 15
+        }
+      ],
+      "deliverables": [
+        "test/campaign/support/fake-runner-port.ts",
+        "test/campaign/support/fake-worktree.ts"
+      ],
+      "acceptanceCriteria": [
+        "[wave:1] Deterministic fake runners exercise crash, wedge, quota, and timeout paths"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-CTL-004D",
+      "title": "Live plan-progress transport",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-CTL-004A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "live-plan-progress-transport"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 17
+        }
+      ],
+      "deliverables": [
+        "Per-job progress mailbox and controller-observed journal"
+      ],
+      "acceptanceCriteria": [
+        "[wave:1] Worker telemetry is advisory-only; controller journal is authoritative observation"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-UI-003J",
+      "title": "Plan progress projection and UI",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-CTL-004D",
+        "QK-UI-003"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "plan-progress-ui"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 20
+        }
+      ],
+      "deliverables": [
+        "Plan progress view with controller-observed live updates"
+      ],
+      "acceptanceCriteria": [
+        "[wave:1] UI shows immutable plan steps and worker-reported versus reviewed progress"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-UI-004B",
+      "title": "Responsive, accessibility, and performance gates",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-UI-004A",
+        "QK-UI-003"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "ui-responsive-a11y-perf"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 18
+        }
+      ],
+      "deliverables": [
+        "test/browser/ui-responsive.spec.ts",
+        "test/browser/ui-a11y.spec.ts",
+        "test/browser/ui-table-performance.spec.ts"
+      ],
+      "acceptanceCriteria": [
+        "[wave:1] Layouts pass at 1280x800 and 390x844; 1,000-row median filter budget at most 250ms"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-CTL-004E",
+      "title": "Campaign CLI",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-CTL-004B",
+        "QK-CTL-004C",
+        "QK-CTL-004D"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "campaign-cli"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 16
+        }
+      ],
+      "deliverables": [
+        "src/cli/quirks-campaign.ts extensions"
+      ],
+      "acceptanceCriteria": [
+        "[wave:2] quirks-campaign CLI exposes start, status, pause, and recovery"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-CTL-004F",
+      "title": "Control-plane acceptance matrix",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-CTL-004E"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "control-plane-acceptance"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 16
+        }
+      ],
+      "deliverables": [
+        "Full fake-runner integration matrix"
+      ],
+      "acceptanceCriteria": [
+        "[wave:2] All control-plane failure and recovery paths pass without real provider access"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-UI-004C",
+      "title": "Full browser and live-progress integration",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-UI-004B",
+        "QK-CTL-004D"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "browser-live-progress"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+          "commit": "8a4b28f690d482c4851b3386a415e52e4d5e825b",
+          "task": 17
+        }
+      ],
+      "deliverables": [
+        "Browser suites with live progress polling"
+      ],
+      "acceptanceCriteria": [
+        "[wave:2] Browser tests cover live-progress polling without credential or canonical-state leaks"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-PLATFORM-REV",
+      "title": "Independent platform wave review",
+      "kind": "review",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-CTL-004F",
+        "QK-UI-004C",
+        "QK-SKL-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "review",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-read"
+        ],
+        "parallelismKeys": [
+          "platform-wave-review"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": [
+        "Platform wave review report"
+      ],
+      "acceptanceCriteria": [
+        "[wave:2] CTL and UI platform lanes reviewed before skills wave"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-PLATFORM-INT",
+      "title": "Platform wave integration",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-PLATFORM-REV"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "platform-wave-integration"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        "pnpm check"
+      ],
+      "deliverables": [
+        "Platform wave integration tip"
+      ],
+      "acceptanceCriteria": [
+        "[wave:2] CTL/UI platform lanes integrated with green gates"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-SKL-005A",
+      "title": "Author writing-tasks skill",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-SKL-001",
+        "QK-FND-011"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "writing-tasks-skill"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "skills/writing-tasks/SKILL.md"
+      ],
+      "acceptanceCriteria": [
+        "[wave:3] writing-tasks uses only the selected TaskSource and preserves canonical status"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-SKL-005B",
+      "title": "Author updating-tasks skill",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-SKL-005A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "updating-tasks-skill"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "skills/updating-tasks/SKILL.md"
+      ],
+      "acceptanceCriteria": [
+        "[wave:3] updating-tasks preserves canonical status ownership through validated CLI"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-SKL-005C",
+      "title": "Author executing-tasks skill",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-SKL-005B"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "executing-tasks-skill"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "skills/executing-tasks/SKILL.md"
+      ],
+      "acceptanceCriteria": [
+        "[wave:3] executing-tasks updates compact provenance through validated CLI operations"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-GIT-001A",
+      "title": "Isolated worktrees and integration branches",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-SKL-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "git-worktrees-integration"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "Worktree and integration branch control"
+      ],
+      "acceptanceCriteria": [
+        "[wave:3] Task-scoped worktrees and integration branches are isolated and deterministic"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-GIT-001B",
+      "title": "Review lanes and cleanup",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-GIT-001A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "git-review-lanes"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "Review lane dispatch and worktree cleanup"
+      ],
+      "acceptanceCriteria": [
+        "[wave:3] Review lanes are independent and cleanup is idempotent"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-GIT-002A",
+      "title": "Merge and exact approved push",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-GIT-001B",
+        "QK-SKL-004"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "git-merge-push"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "Verified merge and optional approved push"
+      ],
+      "acceptanceCriteria": [
+        "[wave:4] Push is impossible unless exact remote and branch are in the approved envelope"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-GIT-002B",
+      "title": "Provenance write-back",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-GIT-002A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "git-provenance-writeback"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-skills-git-integration.md"
+        }
+      ],
+      "deliverables": [
+        "Compact canonical task provenance write-back"
+      ],
+      "acceptanceCriteria": [
+        "[wave:4] Final verification updates task provenance with accepted commits"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-AUTONOMY-REV",
+      "title": "Autonomy boundary review",
+      "kind": "review",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-SKL-004",
+        "QK-GIT-002B",
+        "QK-HOST-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "review",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-read"
+        ],
+        "parallelismKeys": [
+          "autonomy-review"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": [
+        "Autonomy boundary review report"
+      ],
+      "acceptanceCriteria": [
+        "[wave:4] Skills, Git, and host plan autonomy boundaries reviewed"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-002A",
+      "title": "Codex plugin manifest and packaging",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-001"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-002a"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Codex plugin manifest and packaging"
+      ],
+      "acceptanceCriteria": [
+        "[wave:5] Codex plugin manifest and packaging"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-002B",
+      "title": "Claude Code host integration",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-002A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-002b"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Claude Code host integration"
+      ],
+      "acceptanceCriteria": [
+        "[wave:5] Claude Code host integration"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-002C",
+      "title": "Cursor host integration",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-002A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-002c"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Cursor host integration"
+      ],
+      "acceptanceCriteria": [
+        "[wave:5] Cursor host integration"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-002D",
+      "title": "Personal marketplace metadata",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-002A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-002d"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Personal marketplace metadata"
+      ],
+      "acceptanceCriteria": [
+        "[wave:5] Personal marketplace metadata"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-002E",
+      "title": "Canonical host installation references",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-002B",
+        "QK-HOST-002C",
+        "QK-HOST-002D"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-002e"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Canonical host installation references"
+      ],
+      "acceptanceCriteria": [
+        "[wave:5] Canonical host installation references"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-002F",
+      "title": "Cross-host skill discovery verification",
+      "kind": "implementation",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-002E"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-002f"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Cross-host skill discovery verification"
+      ],
+      "acceptanceCriteria": [
+        "[wave:5] Cross-host skill discovery verification"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-003A",
+      "title": "Portable JSON task-source end-to-end fixture",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-002F"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-003a"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Portable JSON task-source end-to-end fixture"
+      ],
+      "acceptanceCriteria": [
+        "[wave:6] Portable JSON task-source end-to-end fixture"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-003B",
+      "title": "Portable external task-source end-to-end fixture",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-003A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-003b"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Portable external task-source end-to-end fixture"
+      ],
+      "acceptanceCriteria": [
+        "[wave:6] Portable external task-source end-to-end fixture"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-003C",
+      "title": "Claude host portable acceptance fixture",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-003B"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-003c"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Claude host portable acceptance fixture"
+      ],
+      "acceptanceCriteria": [
+        "[wave:6] Claude host portable acceptance fixture"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-003D",
+      "title": "Codex host portable acceptance fixture",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-003C"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-003d"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Codex host portable acceptance fixture"
+      ],
+      "acceptanceCriteria": [
+        "[wave:6] Codex host portable acceptance fixture"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-003E",
+      "title": "Cursor host portable acceptance fixture",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-003D"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-003e"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Cursor host portable acceptance fixture"
+      ],
+      "acceptanceCriteria": [
+        "[wave:6] Cursor host portable acceptance fixture"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-003F",
+      "title": "Full portable acceptance verification",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-003E"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-003f"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Full portable acceptance verification"
+      ],
+      "acceptanceCriteria": [
+        "[wave:6] Full portable acceptance verification"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-004A",
+      "title": "Claude real host and runner smoke cells",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-003F"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-004a"
+        ],
+        "humanGates": [
+          "approve-paid-runner-probes"
+        ],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Claude real host and runner smoke cells"
+      ],
+      "acceptanceCriteria": [
+        "[wave:7] Claude real host and runner smoke cells"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-004B",
+      "title": "Codex real host and runner smoke cells",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-004A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-004b"
+        ],
+        "humanGates": [
+          "approve-paid-runner-probes"
+        ],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Codex real host and runner smoke cells"
+      ],
+      "acceptanceCriteria": [
+        "[wave:7] Codex real host and runner smoke cells"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-004C",
+      "title": "Cursor real host and runner smoke cells",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-004B"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-004c"
+        ],
+        "humanGates": [
+          "approve-paid-runner-probes"
+        ],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Cursor real host and runner smoke cells"
+      ],
+      "acceptanceCriteria": [
+        "[wave:7] Cursor real host and runner smoke cells"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-005A",
+      "title": "Personal marketplace install verification",
+      "kind": "verification",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-004C"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-005a"
+        ],
+        "humanGates": [
+          "approve-marketplace-install"
+        ],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "Personal marketplace install verification"
+      ],
+      "acceptanceCriteria": [
+        "[wave:7] Personal marketplace install verification"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-HOST-005B",
+      "title": "One bounded real campaign",
+      "kind": "operations",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-005A"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "security"
+        ],
+        "capabilities": [
+          "repository-write"
+        ],
+        "parallelismKeys": [
+          "host-005b"
+        ],
+        "humanGates": [
+          "approve-exact-campaign"
+        ],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [
+        {
+          "kind": "planned-plan",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md"
+        }
+      ],
+      "deliverables": [
+        "One bounded real campaign"
+      ],
+      "acceptanceCriteria": [
+        "[wave:7] One bounded real campaign"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
+      ],
+      "provenance": {
+        "schemaVersion": 1,
+        "iterations": []
+      }
+    },
+    {
+      "id": "QK-RELEASE-REV",
+      "title": "Release readiness review",
+      "kind": "review",
+      "priority": "P0",
+      "status": "proposed",
+      "dependsOn": [
+        "QK-HOST-005B"
+      ],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "review",
+        "designGate": {
+          "required": false
+        }
+      },
+      "execution": {
+        "effort": "principal",
+        "risk": [
+          "architecture",
+          "security",
+          "external-side-effect"
+        ],
+        "capabilities": [
+          "repository-read"
+        ],
+        "parallelismKeys": [
+          "release-review"
+        ],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": [
+        "Release readiness review report"
+      ],
+      "acceptanceCriteria": [
+        "[wave:7] v1 release boundaries verified across all host and runner evidence"
+      ],
+      "verification": [
+        "Run focused lane verification suite"
       ],
       "provenance": {
         "schemaVersion": 1,
