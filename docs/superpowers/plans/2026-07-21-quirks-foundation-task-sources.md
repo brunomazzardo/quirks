@@ -251,6 +251,10 @@ test("canonical JSON sorts object keys recursively and preserves array order", (
 test("canonical JSON rejects undefined and non-JSON numbers", () => {
   assert.throws(() => canonicalJson({ value: undefined }), { name: "QuirksError" });
   assert.throws(() => canonicalJson(Number.NaN), { name: "QuirksError" });
+  assert.throws(() => canonicalJson(new Date(0)), { name: "QuirksError" });
+  const cyclic: { self?: unknown } = {};
+  cyclic.self = cyclic;
+  assert.throws(() => canonicalJson(cyclic), { name: "QuirksError" });
 });
 ```
 
@@ -311,21 +315,34 @@ import { QuirksError } from "./errors.js";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
-function normalize(value: unknown, path: string): Json {
+function normalize(value: unknown, path: string, ancestors: WeakSet<object>): Json {
   if (value === null || typeof value === "boolean" || typeof value === "string") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (Array.isArray(value)) return value.map((item, index) => normalize(item, `${path}[${index}]`));
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) throw new QuirksError("INVALID_JSON_VALUE", `Cycle at ${path}`);
+    ancestors.add(value);
+    const output = value.map((item, index) => normalize(item, `${path}[${index}]`, ancestors));
+    ancestors.delete(value);
+    return output;
+  }
   if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new QuirksError("INVALID_JSON_VALUE", `Non-plain object at ${path}`);
+    }
+    if (ancestors.has(value)) throw new QuirksError("INVALID_JSON_VALUE", `Cycle at ${path}`);
+    ancestors.add(value);
     const input = value as Record<string, unknown>;
     const output: Record<string, Json> = {};
-    for (const key of Object.keys(input).sort()) output[key] = normalize(input[key], `${path}.${key}`);
+    for (const key of Object.keys(input).sort()) output[key] = normalize(input[key], `${path}.${key}`, ancestors);
+    ancestors.delete(value);
     return output;
   }
   throw new QuirksError("INVALID_JSON_VALUE", `Non-JSON value at ${path}`);
 }
 
 export function canonicalJson(value: unknown): string {
-  return JSON.stringify(normalize(value, "$"));
+  return JSON.stringify(normalize(value, "$", new WeakSet()));
 }
 ```
 
@@ -485,6 +502,8 @@ The schemas must encode the exact fields from design sections 7, 8, and 8.1. Use
 
 `json-task-file-v1` stores native task fields but forbids derived `source` and `nativeRevision`; `normalized-task-v1` requires both derived fields. Native tasks additionally permit only these lifecycle records: `coordination` is null or `{ scope: "local-clone", campaignId, owner, claimedAt }`, and `statusDetail` is null or `{ reason, unblockCondition }`. All strings have explicit maximum lengths, all arrays have `maxItems`, task IDs match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, and protocol bodies cap at 1 MiB before parsing.
 
+A task `sourceRef` is one of two strict shapes: an immutable reference `{ kind: "spec" | "plan" | "review" | "other", path, commit, url?, task?, section?, sections? }`, or a not-yet-produced plan reference `{ kind: "planned-plan", path }`. `commit` is a full lowercase object ID, `url` is HTTPS without credentials, `task` is a positive plan task number, `section` is a bounded label, and `sections` is a bounded array of positive specification section numbers. Planned references are allowed only on non-completed tasks and are rendered unavailable until replaced with an immutable reference; provenance artifacts never accept `planned-plan`.
+
 ```js
 // scripts/generate-validators.mjs
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -617,11 +636,22 @@ export type TaskSourceConfig =
   | { driver: "json"; path: string }
   | { driver: "external"; command: readonly [string, ...string[]]; credentialAlias?: string };
 
+export type TaskStatus = "proposed" | "ready" | "claimed" | "in_review" | "blocked" | "completed" | "cancelled";
+export type CompletionBoundary = "accepted-commit" | "campaign-merge" | "target-merge" | "remote-push";
+export type EvidenceKind = "commit" | "campaign-merge" | "target-merge" | "remote-push" | "review" | "verification" | "ci" | "deployment";
+
+export interface ProjectWorkflowPolicy {
+  skills: Readonly<Record<string, string>>;
+  nativeStatusMap?: Readonly<Record<string, TaskStatus>>;
+  evidenceMap?: Readonly<Partial<Record<CompletionBoundary, readonly EvidenceKind[]>>>;
+  allowedCompletionBoundaries?: readonly CompletionBoundary[];
+}
+
 export interface ProjectConfig {
   schemaVersion: 1;
   protocol: "quirks-project-v1";
   taskSource: TaskSourceConfig;
-  workflowPolicy: { skills: Readonly<Record<string, string>> };
+  workflowPolicy: ProjectWorkflowPolicy;
 }
 
 export interface ProjectContext {
@@ -630,6 +660,7 @@ export interface ProjectContext {
   configPath: string;
   configTracked: boolean;
   config: ProjectConfig;
+  effectiveWorkflowPolicy: Required<ProjectWorkflowPolicy>;
   configHash: string;
 }
 ```
@@ -677,6 +708,8 @@ export function resolveAppPaths(repositoryId: string, campaignId?: string): AppP
 ```
 
 `loadProjectContext(startDir, { mode, configPath? })` must call `canonicalRepository`, read exactly `.agents/quirks.json` unless an explicit repository-relative config path was passed, reject symlinks escaping the repository, validate the config, normalize only repository-relative source paths, and hash the validated configuration. It determines `configTracked` with `git ls-files --error-unmatch`. `mode: "inspection"` may return an untracked config with `configTracked: false`; `mode: "unattended"` rejects it.
+
+The loader builds `effectiveWorkflowPolicy` without mutating the committed input. Omitted JSON-driver maps become the identity status map, the standard evidence-to-boundary map, and all four finite completion boundaries. An external driver must either receive explicit mappings or declare capability metadata that proves its normalized fields and evidence semantics already satisfy those same defaults. Empty skill names, unknown normalized statuses/evidence kinds, an empty allowed-boundary set, tasks whose boundary is not allowed, or adapter capabilities that weaken the effective policy fail validation before any mutation.
 
 - [ ] **Step 4: Build and run project/path tests**
 
@@ -783,6 +816,7 @@ git commit -m "feat: add durable local state primitives"
 **Files:**
 - Create: `src/task-source/types.ts`
 - Create: `src/task-source/task-source.ts`
+- Create: `src/task-source/credentials.ts`
 - Create: `src/task-source/factory.ts`
 - Create: `test/task-source/contract.ts`
 - Create: `test/task-source/fake-source.ts`
@@ -790,7 +824,7 @@ git commit -m "feat: add durable local state primitives"
 
 **Interfaces:**
 - Consumes: validated project configuration and v1 schemas.
-- Produces: `TaskSource.execute(request): Promise<TaskSourceResponse>`, discriminated request/response unions, `createTaskSource`, and a reusable driver conformance suite.
+- Produces: `TaskSource.execute(request): Promise<TaskSourceResponse>`, discriminated request/response unions, `CredentialResolver`, `createTaskSource`, and a reusable driver conformance suite.
 
 - [ ] **Step 1: Write the failing protocol test**
 
@@ -929,7 +963,17 @@ export function assertMutationIdentity(request: TaskSourceRequest): void {
 }
 ```
 
-The conformance entry point is `assertTaskSourceContract(create: () => TaskSource | Promise<TaskSource>): Promise<void>`. It must test capabilities, list/show agreement, stable revisions, unknown task failure, stale mutation rejection, idempotent replay, conflicting idempotency reuse, unsupported operations, 1 MiB request/response bounds, unknown-field rejection, and secret-shaped response rejection. `createTaskSource` supports only `json` and `external`; any other driver fails with `UNSUPPORTED_VERSION` rather than dynamically importing a name.
+```ts
+// src/task-source/credentials.ts
+export interface CredentialResolver {
+  resolve(
+    alias: string,
+    requestedEnvironmentNames: readonly string[],
+  ): Promise<Readonly<Record<string, string>>>;
+}
+```
+
+The conformance entry point is `assertTaskSourceContract(create: () => TaskSource | Promise<TaskSource>): Promise<void>`. It must test capabilities, list/show agreement, stable revisions, unknown task failure, stale mutation rejection, idempotent replay, conflicting idempotency reuse, unsupported operations, 1 MiB request/response bounds, unknown-field rejection, and secret-shaped response rejection. `createTaskSource(context, { credentialResolver? })` supports only `json` and `external`; any other driver fails with `UNSUPPORTED_VERSION` rather than dynamically importing a name. An external source that names `credentialAlias` fails with `SOURCE_UNAVAILABLE` unless the host injects a `CredentialResolver`; the factory never interprets the alias as a token, file, or environment-variable name and never reads credentials from project configuration.
 
 - [ ] **Step 4: Run the protocol contract tests**
 
@@ -1371,7 +1415,7 @@ Expected: FAIL with missing provenance modules.
 
 Define `ProvenanceIteration` with campaign/task revisions, envelope digest, outcome, completion boundary, base/accepted/landed SHAs, artifact refs, commit refs, PR refs, verification refs, participants, timing/usage, deviations, follow-ups, and supersession. Every list has a schema maximum and every summary has a byte maximum.
 
-Use `execFile("git", ["-C", root, "cat-file", "-e", `${sha}^{commit}`])`, `git show ${sha}:${path}`, `git show --show-signature --format=...`, and `git merge-base --is-ancestor` with argv arrays. Never interpolate a shell command. A missing object returns typed availability; it is not rewritten to `HEAD`.
+Use `execFile("git", ["-C", root, "cat-file", "-e", `${sha}^{commit}`])`, `git show ${sha}:${path}`, `git verify-commit --raw ${sha}`, metadata-only `git show --format=...`, and `git merge-base --is-ancestor` with argv arrays. Validate every SHA as a full lowercase hexadecimal object ID and every path with `assertRepositoryRelativePath` before it becomes an argument. Never interpolate a shell command. A missing object returns typed availability; it is not rewritten to `HEAD`. Only a zero exit from `verify-commit` backed by an allow-listed signer identity marks Git signature evidence verified; display metadata or `%G?` alone is not proof.
 
 Remote URLs must parse with `new URL`, use `https:`, have no username/password, and be stored only after the provider adapter validates its repository locator. Operator evidence is one of `configured-profile`, `authenticated-host`, `authenticated-provider`, or `self-asserted`; only a valid Git signature or authenticated provider identity sets `verified: true`.
 

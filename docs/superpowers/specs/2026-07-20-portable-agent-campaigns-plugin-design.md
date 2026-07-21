@@ -143,6 +143,12 @@ quirks/
     delegated-brainstorming/
       SKILL.md
       references/
+    writing-tasks/
+      SKILL.md
+    updating-tasks/
+      SKILL.md
+    executing-tasks/
+      SKILL.md
 
   scripts/
     quirks-campaign
@@ -253,7 +259,20 @@ It replaces human checkpoints only with the exact campaign approval envelope and
 an independent qualified reviewer. The resulting specification and plan remain
 compatible with Superpowers file and workflow conventions.
 
-### 5.4 Scripts and schemas
+### 5.4 Task lifecycle skills
+
+`writing-tasks`, `updating-tasks`, and `executing-tasks` are thin,
+provider-neutral interfaces over `quirks-tasks` and the selected project
+workflow policy. They never open JSON task files or call provider APIs directly.
+They validate dependencies and required design/plan gates, invoke semantic
+`TaskSource` operations through the CLI, surface sync/conflict state, and submit
+only compact candidate references for deterministic provenance validation.
+
+These skills cover focused interactive task work. `running-agent-campaigns`
+composes them for a multi-task or unattended campaign without creating a second
+task-status authority.
+
+### 5.5 Scripts and schemas
 
 Skills contain judgment and workflow policy. Dependency-free scripts enforce
 mechanical invariants: schemas, state transitions, event journaling, hashes,
@@ -263,7 +282,7 @@ approval binding, bounded output, and deterministic reports.
 No safety property that can be enforced by a validator should exist only as
 prose in a skill.
 
-### 5.5 Reconciliation with the working prototypes
+### 5.6 Reconciliation with the working prototypes
 
 Quirks is a generalization of the existing user-level dispatcher and repository
 overnight skills, not a clean-room replacement that discards their operational
