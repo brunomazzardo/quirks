@@ -42,12 +42,68 @@
       "properties": {
         "skills": {
           "type": "object",
-          "required": ["write", "update", "execute"],
           "additionalProperties": false,
           "properties": {
             "write": { "type": "string", "minLength": 1, "maxLength": 128 },
             "update": { "type": "string", "minLength": 1, "maxLength": 128 },
             "execute": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        },
+        "nativeStatusMap": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["proposed", "ready", "claimed", "in_review", "blocked", "completed", "cancelled"]
+          }
+        },
+        "evidenceMap": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "accepted-commit": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "enum": ["commit", "campaign-merge", "target-merge", "remote-push", "review", "verification", "ci", "deployment"]
+              }
+            },
+            "campaign-merge": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "enum": ["commit", "campaign-merge", "target-merge", "remote-push", "review", "verification", "ci", "deployment"]
+              }
+            },
+            "target-merge": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "enum": ["commit", "campaign-merge", "target-merge", "remote-push", "review", "verification", "ci", "deployment"]
+              }
+            },
+            "remote-push": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "enum": ["commit", "campaign-merge", "target-merge", "remote-push", "review", "verification", "ci", "deployment"]
+              }
+            }
+          }
+        },
+        "allowedCompletionBoundaries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["accepted-commit", "campaign-merge", "target-merge", "remote-push"]
           }
         }
       }
