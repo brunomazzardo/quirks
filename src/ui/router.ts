@@ -1,8 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LoopbackAuthority } from "./authority.js";
 import { handleApproval } from "./api/approval.js";
+import { handleCampaigns, matchesCampaignsRoute } from "./api/campaigns.js";
 import { sendJson, UNAUTHORIZED_BODY } from "./api/errors.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
+import type { CampaignReadPort } from "./ports/campaign-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
 
 export type CampaignRecord = { repositoryId: string; envelopeDigest: string };
@@ -13,6 +15,7 @@ export interface UiRouterOptions {
   viewerSession: ViewerSessionPort;
   approval: ApprovalWritePort;
   getCampaign: (campaignId: string) => CampaignRecord | undefined;
+  campaignRead?: CampaignReadPort;
   now?: () => string;
   onRead?: () => void;
   onApproveAttempt?: () => void;
@@ -70,5 +73,8 @@ export async function routeUiRequest(req: IncomingMessage, res: ServerResponse, 
     return sendJson(res, 404, { schemaVersion: 1, result: "invalid" });
   }
   options.onRead?.();
+  if (options.campaignRead && matchesCampaignsRoute(url.pathname)) {
+    return handleCampaigns(req, res, { url, port: options.campaignRead });
+  }
   return sendJson(res, 200, { schemaVersion: 1, route: url.pathname, refreshedAt: options.now?.() ?? new Date().toISOString() });
 }
