@@ -1,11 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { CampaignStatus } from "../campaign/types.js";
+import type { ProjectContext } from "../project/types.js";
 import type { LoopbackAuthority } from "./authority.js";
 import { handleApproval } from "./api/approval.js";
+import { handleExistingTasks } from "./api/existing-tasks.js";
+import { handlePreflight } from "./api/preflight.js";
 import { sendJson, UNAUTHORIZED_BODY } from "./api/errors.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
+import type { PreflightReadPort } from "./ports/preflight-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
 
-export type CampaignRecord = { repositoryId: string; envelopeDigest: string };
+export type CampaignRecord = { repositoryId: string; envelopeDigest: string; status?: CampaignStatus };
 
 export interface UiRouterOptions {
   authority: LoopbackAuthority;
@@ -13,6 +18,8 @@ export interface UiRouterOptions {
   viewerSession: ViewerSessionPort;
   approval: ApprovalWritePort;
   getCampaign: (campaignId: string) => CampaignRecord | undefined;
+  getProjectContext?: () => Promise<ProjectContext>;
+  preflightRead?: PreflightReadPort;
   now?: () => string;
   onRead?: () => void;
   onApproveAttempt?: () => void;
@@ -70,5 +77,25 @@ export async function routeUiRequest(req: IncomingMessage, res: ServerResponse, 
     return sendJson(res, 404, { schemaVersion: 1, result: "invalid" });
   }
   options.onRead?.();
+  if (url.pathname === "/api/v1/existing-tasks") {
+    if (!options.getProjectContext) {
+      return sendJson(res, 503, { schemaVersion: 1, result: "invalid" });
+    }
+    return handleExistingTasks(res, {
+      getProjectContext: options.getProjectContext,
+      ...(options.now ? { now: options.now } : {}),
+    });
+  }
+  const preflightMatch = /^\/api\/v1\/campaigns\/([^/]+)\/preflight$/.exec(url.pathname);
+  if (preflightMatch) {
+    if (!options.preflightRead) {
+      return sendJson(res, 503, { schemaVersion: 1, result: "invalid" });
+    }
+    return handlePreflight(res, {
+      campaignId: preflightMatch[1]!,
+      getCampaign: options.getCampaign,
+      preflightRead: options.preflightRead,
+    });
+  }
   return sendJson(res, 200, { schemaVersion: 1, route: url.pathname, refreshedAt: options.now?.() ?? new Date().toISOString() });
 }

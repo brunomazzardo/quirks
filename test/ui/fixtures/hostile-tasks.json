@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "id": "HOSTILE-1",
+      "title": "\u202E<script>alert(1)</script>\u202D",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "blocked",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": [],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["><img src=x onerror=alert(1)>"],
+      "acceptanceCriteria": ["Must not leak full acceptance criteria bodies into UI projections"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": {
+        "reason": "Blocked on path \"><img src=x onerror=alert(1)>",
+        "unblockCondition": "Resolve hostile path review"
+      }
+    }
+  ]
+}
