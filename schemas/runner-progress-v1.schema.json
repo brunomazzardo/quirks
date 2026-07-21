@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quirks://schemas/runner-progress-v1",
+  "type": "object",
+  "required": ["schemaVersion", "jobId", "revision", "status", "stage", "plan", "completedStepIds"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "jobId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "revision": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "status": {
+      "enum": ["queued", "running", "blocked", "awaiting_review", "fixing", "verifying", "reported_complete", "failed", "cancelled"]
+    },
+    "stage": { "enum": ["setup", "implement", "commit", "review", "fix", "verification"] },
+    "tddPhase": { "enum": ["red", "green", "refactor", null] },
+    "plan": {
+      "type": "object",
+      "required": ["path", "commit", "task", "step"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "commit": { "type": "string", "minLength": 40, "maxLength": 64 },
+        "task": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "step": { "type": "integer", "minimum": 1, "maximum": 1000 }
+      }
+    },
+    "completedStepIds": {
+      "type": "array",
+      "maxItems": 512,
+      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+    },
+    "note": { "type": "string", "maxLength": 256 },
+    "reportedAt": { "type": "string", "format": "date-time", "maxLength": 64 }
+  }
+}
