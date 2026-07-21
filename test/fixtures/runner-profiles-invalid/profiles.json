@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "tierAliases": {
+    "composer-standard": { "tier": "standard" }
+  },
+  "profiles": [
+    {
+      "schemaVersion": 1,
+      "profileId": "claude-downgrade",
+      "runnerType": "claude",
+      "executable": "/usr/local/bin/claude",
+      "accountAlias": "work",
+      "quotaPoolId": "pool-claude-a",
+      "tier": "principal",
+      "model": "composer-standard",
+      "effort": "principal",
+      "capabilities": ["repository-read"],
+      "wallClockMs": 3600000,
+      "redactionRules": []
+    }
+  ]
+}

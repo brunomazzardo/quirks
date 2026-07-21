@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "tierAliases": {
+    "fable-principal": { "tier": "principal" },
+    "composer-standard": { "tier": "standard" },
+    "spark-mechanical": { "tier": "mechanical" }
+  },
+  "profiles": [
+    {
+      "schemaVersion": 1,
+      "profileId": "claude-principal",
+      "runnerType": "claude",
+      "executable": "/usr/local/bin/claude",
+      "accountAlias": "work",
+      "quotaPoolId": "pool-claude-a",
+      "tier": "principal",
+      "model": "fable-principal",
+      "effort": "principal",
+      "capabilities": ["repository-read", "repository-write"],
+      "wallClockMs": 3600000,
+      "redactionRules": ["api-key"]
+    },
+    {
+      "schemaVersion": 1,
+      "profileId": "codex-standard",
+      "runnerType": "codex",
+      "executable": "/usr/local/bin/codex",
+      "accountAlias": "work",
+      "quotaPoolId": "pool-codex-b",
+      "tier": "standard",
+      "model": "composer-standard",
+      "effort": "standard",
+      "capabilities": ["repository-read"],
+      "wallClockMs": 1800000,
+      "redactionRules": []
+    },
+    {
+      "schemaVersion": 1,
+      "profileId": "cursor-mechanical",
+      "runnerType": "cursor",
+      "executable": "/usr/local/bin/agent",
+      "accountAlias": "personal",
+      "quotaPoolId": "pool-cursor-c",
+      "tier": "mechanical",
+      "model": "spark-mechanical",
+      "effort": "mechanical",
+      "capabilities": ["repository-read"],
+      "wallClockMs": 900000,
+      "redactionRules": [],
+      "credential": "must-be-stripped"
+    }
+  ]
+}
