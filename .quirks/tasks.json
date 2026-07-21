@@ -1423,7 +1423,7 @@
         {
           "kind": "spec",
           "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
-          "commit": "2219d0c4504989aae32569f8fbdb2e9eb6073e1f",
+          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c",
           "sections": [
             12,
             17,
@@ -1435,7 +1435,7 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
         }
       ],
       "deliverables": [
@@ -1467,6 +1467,29 @@
             ],
             "finishedAt": "2026-07-21T13:15:00-03:00",
             "outcomeReason": "Local control UI implementation plan authored"
+          },
+          {
+            "id": "QK-UI-001-I2",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "0ca0c916d29505abf3953ac8cba74d0483c4273c",
+            "artifactRefs": [
+              {
+                "kind": "spec",
+                "path": "docs/superpowers/specs/2026-07-20-portable-agent-campaigns-plugin-design.md",
+                "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
+              },
+              {
+                "kind": "plan",
+                "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
+                "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
+              }
+            ],
+            "commitRefs": [
+              "0ca0c916d29505abf3953ac8cba74d0483c4273c"
+            ],
+            "finishedAt": "2026-07-21T14:03:18-03:00",
+            "outcomeReason": "Approved focused TanStack client stack incorporated into the UI implementation plan"
           }
         ]
       }
@@ -1508,14 +1531,14 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
         }
       ],
       "deliverables": [
-        "Loopback-only server, security headers, nonce CSP, one-time approval token, and JSON API"
+        "Loopback-only server, security headers, nonce CSP, authenticated projections, one-time approval, and JSON API"
       ],
       "acceptanceCriteria": [
-        "Cross-origin, wrong-host, replay, stale-digest, form, GET mutation, and hostile-content tests fail closed"
+        "Unauthenticated reads, cross-origin, wrong-host, replay, stale-digest, form, GET mutation, and hostile-content tests fail closed"
       ],
       "verification": [
         "Run focused UI security and API tests"
@@ -1560,11 +1583,11 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
         }
       ],
       "deliverables": [
-        "Provider-neutral task, proposal, campaign, and provenance projections"
+        "Provider-neutral React and TanStack task, proposal, campaign, and provenance workspace"
       ],
       "acceptanceCriteria": [
         "Views show exact tasks, ordering, ownership, source freshness, commits, PRs, identities, and unavailable references without copying source content"
@@ -1579,7 +1602,7 @@
     },
     {
       "id": "QK-UI-004",
-      "title": "Verify local UI security, accessibility, and responsive layouts",
+      "title": "Verify local UI security, accessibility, responsive layouts, and table performance",
       "kind": "verification",
       "priority": "P1",
       "status": "proposed",
@@ -1612,14 +1635,14 @@
         {
           "kind": "plan",
           "path": "docs/superpowers/plans/2026-07-21-quirks-local-control-ui.md",
-          "commit": "382601aef4991da8f3b4e666a63bbef7cad8c680"
+          "commit": "0ca0c916d29505abf3953ac8cba74d0483c4273c"
         }
       ],
       "deliverables": [
-        "Automated browser evidence across approved desktop and narrow layouts"
+        "Automated browser evidence across approved desktop/narrow layouts and the 1,000-row performance fixture"
       ],
       "acceptanceCriteria": [
-        "No overlap, clipping, unsafe rendering, inaccessible approval controls, or authorization regression remains"
+        "No overlap, clipping, unsafe rendering, inaccessible approval controls, authorization regression, or unexplained 1,000-row budget failure remains"
       ],
       "verification": [
         "Run browser, accessibility, CSP, header, replay, and screenshot suites"
