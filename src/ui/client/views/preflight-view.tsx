@@ -152,7 +152,6 @@ function InspectorPanel({ proposal }: { proposal: UiPreflightProposalV1 }) {
 export function PreflightView({ campaignId }: { campaignId: string }) {
   const vault = useTokenVault();
   const { apiClient, queryClient } = useRouteContext({ strict: false }) as RouterRuntime;
-  const [taskFilter, setTaskFilter] = useState("");
   const [approvalSettled, setApprovalSettled] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
@@ -206,7 +205,6 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
   }
 
   const proposal = preflightQuery.data;
-  const summaryConfidence = confidenceBadge(proposal.summary.confidence);
   const digestVisible =
     proposal.envelopeDigest.length > 0 &&
     proposal.approval.envelopeDigest === proposal.envelopeDigest &&

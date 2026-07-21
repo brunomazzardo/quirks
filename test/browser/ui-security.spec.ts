@@ -1,18 +1,10 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { queryKeys } from "../../src/ui/client/query-options.js";
 import {
   attachLoopbackNetworkGuard,
   assertClientStateFreeOfCredentials,
   launchUiFixture,
 } from "./support/launch-ui.js";
-
-function sameOriginHeaders(page: Page) {
-  return page.evaluate(() => ({
-    Origin: window.location.origin,
-    Host: window.location.host,
-    "Sec-Fetch-Site": "same-origin",
-  }));
-}
 
 test("approval page has no-store response and nonce CSP", async ({ page }) => {
   const ui = await launchUiFixture();

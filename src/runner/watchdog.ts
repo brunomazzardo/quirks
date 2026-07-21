@@ -200,8 +200,11 @@ async function touchHeartbeat(
   jobId: string,
   monitor: ActiveMonitor,
 ): Promise<HeartbeatRecord> {
+  if (monitor.finished) {
+    return readHeartbeat(store, jobId);
+  }
   const heartbeat = await readHeartbeat(store, jobId);
-  if (heartbeat.status !== "running") {
+  if (monitor.finished || heartbeat.status !== "running") {
     return heartbeat;
   }
 
@@ -216,6 +219,10 @@ async function touchHeartbeat(
 
   const registry = await SessionRegistry.open(store);
   await registry.update({ jobId });
+
+  if (monitor.finished) {
+    return readHeartbeat(store, jobId);
+  }
 
   return writeHeartbeat(store, heartbeat, {
     status: "running",
@@ -351,6 +358,10 @@ async function startMonitor(
         await terminateRunner(monitor.pid, monitor.child);
 
         const heartbeat = await readHeartbeat(store, record.jobId);
+        if (heartbeat.status === "terminal") {
+          activeMonitors.delete(record.jobId);
+          return;
+        }
         await writeHeartbeat(store, heartbeat, {
           status: "timeout",
           terminalStatus: "timeout",

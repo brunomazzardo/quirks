@@ -24,7 +24,7 @@ export function normalizeJobResult(input: NormalizeJobResultInput): RunnerJobRes
     status: input.status,
     sessionHandle: input.sessionHandle,
     artifactPaths: [...input.artifactPaths],
-    usage: { ...(input.usage ?? {}) },
+    usage: { ...input.usage },
     failure: input.failure,
   };
 }

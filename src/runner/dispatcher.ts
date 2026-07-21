@@ -165,8 +165,8 @@ function parseRunnerOutput(input: {
       };
     }
     default: {
-      const _exhaustive: never = input.profile.runnerType;
-      return _exhaustive;
+      const exhaustive: never = input.profile.runnerType;
+      return exhaustive;
     }
   }
 }
@@ -247,7 +247,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       env: {
         ...process.env,
         QUIRKS_FAKE_RUNNER_OUTDIR: input.artifactDir,
-        ...(input.env ?? {}),
+        ...input.env,
       },
     });
 

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { describe } from "node:test";
 import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.js";
 import { classifyFailure } from "../../src/campaign/failures.js";
 import { CampaignStore } from "../../src/campaign/store.js";
@@ -83,95 +83,101 @@ async function startFakeJob(
   return started;
 }
 
-test.afterEach(async () => {
-  await stopWatchdog();
-});
+describe("watchdog detached execution", { concurrency: false }, () => {
+  test.afterEach(async () => {
+    await stopWatchdog();
+  });
 
-test("records PID, session handle, and heartbeat before returning", async () => {
-  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-watchdog-"));
-  const store = await openRunningStore(stateDir);
+  test("records PID, session handle, and heartbeat before returning", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-watchdog-"));
+    const store = await openRunningStore(stateDir);
 
-  const { campaignId, jobId } = await startFakeJob(store, "success", 5_000);
+    const { campaignId, jobId } = await startFakeJob(store, "success", 5_000);
 
-  assert.match(campaignId, /cmp-/);
-  assert.match(jobId, /./);
+    assert.match(campaignId, /cmp-/);
+    assert.match(jobId, /./);
 
-  const heartbeat = await readHeartbeat(store, jobId);
-  assert.equal(heartbeat.campaignId, campaignId);
-  assert.equal(heartbeat.sessionHandle, SESSION_ID);
-  assert.ok(heartbeat.pid > 0);
+    const heartbeat = await readHeartbeat(store, jobId);
+    assert.equal(heartbeat.campaignId, campaignId);
+    assert.equal(heartbeat.sessionHandle, SESSION_ID);
+    assert.ok(heartbeat.pid > 0);
 
-  const sessions = JSON.parse(await readFile(store.sessionsFile, "utf8")) as {
-    sessions: Array<{ jobId: string; pid: number; sessionHandle: string }>;
-  };
-  const session = sessions.sessions.find((entry) => entry.jobId === jobId);
-  assert.ok(session);
-  assert.equal(session?.sessionHandle, SESSION_ID);
-  assert.ok((session?.pid ?? 0) > 0);
+    const sessions = JSON.parse(await readFile(store.sessionsFile, "utf8")) as {
+      sessions: Array<{ jobId: string; pid: number; sessionHandle: string }>;
+    };
+    const session = sessions.sessions.find((entry) => entry.jobId === jobId);
+    assert.ok(session);
+    assert.equal(session?.sessionHandle, SESSION_ID);
+    assert.ok((session?.pid ?? 0) > 0);
 
-  const events = await store.readEvents();
-  const dispatched = events.find((event) => event.type === "runner.dispatched");
-  assert.ok(dispatched);
-  assert.equal(dispatched.evidence.jobId, jobId);
-  assert.equal(dispatched.evidence.sessionHandle, SESSION_ID);
-  assert.match(dispatched.evidence.pid ?? "", /[1-9]/);
-  assert.equal(dispatched.evidence.timeoutMs, "5000");
-  assert.equal(dispatched.evidence.cancelScope, "job");
+    const events = await store.readEvents();
+    const dispatched = events.find((event) => event.type === "runner.dispatched");
+    assert.ok(dispatched);
+    assert.equal(dispatched.evidence.jobId, jobId);
+    assert.equal(dispatched.evidence.sessionHandle, SESSION_ID);
+    assert.match(dispatched.evidence.pid ?? "", /[1-9]/);
+    assert.equal(dispatched.evidence.timeoutMs, "5000");
+    assert.equal(dispatched.evidence.cancelScope, "job");
 
-  const liveness = await probeLiveness(store, jobId);
-  assert.ok(liveness.pid > 0);
-  assert.equal(liveness.sessionHandle, SESSION_ID);
-});
+    const liveness = await probeLiveness(store, jobId);
+    assert.ok(liveness.pid > 0);
+    assert.equal(liveness.sessionHandle, SESSION_ID);
+  });
 
-test("updates heartbeat while a detached job is still running", async () => {
-  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-watchdog-"));
-  const store = await openRunningStore(stateDir);
-  const { jobId } = await startFakeJob(store, "timeout", 30_000);
+  test("updates heartbeat while a detached job is still running", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-watchdog-"));
+    const store = await openRunningStore(stateDir);
+    const { jobId } = await startFakeJob(store, "timeout", 30_000);
 
-  const first = await readHeartbeat(store, jobId);
-  assert.equal(first.status, "running");
+    const first = await readHeartbeat(store, jobId);
+    assert.equal(first.status, "running");
 
-  await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 80));
 
-  const second = await readHeartbeat(store, jobId);
-  assert.equal(second.status, "running");
-  assert.ok(second.updatedAt >= first.updatedAt);
-  assert.notEqual(second.revision, first.revision);
-});
+    const second = await readHeartbeat(store, jobId);
+    assert.equal(second.status, "running");
+    assert.ok(second.updatedAt >= first.updatedAt);
+    assert.notEqual(second.revision, first.revision);
+  });
 
-test("classifies wall-clock timeout as a transient pause", async () => {
-  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-watchdog-"));
-  const store = await openRunningStore(stateDir);
-  const { jobId } = await startFakeJob(store, "timeout", 200);
+  test("classifies wall-clock timeout as a transient pause", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-watchdog-"));
+    const store = await openRunningStore(stateDir);
+    const { jobId } = await startFakeJob(store, "timeout", 200);
 
-  const deadline = Date.now() + 5_000;
-  let heartbeat = await readHeartbeat(store, jobId);
-  while (heartbeat.status === "running" && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    heartbeat = await readHeartbeat(store, jobId);
-  }
+    const deadline = Date.now() + 5_000;
+    let heartbeat = await readHeartbeat(store, jobId);
+    let snapshot = await store.readState();
+    while (
+      (heartbeat.status === "running" || snapshot.status === "running") &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      heartbeat = await readHeartbeat(store, jobId);
+      snapshot = await store.readState();
+    }
 
-  assert.equal(heartbeat.status, "timeout");
-  assert.equal(heartbeat.terminalStatus, "timeout");
-  assert.equal(classifyFailure({ status: "timeout" }), "transient_runner");
+    assert.equal(heartbeat.status, "timeout");
+    assert.equal(heartbeat.terminalStatus, "timeout");
+    assert.equal(classifyFailure({ status: "timeout" }), "transient_runner");
 
-  const events = await store.readEvents();
-  const paused = events.find((event) => event.type === "runner.timeout" && event.to === "paused");
-  assert.ok(paused);
-  assert.equal(paused.reason, "runner_timeout");
-  assert.equal(paused.evidence.jobId, jobId);
-  assert.equal(paused.evidence.failureClass, "transient_runner");
+    const events = await store.readEvents();
+    const paused = events.find((event) => event.type === "runner.timeout" && event.to === "paused");
+    assert.ok(paused);
+    assert.equal(paused.reason, "runner_timeout");
+    assert.equal(paused.evidence.jobId, jobId);
+    assert.equal(paused.evidence.failureClass, "transient_runner");
 
-  const snapshot = await store.readState();
-  assert.equal(snapshot.status, "paused");
-  assert.equal(snapshot.pausedReason, "runner_timeout");
-});
+    assert.equal(snapshot.status, "paused");
+    assert.equal(snapshot.pausedReason, "runner_timeout");
+  });
 
-test("heartbeat file lives under artifacts/<job-id>/heartbeat.json", async () => {
-  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-watchdog-"));
-  const store = await openRunningStore(stateDir);
-  const { jobId } = await startFakeJob(store, "success", 5_000, "job-explicit");
+  test("heartbeat file lives under artifacts/<job-id>/heartbeat.json", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-watchdog-"));
+    const store = await openRunningStore(stateDir);
+    const { jobId } = await startFakeJob(store, "success", 5_000, "job-explicit");
 
-  assert.equal(heartbeatPath(store, jobId), path.join(store.artifactsPath, jobId, "heartbeat.json"));
-  await readFile(heartbeatPath(store, jobId), "utf8");
+    assert.equal(heartbeatPath(store, jobId), path.join(store.artifactsPath, jobId, "heartbeat.json"));
+    await readFile(heartbeatPath(store, jobId), "utf8");
+  });
 });

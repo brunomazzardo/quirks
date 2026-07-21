@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { CampaignDetailView } from "../../../src/ui/client/views/campaign-detail-view.js";
 import { ExistingTasksView } from "../../../src/ui/client/views/existing-tasks-view.js";
 import {
@@ -12,9 +20,30 @@ import {
   hostileExistingTasksProjection,
   hostilePreflightProposal,
   hostileTaskHistoryProjection,
-  hostileText,
   hostileUrlVariants,
 } from "../support/hostile-projections.js";
+
+async function renderWithRouter(node: ReactNode): Promise<string> {
+  const rootRoute = createRootRoute({
+    component: () => <>{node}</>,
+  });
+  const indexRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/",
+    component: () => <>{node}</>,
+  });
+  const taskHistoryRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/tasks/$taskId/history",
+    component: () => null,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([indexRoute, taskHistoryRoute]),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+  await router.load();
+  return renderToStaticMarkup(<RouterProvider router={router} />);
+}
 
 const activeMarkupPatterns = [
   /<script/i,
@@ -56,8 +85,8 @@ test("Preflight renders hostile proposal fields as escaped text", () => {
   assert.match(markup, /safe/);
 });
 
-test("Campaign Detail renders hostile fields and rejects unsafe pull request URLs", () => {
-  const markup = renderToStaticMarkup(<CampaignDetailView detail={hostileCampaignDetail()} />);
+test("Campaign Detail renders hostile fields and rejects unsafe pull request URLs", async () => {
+  const markup = await renderWithRouter(<CampaignDetailView detail={hostileCampaignDetail()} />);
 
   assertHostileTextIsEscaped(markup);
   assert.equal((markup.match(/Unavailable/g) ?? []).length, hostileUrlVariants.length);
