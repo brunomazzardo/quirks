@@ -1,0 +1,27 @@
+{
+  "name": "@quirks/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.18.0" },
+  "packageManager": "pnpm@10.30.3",
+  "bin": {
+    "quirks-campaign": "dist/src/cli/quirks-campaign.js",
+    "quirks-tasks": "dist/src/cli/quirks-tasks.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "oxlint src test scripts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm build && node scripts/run-tests.mjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "oxlint": "1.74.0",
+    "typescript": "7.0.2"
+  }
+}
