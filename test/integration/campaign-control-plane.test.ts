@@ -220,7 +220,9 @@ test("headless approval, start, and status work without UI", async () => {
     await supervisor.startApproved();
     const status = await supervisor.status();
     assert.equal(status.claimedTaskIds.includes("QK-101"), true);
-    assert.equal(status.dispatchedJobs.length, 1);
+    assert.equal(status.dispatchedJobs.length, 2);
+    assert.equal(status.dispatchedJobs.filter((job) => job.role === "implementer").length, 1);
+    assert.equal(status.dispatchedJobs.filter((job) => job.role === "reviewer").length, 1);
     assert.equal(status.dispatchedJobs[0]?.taskId, "QK-101");
     const state = await context.store.readState();
     assert.equal(state.status, "running");

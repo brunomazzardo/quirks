@@ -15,7 +15,7 @@ export interface CampaignEnvelope {
   taskIds: string[];
   taskRevisions: Record<string, string>;
   designModes: Record<string, { mode: "human" | "human-after-draft" | "delegated"; envelope: string[] }>;
-  git: { baseCommit: string; campaignBranch: string; targetBranch: string; push: { enabled: boolean } };
+  git: { baseCommit: string; campaignBranch: string; targetBranch: string; push: { enabled: boolean; remote?: string; branch?: string } };
   authority: ("repository" | "task-source" | "runner" | "operator" | "git")[];
   routing: Record<string, { primary: CampaignRoute; fallbacks: CampaignRoute[] }>;
   budgets: { maxTasks: number; maxConcurrency: number; maxWallClockMs: number; maxRetries: number; laneFailureThreshold: number };

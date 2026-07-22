@@ -42,6 +42,7 @@ export interface RunPreflightInput {
   campaignId?: string;
   mode?: "inspection" | "unattended";
   configDir?: string;
+  push?: { enabled: boolean; remote?: string; branch?: string };
 }
 
 export interface PreflightProposal {
@@ -269,7 +270,12 @@ export async function runPreflight(input: RunPreflightInput): Promise<PreflightR
       taskIds: tasks.map((task) => task.id),
       taskRevisions: Object.fromEntries(tasks.map((task) => [task.id, task.nativeRevision])),
       designModes: Object.fromEntries(tasks.map((task) => [task.id, designMode(task)])),
-      git: { baseCommit: git.baseCommit, campaignBranch: `quirks/${campaignId}/integration`, targetBranch: git.branch ?? "main", push: { enabled: false } },
+      git: {
+        baseCommit: git.baseCommit,
+        campaignBranch: `quirks/${campaignId}/integration`,
+        targetBranch: git.branch ?? "main",
+        push: input.push ?? { enabled: false },
+      },
       authority: ["repository", "task-source", "operator", "git"],
       routing,
       budgets: { maxTasks: Math.max(1, tasks.length), maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },

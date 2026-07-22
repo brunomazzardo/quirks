@@ -38,5 +38,7 @@ export const SMOKE_MATRIX: ReadonlyArray<{ host: SmokeHost; runner: SmokeRunner 
 
 export const SMOKE_APPROVAL_ENV = "approve-paid-runner-probes";
 
+export const BOUNDED_CAMPAIGN_APPROVAL_ENV = "approve-exact-campaign";
+
 /** Default single-cell PoC — currently the most reliable real-host path. */
 export const SMOKE_POC_CELL = { host: "cursor" as const, runner: "cursor" as const };

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "id": "QK-BOUNDED-001",
+      "title": "Bounded real campaign acceptance task",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": ["bounded-campaign"],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["src/message.txt"],
+      "acceptanceCriteria": ["Only src/message.txt changes to the approved string"],
+      "verification": ["bounded-campaign-verification"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": null
+    }
+  ]
+}
