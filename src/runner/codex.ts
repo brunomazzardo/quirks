@@ -1,11 +1,16 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface BuildCodexArgvInput {
   executable: string;
   model: string;
   workspace: string;
-  briefPath: string;
+  promptText: string;
   resultPath: string;
+  artifactDir: string;
+  schemaPath: string;
+  capabilities: readonly string[];
+  effort: string;
 }
 
 export interface BuildCodexResumeArgvInput {
@@ -50,8 +55,30 @@ const CODEX_STATUSES = new Set<CodexResultStatus>([
   "permission_denied",
 ]);
 
+export type CodexSandboxMode = "read-only" | "workspace-write";
+
+export const CODEX_PROMPT_MAX_BYTES = 100 * 1024;
+
 export function codexResultPath(artifactDir: string): string {
   return path.join(artifactDir, "codex-result.json");
+}
+
+export function codexResultSchemaPath(): string {
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../schemas/codex-result.schema.json",
+  );
+}
+
+export function codexSandboxMode(capabilities: readonly string[]): CodexSandboxMode {
+  return capabilities.includes("repository-write") ? "workspace-write" : "read-only";
+}
+
+export function codexPromptText(briefPath: string, briefContents: string | undefined): string {
+  if (briefContents !== undefined && Buffer.byteLength(briefContents, "utf8") <= CODEX_PROMPT_MAX_BYTES) {
+    return briefContents;
+  }
+  return `Read the brief at ${briefPath}, complete it, and write the result envelope to the declared result path before exiting.`;
 }
 
 export function buildCodexArgv(input: BuildCodexArgvInput): readonly string[] {
@@ -62,9 +89,20 @@ export function buildCodexArgv(input: BuildCodexArgvInput): readonly string[] {
     input.model,
     "-C",
     input.workspace,
+    "-s",
+    codexSandboxMode(input.capabilities),
+    "--add-dir",
+    input.artifactDir,
+    "-c",
+    `model_reasoning_effort=${input.effort}`,
+    "--output-schema",
+    input.schemaPath,
+    "--color",
+    "never",
+    "--json",
     "-o",
     input.resultPath,
-    input.briefPath,
+    input.promptText,
   ];
 }
 

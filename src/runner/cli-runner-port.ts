@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { ResolvedRoute } from "../campaign/routing.js";
 import type { RunnerPort } from "../campaign/ports.js";
 import { QuirksError } from "../core/errors.js";
 import { buildClaudeArgv, buildClaudeEnv, claudeArtifactPaths } from "./claude.js";
-import { buildCodexArgv, codexResultPath } from "./codex.js";
+import { buildCodexArgv, codexPromptText, codexResultPath, codexResultSchemaPath } from "./codex.js";
 import { buildCursorArgv, cursorArtifactPaths } from "./cursor.js";
 import { dispatchRunnerJob } from "./dispatcher.js";
 import type { RunnerJobResult, RunnerProfile } from "./types.js";
@@ -36,10 +37,19 @@ export function sanitizedRunnerEnv(profile: RunnerProfile): Readonly<Record<stri
   return undefined;
 }
 
+async function readBriefContents(briefPath: string): Promise<string | undefined> {
+  try {
+    return await readFile(briefPath, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 export function buildRunnerArgv(
   profile: RunnerProfile,
   input: RunnerDispatchInput,
   artifactDir: string,
+  briefContents?: string,
 ): readonly string[] {
   switch (profile.runnerType) {
     case "claude": {
@@ -56,13 +66,16 @@ export function buildRunnerArgv(
       });
     }
     case "codex": {
-      const resultPath = codexResultPath(artifactDir);
       return buildCodexArgv({
         executable: profile.executable,
         model: profile.model,
         workspace: input.worktreePath,
-        briefPath: input.briefPath,
-        resultPath,
+        promptText: codexPromptText(input.briefPath, briefContents),
+        resultPath: codexResultPath(artifactDir),
+        artifactDir,
+        schemaPath: codexResultSchemaPath(),
+        capabilities: profile.capabilities,
+        effort: profile.effort,
       });
     }
     case "cursor": {
@@ -89,7 +102,10 @@ export class CliRunnerPort implements RunnerPort {
   async dispatch(input: RunnerDispatchInput): Promise<RunnerJobResult> {
     const profile = requiredProfile(this.profiles, input.route.profileId);
     const artifactDir = path.dirname(input.briefPath);
-    const argv = buildRunnerArgv(profile, input, artifactDir);
+    const briefContents = profile.runnerType === "codex"
+      ? await readBriefContents(input.briefPath)
+      : undefined;
+    const argv = buildRunnerArgv(profile, input, artifactDir, briefContents);
     const dispatchInput = {
       jobId: input.jobId,
       profile,

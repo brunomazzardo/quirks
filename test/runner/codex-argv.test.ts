@@ -1,27 +1,77 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CODEX_PROMPT_MAX_BYTES,
   buildCodexArgv,
   buildCodexResumeArgv,
+  codexPromptText,
   parseCodexResult,
+  type BuildCodexArgvInput,
 } from "../../src/runner/codex.js";
 
-test("buildCodexArgv uses codex exec with model, workspace, brief path, and result artifact", () => {
+const freshInput: BuildCodexArgvInput = {
+  executable: "/usr/bin/codex",
+  model: "gpt-5.6-terra-medium",
+  workspace: "/tmp/worktree",
+  promptText: "# brief\nDo the thing.\n",
+  resultPath: "artifacts/job-1/result.json",
+  artifactDir: "artifacts/job-1",
+  schemaPath: "schemas/codex-result.schema.json",
+  capabilities: ["repository-read"],
+  effort: "high",
+};
+
+function flagValue(argv: readonly string[], flag: string): string | undefined {
+  const index = argv.indexOf(flag);
+  return index === -1 ? undefined : argv[index + 1];
+}
+
+test("buildCodexArgv maps repository-write capability to the workspace-write sandbox", () => {
   const argv = buildCodexArgv({
-    executable: "/usr/bin/codex",
-    model: "gpt-5.6-terra-medium",
-    workspace: "/tmp/worktree",
-    briefPath: "artifacts/job-1/brief.md",
-    resultPath: "artifacts/job-1/result.json",
+    ...freshInput,
+    capabilities: ["repository-read", "repository-write"],
   });
 
+  assert.equal(flagValue(argv, "-s"), "workspace-write");
+});
+
+test("buildCodexArgv defaults to the read-only sandbox without repository-write", () => {
+  const argv = buildCodexArgv(freshInput);
+
+  assert.equal(flagValue(argv, "-s"), "read-only");
+});
+
+test("buildCodexArgv emits model, workspace, artifact dir, effort, schema, color, json, and result flags", () => {
+  const argv = buildCodexArgv(freshInput);
+
   assert.deepEqual(argv.slice(0, 2), ["/usr/bin/codex", "exec"]);
-  assert.deepEqual(argv.slice(-1), ["artifacts/job-1/brief.md"]);
-  assert.equal(argv.includes("done"), false);
-  assert.equal(argv.includes("Read the brief"), false);
-  assert.deepEqual(argv.slice(argv.indexOf("-m"), argv.indexOf("-m") + 2), ["-m", "gpt-5.6-terra-medium"]);
-  assert.deepEqual(argv.slice(argv.indexOf("-C"), argv.indexOf("-C") + 2), ["-C", "/tmp/worktree"]);
-  assert.deepEqual(argv.slice(argv.indexOf("-o"), argv.indexOf("-o") + 2), ["-o", "artifacts/job-1/result.json"]);
+  assert.equal(flagValue(argv, "-m"), "gpt-5.6-terra-medium");
+  assert.equal(flagValue(argv, "-C"), "/tmp/worktree");
+  assert.equal(flagValue(argv, "--add-dir"), "artifacts/job-1");
+  assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=high");
+  assert.equal(flagValue(argv, "--output-schema"), "schemas/codex-result.schema.json");
+  assert.equal(flagValue(argv, "--color"), "never");
+  assert.equal(argv.includes("--json"), true);
+  assert.equal(flagValue(argv, "-o"), "artifacts/job-1/result.json");
+});
+
+test("buildCodexArgv passes the prompt text as the final positional, not the brief path", () => {
+  const argv = buildCodexArgv(freshInput);
+
+  assert.equal(argv.at(-1), "# brief\nDo the thing.\n");
+  assert.equal(argv.includes("artifacts/job-1/brief.md"), false);
+});
+
+test("codexPromptText inlines brief contents under the size cap", () => {
+  assert.equal(codexPromptText("/tmp/brief.md", "small brief"), "small brief");
+});
+
+test("codexPromptText points at the brief path for oversized or unreadable briefs", () => {
+  const oversized = "x".repeat(CODEX_PROMPT_MAX_BYTES + 1);
+  const pointer = codexPromptText("/tmp/brief.md", oversized);
+  assert.notEqual(pointer, oversized);
+  assert.match(pointer, /\/tmp\/brief\.md/);
+  assert.match(codexPromptText("/tmp/brief.md", undefined), /\/tmp\/brief\.md/);
 });
 
 test("buildCodexResumeArgv uses codex exec resume with the session id", () => {
