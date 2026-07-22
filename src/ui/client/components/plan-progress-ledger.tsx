@@ -1,5 +1,14 @@
 import type { UiPlanProgressV1 } from "../../ports/campaign-read.js";
 
+export function PlanProgressUnavailable() {
+  return (
+    <section aria-labelledby="plan-progress-heading" className="plan-progress-ledger">
+      <h2 id="plan-progress-heading">Plan progress</h2>
+      <p role="note">No plan progress recorded for this campaign.</p>
+    </section>
+  );
+}
+
 export function PlanProgressLedger({ projection }: { projection: UiPlanProgressV1 }) {
   return (
     <section aria-labelledby="plan-progress-heading" className="plan-progress-ledger">
