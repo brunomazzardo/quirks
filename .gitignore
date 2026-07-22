@@ -4,3 +4,5 @@ coverage/
 .superpowers/
 *.log
 .worktrees/
+.idea/
+test-results/
