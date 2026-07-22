@@ -2074,7 +2074,7 @@
       "title": "Baseline-test and author delegated-brainstorming",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-SKL-002"
       ],
@@ -2118,7 +2118,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-SKL-003-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "3075872682c86a50a35e2737cb6494a8eac38470",
+            "commitRefs": [
+              "3075872682c86a50a35e2737cb6494a8eac38470"
+            ],
+            "finishedAt": "2026-07-22T00:22:00Z",
+            "outcomeReason": "Wave 4 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -2126,7 +2138,7 @@
       "title": "Baseline-test and author running-agent-campaigns",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-SKL-003",
         "QK-SKL-005",
@@ -2174,7 +2186,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-SKL-004-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "1bac45fafa7d88414a5f2e3805bf7625ceca5b3d",
+            "commitRefs": [
+              "1bac45fafa7d88414a5f2e3805bf7625ceca5b3d"
+            ],
+            "finishedAt": "2026-07-22T00:22:00Z",
+            "outcomeReason": "Wave 4 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -2290,7 +2314,7 @@
       "title": "Write the host integration and acceptance implementation plan",
       "kind": "plan",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-UI-004",
         "QK-SKL-004",
@@ -2346,7 +2370,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-001-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "f64d1af39e6fa820074941b71bcecd46aa04ddb1",
+            "commitRefs": [
+              "f64d1af39e6fa820074941b71bcecd46aa04ddb1"
+            ],
+            "finishedAt": "2026-07-22T00:22:00Z",
+            "outcomeReason": "Wave 4 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -4377,7 +4413,7 @@
       "title": "Merge and exact approved push",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-GIT-001B",
         "QK-SKL-004"
@@ -4420,7 +4456,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-GIT-002A-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "1d4e854b86357cfe173f7462f4154013d6b58f23",
+            "commitRefs": [
+              "1d4e854b86357cfe173f7462f4154013d6b58f23"
+            ],
+            "finishedAt": "2026-07-22T00:22:00Z",
+            "outcomeReason": "Wave 4 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -4428,7 +4476,7 @@
       "title": "Provenance write-back",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-GIT-002A"
       ],
@@ -4470,7 +4518,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-GIT-002B-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "c2f961674d7165517e4526682818d8bded75f23b",
+            "commitRefs": [
+              "c2f961674d7165517e4526682818d8bded75f23b"
+            ],
+            "finishedAt": "2026-07-22T00:22:00Z",
+            "outcomeReason": "Wave 4 overnight lane"
+          }
+        ]
       }
     },
     {
@@ -4478,7 +4538,7 @@
       "title": "Autonomy boundary review",
       "kind": "review",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-SKL-004",
         "QK-GIT-002B",
@@ -4517,7 +4577,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-AUTONOMY-REV-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "92512548ee679f70038623ca34b2fc60c5b6d2e7",
+            "commitRefs": [
+              "92512548ee679f70038623ca34b2fc60c5b6d2e7"
+            ],
+            "finishedAt": "2026-07-22T00:22:00Z",
+            "outcomeReason": "Wave 4 overnight approve-with-nits; report at .superpowers/sdd/overnight-2026-07-21/wave4/qk-autonomy-rev-report.md"
+          }
+        ]
       }
     },
     {
