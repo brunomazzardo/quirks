@@ -56,11 +56,46 @@ export function approvedCampaignPromptContext(): PromptContext {
   });
 }
 
+export function awaitingApprovalPromptContext(): PromptContext {
+  return reviewPromptContext({
+    contextKind: "campaign",
+    campaign: {
+      campaignId: "C-1",
+      state: "awaiting_approval",
+      approved: false,
+      envelopeDigest: `sha256:${"c".repeat(64)}`,
+    },
+  });
+}
+
+export function activeTaskPromptContext(taskId: string): PromptContext {
+  return reviewPromptContext({
+    contextKind: "task",
+    task: {
+      id: taskId,
+      title: "Contract task",
+      status: "ready",
+      dependsOn: [],
+      nativeRevision: `sha256:${"d".repeat(64)}`,
+      acceptanceCriteria: ["Feature passes verification"],
+      verification: ["pnpm check"],
+      effort: "standard",
+      risk: [],
+    },
+  });
+}
+
 export function fakePromptReadPort(): PromptReadPort {
   return {
     async getContext(request: PromptReadRequest): Promise<PromptContext> {
       if (request.contextKind === "review" && request.taskId === "QK-1") {
         return reviewPromptContext();
+      }
+      if (request.contextKind === "task" && request.taskId === "QK-1") {
+        return activeTaskPromptContext("QK-1");
+      }
+      if (request.contextKind === "campaign" && request.campaignId === "C-1") {
+        return awaitingApprovalPromptContext();
       }
       if (request.contextKind === "campaign" && request.campaignId === "C-approved") {
         return approvedCampaignPromptContext();

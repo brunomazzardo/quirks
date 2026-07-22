@@ -3,12 +3,18 @@ import path from "node:path";
 import { QuirksError } from "../core/errors.js";
 import { hasDurableApproval } from "./approval.js";
 import { buildExecutionPlan, selectRunnableTasks } from "./scheduler.js";
-import { loadPlanOutline, type ImmutableSourceRef, type PlanOutline } from "./plan-outline.js";
 import type { RunnerPort, WorktreePort, GitWorktreePort } from "./ports.js";
 import type { CampaignStore } from "./store.js";
-import { buildTaskBrief, computeInstructionsHash } from "./task-brief.js";
-import type { CampaignApproval, CampaignEnvelope, JudgmentTier } from "./types.js";
-import type { NormalizedTaskProjection } from "../prompt/context.js";
+import {
+  buildTaskBrief,
+  briefTaskProjection,
+  computeInstructionsHash,
+  resolveTaskPlanOutline,
+  taskFactsFromShow,
+  type AuthoritativeTaskFacts,
+  type NormalizedTaskRecord,
+} from "./task-brief.js";
+import type { CampaignApproval, CampaignEnvelope } from "./types.js";
 import type { RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
 import { RepositoryLock } from "../state/repository-lock.js";
@@ -56,19 +62,8 @@ function isGitWorktreePort(worktree: WorktreePort): worktree is GitWorktreePort 
   return typeof (worktree as GitWorktreePort).prepareReviewWorktree === "function";
 }
 
-type NormalizedSupervisorTask = {
-  id: string;
-  title: string;
-  status: string;
-  dependsOn: readonly string[];
+type NormalizedSupervisorTask = AuthoritativeTaskFacts & {
   parallelismKeys: readonly string[];
-  nativeRevision: string;
-  sourceRefs: readonly Record<string, unknown>[];
-  acceptanceCriteria: readonly string[];
-  verification: readonly string[];
-  effort: JudgmentTier;
-  risk: readonly string[];
-  statusDetail: null | { reason: string; unblockCondition: string };
 };
 
 const NON_CLAIMABLE_STATUSES = new Set(["proposed", "blocked", "cancelled"]);
@@ -98,6 +93,7 @@ async function loadNormalizedTask(
   source: TaskSource,
   taskId: string,
   envelope: CampaignEnvelope,
+  options: { allowClaimedByCampaign?: boolean } = {},
 ): Promise<NormalizedSupervisorTask> {
   const show = await source.execute({
     schemaVersion: 1,
@@ -108,94 +104,27 @@ async function loadNormalizedTask(
   if (!show.ok || show.operation !== "show") {
     throw new QuirksError("PROTOCOL_VIOLATION", `Cannot show task ${taskId}`);
   }
-  const data = show.data as {
-    title?: string;
-    status: string;
-    dependsOn: readonly string[];
-    sourceRefs?: readonly Record<string, unknown>[];
-    acceptanceCriteria?: readonly string[];
-    verification?: readonly string[];
-    statusDetail?: null | { reason: string; unblockCondition: string };
-    execution: { parallelismKeys?: readonly string[]; effort?: JudgmentTier; risk?: readonly string[] };
-  };
+  const data = show.data as NormalizedTaskRecord;
   const nativeRevision = show.nativeRevision ?? envelope.taskRevisions[taskId];
   if (!nativeRevision) {
     throw new QuirksError("PROTOCOL_VIOLATION", `Missing revision for task ${taskId}`);
   }
+  const facts = taskFactsFromShow(taskId, data, nativeRevision);
   const approvedRevision = envelope.taskRevisions[taskId];
-  if (data.status !== "completed" && approvedRevision !== undefined && nativeRevision !== approvedRevision) {
+  const claimedByThisCampaign =
+    options.allowClaimedByCampaign === true && facts.coordination?.campaignId === envelope.campaignId;
+  if (
+    facts.status !== "completed" &&
+    !claimedByThisCampaign &&
+    approvedRevision !== undefined &&
+    nativeRevision !== approvedRevision
+  ) {
     throw new QuirksError(
       "PROTOCOL_VIOLATION",
       `TASK_REVISION_DRIFT: task ${taskId} changed after approval; re-run preflight`,
     );
   }
-  return {
-    id: taskId,
-    title: data.title ?? taskId,
-    status: data.status,
-    dependsOn: data.dependsOn,
-    parallelismKeys: data.execution.parallelismKeys ?? [],
-    nativeRevision,
-    sourceRefs: data.sourceRefs ?? [],
-    acceptanceCriteria: data.acceptanceCriteria ?? [],
-    verification: data.verification ?? [],
-    effort: data.execution.effort ?? "standard",
-    risk: data.execution.risk ?? [],
-    statusDetail: data.statusDetail ?? null,
-  };
-}
-
-function briefTaskProjection(task: NormalizedSupervisorTask): NormalizedTaskProjection {
-  return {
-    id: task.id,
-    title: task.title,
-    status: task.status,
-    dependsOn: task.dependsOn,
-    nativeRevision: task.nativeRevision,
-    acceptanceCriteria: task.acceptanceCriteria,
-    verification: task.verification,
-    effort: task.effort,
-    risk: task.risk,
-    ...(task.statusDetail ? { blockedReason: task.statusDetail.reason } : {}),
-    ...(task.statusDetail ? { unblockCondition: task.statusDetail.unblockCondition } : {}),
-  };
-}
-
-function immutablePlanRefs(task: NormalizedSupervisorTask): ImmutableSourceRef[] {
-  const refs: ImmutableSourceRef[] = [];
-  for (const ref of task.sourceRefs) {
-    if (ref["kind"] !== "plan") continue;
-    if (typeof ref["path"] !== "string" || typeof ref["commit"] !== "string") continue;
-    refs.push({
-      kind: "plan",
-      path: ref["path"],
-      commit: ref["commit"],
-      ...(typeof ref["task"] === "number" ? { task: ref["task"] } : {}),
-    });
-  }
-  return refs;
-}
-
-async function resolveTaskPlanOutline(
-  repositoryRoot: string,
-  task: NormalizedSupervisorTask,
-): Promise<PlanOutline | undefined> {
-  const refs = immutablePlanRefs(task);
-  if (refs.length === 0) return undefined;
-  const outlines: PlanOutline[] = [];
-  for (const ref of refs) {
-    outlines.push(await loadPlanOutline(repositoryRoot, [ref]));
-  }
-  const first = outlines[0]!;
-  const merged = outlines
-    .filter((outline) => outline.path === first.path && outline.commit === first.commit)
-    .flatMap((outline) => outline.tasks);
-  const seen = new Set<number>();
-  return {
-    path: first.path,
-    commit: first.commit,
-    tasks: merged.filter((entry) => (seen.has(entry.task) ? false : (seen.add(entry.task), true))),
-  };
+  return { ...facts, parallelismKeys: data.execution.parallelismKeys ?? [] };
 }
 
 export class CampaignSupervisor {
@@ -306,10 +235,14 @@ export class CampaignSupervisor {
     };
 
     for (const taskId of runnable) {
-      const taskDetail = taskMeta.get(taskId);
-      if (!taskDetail) {
+      if (!taskMeta.has(taskId)) {
         throw new QuirksError("PROTOCOL_VIOLATION", `Missing normalized task metadata for ${taskId}`);
       }
+      // Briefs bind the task exactly as the worker will find it: re-shown after
+      // this campaign's claim, never inferred from pre-claim metadata.
+      const taskDetail = await loadNormalizedTask(this.context.source, taskId, envelope, {
+        allowClaimedByCampaign: true,
+      });
       const planOutline = await resolveTaskPlanOutline(this.context.repositoryRoot, taskDetail);
       const worktree = await this.context.worktree.prepareTaskWorktree(taskId, envelope.git.baseCommit);
       const route = routeForTask(envelope, taskId, "implementer", this.context.profileIndex);

@@ -7,9 +7,114 @@ import {
   type NormalizedTaskProjection,
 } from "../prompt/context.js";
 import { renderPrompt } from "../prompt/render.js";
-import type { PlanOutline } from "./plan-outline.js";
+import { loadPlanOutline, type ImmutableSourceRef, type PlanOutline } from "./plan-outline.js";
+import type { JudgmentTier } from "./types.js";
 import type { PromptAction, PromptContextKind } from "../prompt/types.js";
 import type { RunnerProfile } from "../runner/types.js";
+
+/** Raw normalized-task record shape returned by a TaskSource `show`. */
+export interface NormalizedTaskRecord {
+  title?: string;
+  status: string;
+  dependsOn: readonly string[];
+  sourceRefs?: readonly Record<string, unknown>[];
+  acceptanceCriteria?: readonly string[];
+  verification?: readonly string[];
+  statusDetail?: null | { reason: string; unblockCondition: string };
+  coordination?: null | { scope: string; campaignId: string; owner: string; claimedAt?: string };
+  execution: { parallelismKeys?: readonly string[]; effort?: JudgmentTier; risk?: readonly string[] };
+}
+
+/** Bounded authoritative task facts shared by campaign briefs and UI prompts. */
+export interface AuthoritativeTaskFacts {
+  id: string;
+  title: string;
+  status: string;
+  dependsOn: readonly string[];
+  nativeRevision: string;
+  sourceRefs: readonly Record<string, unknown>[];
+  acceptanceCriteria: readonly string[];
+  verification: readonly string[];
+  effort: JudgmentTier;
+  risk: readonly string[];
+  statusDetail: null | { reason: string; unblockCondition: string };
+  coordination: null | { campaignId: string };
+}
+
+export function taskFactsFromShow(
+  taskId: string,
+  data: NormalizedTaskRecord,
+  nativeRevision: string,
+): AuthoritativeTaskFacts {
+  return {
+    id: taskId,
+    title: data.title ?? taskId,
+    status: data.status,
+    dependsOn: data.dependsOn,
+    nativeRevision,
+    sourceRefs: data.sourceRefs ?? [],
+    acceptanceCriteria: data.acceptanceCriteria ?? [],
+    verification: data.verification ?? [],
+    effort: data.execution.effort ?? "standard",
+    risk: data.execution.risk ?? [],
+    statusDetail: data.statusDetail ?? null,
+    coordination: data.coordination ? { campaignId: data.coordination.campaignId } : null,
+  };
+}
+
+export function briefTaskProjection(facts: AuthoritativeTaskFacts): NormalizedTaskProjection {
+  return {
+    id: facts.id,
+    title: facts.title,
+    status: facts.status,
+    dependsOn: facts.dependsOn,
+    nativeRevision: facts.nativeRevision,
+    acceptanceCriteria: facts.acceptanceCriteria,
+    verification: facts.verification,
+    effort: facts.effort,
+    risk: facts.risk,
+    ...(facts.statusDetail ? { blockedReason: facts.statusDetail.reason } : {}),
+    ...(facts.statusDetail ? { unblockCondition: facts.statusDetail.unblockCondition } : {}),
+  };
+}
+
+export function immutablePlanRefs(facts: AuthoritativeTaskFacts): ImmutableSourceRef[] {
+  const refs: ImmutableSourceRef[] = [];
+  for (const ref of facts.sourceRefs) {
+    if (ref["kind"] !== "plan") continue;
+    if (typeof ref["path"] !== "string" || typeof ref["commit"] !== "string") continue;
+    refs.push({
+      kind: "plan",
+      path: ref["path"],
+      commit: ref["commit"],
+      ...(typeof ref["task"] === "number" ? { task: ref["task"] } : {}),
+    });
+  }
+  return refs;
+}
+
+/** Resolve the immutable plan outline referenced by a task, merging one entry per numbered plan task. */
+export async function resolveTaskPlanOutline(
+  repositoryRoot: string,
+  facts: AuthoritativeTaskFacts,
+): Promise<PlanOutline | undefined> {
+  const refs = immutablePlanRefs(facts);
+  if (refs.length === 0) return undefined;
+  const outlines: PlanOutline[] = [];
+  for (const ref of refs) {
+    outlines.push(await loadPlanOutline(repositoryRoot, [ref]));
+  }
+  const first = outlines[0]!;
+  const merged = outlines
+    .filter((outline) => outline.path === first.path && outline.commit === first.commit)
+    .flatMap((outline) => outline.tasks);
+  const seen = new Set<number>();
+  return {
+    path: first.path,
+    commit: first.commit,
+    tasks: merged.filter((entry) => (seen.has(entry.task) ? false : (seen.add(entry.task), true))),
+  };
+}
 
 /**
  * Hash of the immutable prompt instruction surface frozen at preflight:

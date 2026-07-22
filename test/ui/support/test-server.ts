@@ -59,6 +59,16 @@ export async function createTestUiServer(options?: {
     preflightRead: fakePreflightPort(options?.preflightProposals),
     campaignRead: fakeCampaignReadPort(),
     promptRead: fakePromptReadPort(),
+    taskHistory: {
+      getHistory: async (taskId: string) => ({
+        schemaVersion: 1,
+        taskId,
+        entries: [],
+        totalIterations: 0,
+        partialCount: 0,
+        supersededCount: 0,
+      }),
+    },
     clientScript,
     onRead: () => {
       readPortCalls += 1;

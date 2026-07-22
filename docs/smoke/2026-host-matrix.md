@@ -12,3 +12,10 @@
 | 2026-07-22 | darwin | cursor | 2026.07.20-8cc9c0b | codex | codex-cli 0.144.1 | smoke-codex/standard | smoke-impl…-codex | passed | a2c73e8bbbfaa5a2369665674ee3c9c0cb3470b07507212e53084f9ca31db03f |
 | 2026-07-22 | darwin | cursor | 2026.07.20-8cc9c0b | cursor | 2026.07.20-8cc9c0b | smoke-cursor/standard | smoke-impl…-cursor | passed | a4f37cfc9435b2fc44b9398857a5ae647238936249d2e22a89e4b7f96db13ed0 |
 
+
+## Contextual prompt discovery assumptions (2026-07-22, QK-PRM-001)
+
+- Prompt briefs and UI copy actions are rendered by the deterministic prompt kernel (`src/prompt/`); no runtime AI call generates, rewrites, or ranks prompts on any host. This is verified by `test/prompt/security.test.ts`, the golden fixtures under `test/prompt/golden/`, and the no-network default of `test/prompt/evaluation-harness.ts`.
+- Claude, Codex, and Cursor hosts receive role briefs as plain files under `.quirks/briefs/`; the same host-portable text is exposed to the loopback UI, so copied prompts match dispatched briefs byte-for-byte (`test/integration/contextual-prompt-flow.test.ts`).
+- Host skill discovery is unchanged: prompts reference canonical skill names (`executing-tasks`, `running-agent-campaigns`) and instruct the recipient to read them before acting; no host-specific prompt syntax is emitted.
+- Fresh-agent prompt evaluations run only in development via `QUIRKS_PROMPT_EVAL_RUNNER`; default `pnpm test` scores stored JSONL results with no network or model call.
