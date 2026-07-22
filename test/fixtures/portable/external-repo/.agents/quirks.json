@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "protocol": "quirks-project-v1",
+  "taskSource": {
+    "driver": "external",
+    "command": ["node", "adapter.mjs"]
+  },
+  "workflowPolicy": {
+    "skills": {
+      "write": "writing-tasks",
+      "update": "updating-tasks",
+      "execute": "executing-tasks"
+    },
+    "nativeStatusMap": { "ready": "ready", "done": "completed" },
+    "evidenceMap": { "accepted-commit": ["commit", "review", "verification"] },
+    "allowedCompletionBoundaries": ["accepted-commit"]
+  }
+}

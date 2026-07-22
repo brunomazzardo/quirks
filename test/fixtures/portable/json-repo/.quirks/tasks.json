@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "id": "PORT-JSON-1",
+      "title": "Portable JSON acceptance task",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": ["portable-json"],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["portable json fixture"],
+      "acceptanceCriteria": ["campaign boundaries hold"],
+      "verification": ["portable acceptance suite"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": null
+    }
+  ]
+}
