@@ -13,7 +13,7 @@ const REQUIRED_SKILLS = [
 test("validates canonical skill directories and codex plugin manifest", async () => {
   const report = await validateSkills({ root: path.resolve(".") });
   assert.equal(report.ok, true);
-  assert.deepEqual(report.skills.map((skill) => skill.id).sort(), [...REQUIRED_SKILLS].sort());
+  assert.deepEqual(report.skills.map((skill) => skill.id).toSorted(), [...REQUIRED_SKILLS].toSorted());
   assert.equal(report.plugin.name, "quirks");
   assert.match(report.plugin.skillsPath ?? "", /skills$/);
 });
