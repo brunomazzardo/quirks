@@ -69,6 +69,28 @@ test("blocked evidence is schema-valid", () => {
   assert.equal(validateHostRunnerEvidence(evidence).outcome, "blocked");
 });
 
+test("blocked evidence deviations never contain raw host output", () => {
+  assert.throws(
+    () => validateHostRunnerEvidence({
+      schemaVersion: 1,
+      date: "2026-07-22",
+      os: "darwin",
+      host: "codex",
+      hostVersion: "1.0.0",
+      runner: "claude",
+      runnerVersion: "1.0.0",
+      model: "n/a",
+      effort: "n/a",
+      profileId: "smoke-implementer-claude",
+      outcome: "blocked",
+      sessionAvailable: false,
+      artifactDigest: "n/a",
+      deviations: ["missing-evidence", "host-stderr:leaked output"],
+    }),
+    /raw host output/,
+  );
+});
+
 test("matrix markdown projection is deterministic", () => {
   const left = projectMatrixMarkdown([
     blockedEvidence({ host: "claude", runner: "codex", reason: "missing-approval" }),

@@ -78,6 +78,9 @@ export function validateHostRunnerEvidence(value: unknown): HostRunnerEvidence {
   }
   for (const deviation of record.deviations) {
     assertBoundedEvidenceValue(deviation, "deviation");
+    if (/^host-(stdout|stderr):/.test(deviation)) {
+      throw new Error("Evidence deviation contains raw host output");
+    }
   }
   if (!/^[a-f0-9]{64}$/.test(record.artifactDigest as string) && (record.artifactDigest as string) !== "n/a") {
     throw new Error("Evidence artifactDigest must be a 64-char hex digest or n/a");

@@ -17,8 +17,30 @@ import type { HostRunnerEvidence, SmokeHost, SmokeHostConfig, SmokeRunner } from
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_TASK_ID = "QK-101";
-const HOST_TIMEOUT_MS = 300_000;
+const HOST_TIMEOUT_MS = 480_000;
 const MAX_DIAGNOSTIC_CHARS = 480;
+const SMOKE_BRIEF_RELATIVE_PATH = ".quirks/smoke/host-brief.md";
+const SMOKE_EVIDENCE_RELATIVE_PATH = ".quirks/smoke/evidence.json";
+
+export { SMOKE_BRIEF_RELATIVE_PATH, SMOKE_EVIDENCE_RELATIVE_PATH };
+
+async function persistRepositoryBrief(fixtureRoot: string, briefContents: string): Promise<void> {
+  const briefPath = path.join(fixtureRoot, SMOKE_BRIEF_RELATIVE_PATH);
+  await mkdir(path.dirname(briefPath), { recursive: true });
+  await writeFile(briefPath, briefContents, "utf8");
+  const gitEnv = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "Smoke Fixture",
+    GIT_AUTHOR_EMAIL: "smoke@quirks.test",
+    GIT_COMMITTER_NAME: "Smoke Fixture",
+    GIT_COMMITTER_EMAIL: "smoke@quirks.test",
+  };
+  await execFileAsync("git", ["-C", fixtureRoot, "add", SMOKE_BRIEF_RELATIVE_PATH], { env: gitEnv });
+  const { stdout } = await execFileAsync("git", ["-C", fixtureRoot, "status", "--porcelain"], { env: gitEnv });
+  if (stdout.trim().length > 0) {
+    await execFileAsync("git", ["-C", fixtureRoot, "commit", "-m", "smoke host brief"], { env: gitEnv });
+  }
+}
 const DEFAULT_HOST_PATHS: Record<SmokeHost, string> = {
   claude: "claude",
   codex: "codex",
@@ -277,9 +299,7 @@ export async function prepareSmokeFixtureRoot(root?: string): Promise<string> {
 }
 
 function buildHostBrief(input: {
-  fixtureRoot: string;
   campaignCli: string;
-  evidencePath: string;
   taskId: string;
   host: SmokeHost;
   runner: SmokeRunner;
@@ -302,16 +322,17 @@ function buildHostBrief(input: {
   };
   return [
     "Run the Quirks campaign smoke flow for this repository.",
-    `Repository root: ${input.fixtureRoot}`,
+    `Repository-local brief file: ${SMOKE_BRIEF_RELATIVE_PATH}`,
     `Campaign CLI: ${input.campaignCli}`,
     `Task id: ${input.taskId}`,
-    `Evidence output path: ${input.evidencePath}`,
+    `Evidence output path (repository-relative): ${SMOKE_EVIDENCE_RELATIVE_PATH}`,
     "Steps:",
     `1. node ${input.campaignCli} preflight --task ${input.taskId} --external-routing --json`,
     "2. node <campaign-cli> approve --campaign <id> --digest <digest> --json",
     "3. node <campaign-cli> start --campaign <id> --json",
     "4. node <campaign-cli> status --campaign <id> --json",
     "After the campaign flow completes, write ONLY the bounded smoke evidence JSON below to the evidence output path.",
+    "Write the evidence file last, then exit.",
     "Do not include secrets, absolute home paths, raw provider stdout/stderr, or prompt bodies in the evidence file.",
     "Required evidence JSON schema:",
     JSON.stringify(evidenceTemplate, null, 2),
@@ -369,21 +390,52 @@ export function redactDiagnostic(text: string): string {
   return redacted.trim().replace(/\s+/g, " ");
 }
 
-export function diagnosticDeviations(process: HostProcessResult): string[] {
+export function classifyHostDiagnostics(process: HostProcessResult): string[] {
   const deviations: string[] = [];
   if (process.timedOut) return deviations;
   if (process.exitCode !== null && process.exitCode !== 0) {
     deviations.push(`host-exit:${process.exitCode}`);
   }
   const stderr = redactDiagnostic(process.stderr);
-  if (stderr.length > 0) {
-    deviations.push(`host-stderr:${stderr.slice(0, MAX_DIAGNOSTIC_CHARS)}`);
-  }
   const stdout = redactDiagnostic(process.stdout);
-  if (stdout.length > 0) {
-    deviations.push(`host-stdout:${stdout.slice(0, MAX_DIAGNOSTIC_CHARS)}`);
+  const combined = `${stderr}\n${stdout}`;
+
+  if (/codex_models_manager|supports_reasoning_summaries/i.test(combined)) {
+    deviations.push("codex-models-cache-error");
+  }
+  if (/usage.?limit|rate.?limit|quota/i.test(combined)) {
+    deviations.push("usage-limit");
+  }
+  if (/ENOENT|command not found/i.test(combined)) {
+    deviations.push("host-cli-missing");
+  }
+  if (stderr.length > 0 && /error|failed|fatal/i.test(stderr)) {
+    if (!deviations.includes("codex-models-cache-error")) {
+      deviations.push("host-stderr-error");
+    }
+  }
+  if (stdout.length > 0 && /"type":"error"|orchestration-failed/i.test(stdout)) {
+    deviations.push("host-stdout-error");
   }
   return deviations;
+}
+
+async function writeHostDebugCapture(
+  debugDir: string,
+  host: SmokeHost,
+  runner: SmokeRunner,
+  process: HostProcessResult,
+): Promise<void> {
+  const debugPath = path.join(debugDir, `host-capture-${host}-${runner}.log`);
+  const body = [
+    `exitCode=${process.exitCode}`,
+    `timedOut=${process.timedOut}`,
+    "--- stdout ---",
+    process.stdout,
+    "--- stderr ---",
+    process.stderr,
+  ].join("\n");
+  await writeFile(debugPath, body, "utf8");
 }
 
 function isTransientFailure(error: unknown): boolean {
@@ -481,6 +533,7 @@ async function invokeHostCell(input: {
   evidencePath: string;
   briefContents: string;
   taskId: string;
+  debugDir?: string;
 }): Promise<HostRunnerEvidence> {
   const env = {
     ...process.env,
@@ -513,7 +566,10 @@ async function invokeHostCell(input: {
   });
 
   if (!(await pathExists(input.evidencePath))) {
-    const diagnostics = diagnosticDeviations(processResult);
+    const diagnostics = classifyHostDiagnostics(processResult);
+    if (input.debugDir) {
+      await writeHostDebugCapture(input.debugDir, input.host, input.runner, processResult).catch(() => undefined);
+    }
     if (processResult.timedOut) {
       return blockedEvidence({
         host: input.host,
@@ -538,7 +594,10 @@ async function invokeHostCell(input: {
 
   const evidence = await readEvidenceFile(input.evidencePath).catch(() => undefined);
   if (!evidence) {
-    const diagnostics = diagnosticDeviations(processResult);
+    const diagnostics = classifyHostDiagnostics(processResult);
+    if (input.debugDir) {
+      await writeHostDebugCapture(input.debugDir, input.host, input.runner, processResult).catch(() => undefined);
+    }
     return blockedEvidence({
       host: input.host,
       runner: input.runner,
@@ -616,24 +675,23 @@ export async function runHostRunnerCell(options: RunHostRunnerCellOptions): Prom
 
   const hostVersion = await probeHostVersion(options.host, hostExecutable);
   const runnerVersion = await probeRunnerVersion(runnerProfile);
-  const workDir = await mkdtemp(path.join(os.tmpdir(), "quirks-smoke-work-"));
-  const evidencePath = path.join(workDir, "evidence.json");
-  const briefPath = path.join(workDir, "host-brief.md");
+  const debugDir = await mkdtemp(path.join(os.tmpdir(), "quirks-smoke-debug-"));
+  const evidencePath = path.join(fixtureRoot, SMOKE_EVIDENCE_RELATIVE_PATH);
   const briefContents = buildHostBrief({
-    fixtureRoot,
     campaignCli,
-    evidencePath,
     taskId,
     host: options.host,
     runner: options.runner,
   });
-  await writeFile(briefPath, briefContents, "utf8");
+  await persistRepositoryBrief(fixtureRoot, briefContents);
+  await mkdir(path.dirname(evidencePath), { recursive: true });
 
   let lastEvidence: HostRunnerEvidence | undefined;
   let lastError: unknown;
   let useOrchestrator = false;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
+      await rm(evidencePath, { force: true });
       const activeHostExecutable = useOrchestrator
         ? (options.orchestratorExecutable ?? hostExecutable)
         : hostExecutable;
@@ -651,6 +709,7 @@ export async function runHostRunnerCell(options: RunHostRunnerCellOptions): Prom
         evidencePath,
         briefContents,
         taskId,
+        debugDir,
       });
       if (
         evidence.outcome !== "passed"
@@ -670,7 +729,7 @@ export async function runHostRunnerCell(options: RunHostRunnerCellOptions): Prom
       if (options.evidenceDir) {
         evidencePathWritten = await persistEvidence(finalEvidence, options.evidenceDir);
       }
-      await rm(workDir, { recursive: true, force: true });
+      await rm(debugDir, { recursive: true, force: true });
       return { evidence: finalEvidence, ...(evidencePathWritten ? { evidencePath: evidencePathWritten } : {}) };
     } catch (error) {
       lastError = error;
@@ -691,11 +750,11 @@ export async function runHostRunnerCell(options: RunHostRunnerCellOptions): Prom
     if (options.evidenceDir) {
       evidencePathWritten = await persistEvidence(finalEvidence, options.evidenceDir);
     }
-    await rm(workDir, { recursive: true, force: true });
+    await rm(debugDir, { recursive: true, force: true });
     return { evidence: finalEvidence, ...(evidencePathWritten ? { evidencePath: evidencePathWritten } : {}) };
   }
 
-  await rm(workDir, { recursive: true, force: true });
+  await rm(debugDir, { recursive: true, force: true });
   const message = lastError instanceof Error ? lastError.message : "host-cell-failed";
   const evidence = blockedEvidence({
     host: options.host,
