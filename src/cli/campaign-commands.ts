@@ -1,10 +1,12 @@
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { recoverCampaignOrThrow } from "../campaign/recovery.js";
 import { runPreflight } from "../campaign/preflight.js";
 import { createCampaignRuntime, lockPathFor } from "../campaign/runtime-context.js";
+import { isTerminalCampaignStatus } from "../campaign/state-machine.js";
 import { CampaignSupervisor } from "../campaign/supervisor.js";
 import { CampaignStore } from "../campaign/store.js";
-import type { CampaignEnvelope, CampaignSnapshot } from "../campaign/types.js";
+import type { CampaignEnvelope, CampaignSnapshot, CampaignStatus } from "../campaign/types.js";
 import { QuirksError } from "../core/errors.js";
 import { loadProjectContext } from "../project/config.js";
 import { reattachWatchdog, stopWatchdog } from "../runner/watchdog.js";
@@ -72,6 +74,74 @@ async function persistPreflightStore(envelope: CampaignEnvelope): Promise<Campai
     }
     throw error;
   }
+}
+
+type ResumeCandidatePayload =
+  | {
+      ok: true;
+      available: true;
+      campaign: { id: string; status: CampaignStatus; lastEvent: { type: string; at: string } | null };
+    }
+  | { ok: true; available: false; reason: "no_resumable_campaign" };
+
+// Read-only scan of the workspace repository's campaign store. A campaign is a
+// resume candidate while its status still has an outgoing transition in the
+// campaign state machine (see isTerminalCampaignStatus: `hold`, `complete`,
+// and `cancelled` are terminal). Picks the most recently updated candidate,
+// tie-broken by ascending campaign id; invalid or foreign store directories
+// are skipped rather than failing the scan.
+async function resumeCandidatePayload(): Promise<ResumeCandidatePayload> {
+  const context = await loadProjectContext(process.cwd(), { mode: "inspection" });
+  const stateDir = stateDirFor(context.repositoryId);
+  const campaignsRoot = path.join(
+    stateDir,
+    "repositories",
+    context.repositoryId.replaceAll(":", "-"),
+    "campaigns",
+  );
+  let campaignIds: string[];
+  try {
+    campaignIds = await readdir(campaignsRoot);
+  } catch {
+    campaignIds = [];
+  }
+
+  const candidates: {
+    id: string;
+    status: CampaignStatus;
+    updatedAt: string;
+    lastEvent: { type: string; at: string } | null;
+  }[] = [];
+  for (const campaignId of campaignIds) {
+    try {
+      const store = await CampaignStore.open(stateDir, context.repositoryId, campaignId);
+      const state = await store.readState();
+      if (isTerminalCampaignStatus(state.status)) continue;
+      const lastEvent = (await store.readEvents()).at(-1);
+      candidates.push({
+        id: campaignId,
+        status: state.status,
+        updatedAt: state.updatedAt,
+        lastEvent: lastEvent ? { type: lastEvent.type, at: lastEvent.at } : null,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  if (candidates.length === 0) {
+    return { ok: true, available: false, reason: "no_resumable_campaign" };
+  }
+  candidates.sort((a, b) => {
+    if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : -1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  const chosen = candidates[0]!;
+  return {
+    ok: true,
+    available: true,
+    campaign: { id: chosen.id, status: chosen.status, lastEvent: chosen.lastEvent },
+  };
 }
 
 export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<unknown> {
@@ -183,6 +253,8 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
       }
       return { ok: true, campaignId: parsed.campaignId, attachedJobIds: attached, localCoordinationOnly: true };
     }
+    case "resume-candidate":
+      return resumeCandidatePayload();
     case "resume": {
       const { store } = await openStore(parsed.campaignId, process.cwd());
       const report = await recoverCampaignOrThrow(store);

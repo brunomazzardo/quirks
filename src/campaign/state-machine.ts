@@ -15,6 +15,13 @@ const transitions: Readonly<Record<CampaignStatus, readonly CampaignStatus[]>> =
   cancelled: [],
 };
 
+// Terminal means no outgoing transition exists in the table above; today that
+// is exactly `hold`, `complete`, and `cancelled`. Every other status is
+// resumable/attachable and therefore a resume candidate.
+export function isTerminalCampaignStatus(status: CampaignStatus): boolean {
+  return transitions[status].length === 0;
+}
+
 export function assertTransition(from: CampaignStatus, to: CampaignStatus): void {
   if (!transitions[from].includes(to)) {
     throw new QuirksError("PROTOCOL_VIOLATION", "ILLEGAL_TRANSITION", { from, to });
