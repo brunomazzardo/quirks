@@ -12,7 +12,7 @@ import {
  * @returns {string}
  */
 export function defaultCodexPluginsDir() {
-  return process.env.QUIRKS_CODEX_PLUGINS_DIR ?? path.join(os.homedir(), ".codex", "plugins");
+  return process.env.QUIRKS_CODEX_PLUGINS_DIR ?? path.join(os.homedir(), ".codex", "skills");
 }
 
 /**
