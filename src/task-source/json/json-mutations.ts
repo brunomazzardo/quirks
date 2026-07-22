@@ -63,7 +63,10 @@ export function applyRelease(task: NativeTask, request: Extract<MutationRequest,
   }
 }
 
-export function applyBlock(task: NativeTask, request: Extract<MutationRequest, { operation: "block" }>): void {
+export function applyBlock(task: NativeTask, request: Extract<MutationRequest, { operation: "block" }>): MutationFailure<"block"> | void {
+  if (task.status === "completed" || task.status === "cancelled") {
+    return failure("block", "SOURCE_CONFLICT", "Terminal task cannot be blocked");
+  }
   task.status = "blocked";
   task.statusDetail = {
     reason: request.input.reason,
@@ -71,7 +74,10 @@ export function applyBlock(task: NativeTask, request: Extract<MutationRequest, {
   };
 }
 
-export function applySubmitReview(task: NativeTask): void {
+export function applySubmitReview(task: NativeTask): MutationFailure<"submit-review"> | void {
+  if (task.status !== "claimed") {
+    return failure("submit-review", "SOURCE_CONFLICT", "Task must be claimed before review");
+  }
   task.status = "in_review";
 }
 
@@ -115,7 +121,8 @@ export function applyComplete(
       return Array.isArray(iteration.verificationRefs) && iteration.verificationRefs.some(
         (verification) => verification !== null && typeof verification === "object" &&
           (verification as Record<string, unknown>).kind === kind &&
-          (verification as Record<string, unknown>).reference === value,
+          (verification as Record<string, unknown>).reference === value &&
+          (verification as Record<string, unknown>).outcome === "passed",
       );
     }
     if (kind === "campaign-merge" || kind === "target-merge" || kind === "remote-push") {

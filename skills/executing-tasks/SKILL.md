@@ -19,7 +19,7 @@ Use this skill for focused interactive execution of a single approved task.
 
 ## Reference
 
-See `../../references/provenance-candidates.md` for compact provenance rules, and `../../references/task-mutation-requests.md` for repository-relative request files, schema/operation matching, and cleanup only after acknowledgement.
+See `references/provenance-candidates.md` for compact provenance rules, and `../../references/task-mutation-requests.md` for repository-relative request files, schema/operation matching, and cleanup only after acknowledgement.
 
 ## Prohibited patterns
 

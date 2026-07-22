@@ -307,12 +307,14 @@ export class JsonTaskSource implements TaskSource {
         const result = applyRelease(task, request);
         return result ?? undefined;
       }
-      case "block":
-        applyBlock(task, request);
-        return undefined;
-      case "submit-review":
-        applySubmitReview(task);
-        return undefined;
+      case "block": {
+        const result = applyBlock(task, request);
+        return result ?? undefined;
+      }
+      case "submit-review": {
+        const result = applySubmitReview(task);
+        return result ?? undefined;
+      }
       case "complete": {
         const result = applyComplete(task, request, this.context.effectiveWorkflowPolicy.evidenceMap);
         return result ?? undefined;

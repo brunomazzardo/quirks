@@ -18,7 +18,7 @@ Use this skill when syncing or mutating task status through the selected task so
 
 ## Reference
 
-See `../../references/sync-conflicts.md` for conflict handling, and `../../references/task-mutation-requests.md` for request schema, matching operations, idempotency keys, and cleanup after acknowledgement.
+See `references/sync-conflicts.md` for conflict handling, and `../../references/task-mutation-requests.md` for request schema, matching operations, idempotency keys, and cleanup after acknowledgement.
 
 Examples: `quirks-tasks claim --request-file .quirks/requests/claim-QK-123.json --json`; `quirks-tasks block --request-file .quirks/requests/block-QK-123.json --json`; `quirks-tasks release --request-file .quirks/requests/release-QK-123.json --json`.
 

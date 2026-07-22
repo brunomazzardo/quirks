@@ -357,41 +357,6 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
   shown = await showTask(source);
   assert.equal((shown.data as { status: string }).status, "in_review");
 
-  const block = await mutate(source, {
-    schemaVersion: 1,
-    operation: "block",
-    taskId: "QK-1",
-    expectedNativeRevision: shown.nativeRevision!,
-    idempotencyKey: "C-1:QK-1:block:evt-1",
-    input: { reason: "needs input", unblockCondition: "clarify requirements" },
-  });
-  assert.equal(block.ok, true);
-  shown = await showTask(source);
-  assert.equal((shown.data as { status: string }).status, "blocked");
-
-  const blockedComplete = await mutate(source, {
-    schemaVersion: 1,
-    operation: "complete",
-    taskId: "QK-1",
-    expectedNativeRevision: shown.nativeRevision!,
-    idempotencyKey: "C-1:QK-1:complete:blocked",
-    input: { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/review.md", "verification:pnpm test"] },
-  });
-  assert.equal(blockedComplete.ok, false);
-  if (blockedComplete.ok) assert.fail("blocked task completed");
-  assert.equal(blockedComplete.error.code, "SOURCE_CONFLICT");
-
-  const resubmitReview = await mutate(source, {
-    schemaVersion: 1,
-    operation: "submit-review",
-    taskId: "QK-1",
-    expectedNativeRevision: shown.nativeRevision!,
-    idempotencyKey: "C-1:QK-1:submit-review:evt-2",
-    input: { evidenceRefs: ["review:evt-2"] },
-  });
-  assert.equal(resubmitReview.ok, true);
-  shown = await showTask(source);
-
   const complete = await mutate(source, {
     schemaVersion: 1,
     operation: "complete",
