@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { buildClaudeResumeArgv } from "./claude.js";
-import { buildCodexResumeArgv, codexResultPath } from "./codex.js";
+import { buildCodexResumeArgv, codexResultPath, codexResultSchemaPath } from "./codex.js";
 import { buildCursorResumeArgv } from "./cursor.js";
 import { dispatchRunnerJob, type DispatchRunnerJobInput } from "./dispatcher.js";
 import type { SessionRecord, SessionRegistry } from "./sessions.js";
@@ -165,6 +165,7 @@ function buildResumeArgv(
         sessionHandle,
         briefPath: posture.briefPath,
         resultPath: codexResultPath(posture.artifactDir),
+        schemaPath: codexResultSchemaPath(),
         capabilities: profile.capabilities,
         effort: profile.effort,
       });

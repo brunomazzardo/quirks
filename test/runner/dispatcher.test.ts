@@ -104,6 +104,7 @@ test("dispatch executes codex resume argv against the declared result path", asy
     sessionHandle: "codex-session-abc",
     briefPath: path.join(artifactDir, "brief.md"),
     resultPath: path.join(artifactDir, "codex-result.json"),
+    schemaPath: "schemas/codex-result.schema.json",
     capabilities: ["repository-read", "repository-write"],
     effort: "standard",
   });

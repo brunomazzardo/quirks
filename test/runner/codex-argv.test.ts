@@ -169,6 +169,7 @@ test("buildCodexResumeArgv keeps the result contract and continue prompt", () =>
     sessionHandle: "codex-session-123",
     briefPath: "artifacts/job-1/brief.md",
     resultPath: "artifacts/job-1/result.json",
+    schemaPath: "schemas/codex-result.schema.json",
     capabilities: ["repository-read", "repository-write"],
     effort: "standard",
   });
@@ -176,6 +177,7 @@ test("buildCodexResumeArgv keeps the result contract and continue prompt", () =>
   assert.deepEqual(argv.slice(0, 2), ["/usr/bin/codex", "exec"]);
   assert.equal(flagValue(argv, "-s"), "workspace-write");
   assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=medium");
+  assert.equal(flagValue(argv, "--output-schema"), "schemas/codex-result.schema.json");
   assert.equal(flagValue(argv, "--color"), "never");
   assert.equal(argv.includes("--json"), true);
   assert.equal(flagValue(argv, "-o"), "artifacts/job-1/result.json");
@@ -195,6 +197,7 @@ test("buildCodexResumeArgv maps read-only sandbox and honors an explicit continu
     sessionHandle: "codex-session-123",
     briefPath: "artifacts/job-1/brief.md",
     resultPath: "artifacts/job-1/result.json",
+    schemaPath: "schemas/codex-result.schema.json",
     capabilities: ["repository-read"],
     effort: "mechanical",
     continuePrompt: "Wrap up now.",

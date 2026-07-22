@@ -18,6 +18,7 @@ export interface BuildCodexResumeArgvInput {
   sessionHandle: string;
   briefPath: string;
   resultPath: string;
+  schemaPath: string;
   capabilities: readonly string[];
   effort: string;
   continuePrompt?: string;
@@ -145,6 +146,8 @@ export function buildCodexResumeArgv(input: BuildCodexResumeArgvInput): readonly
     codexSandboxMode(input.capabilities),
     "-c",
     `model_reasoning_effort=${codexReasoningEffort(input.effort)}`,
+    "--output-schema",
+    input.schemaPath,
     "--color",
     "never",
     "--json",

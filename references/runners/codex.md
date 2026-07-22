@@ -19,9 +19,11 @@ All flags below were verified against `codex-cli 0.144.1` (`codex exec --help`, 
 `buildCodexResumeArgv` emits (exec-level flags precede the `resume` subcommand so the parent parser consumes them):
 
 ```
-<executable> exec -s <sandbox> -c model_reasoning_effort=<effort> \
+<executable> exec -s <sandbox> -c model_reasoning_effort=<effort> --output-schema <schemaPath> \
   --color never --json -o <resultPath> resume <sessionHandle> -- <continuePrompt>
 ```
+
+Resume carries `--output-schema` too (deliberate amendment to the plan's resume interface line): `exec resume` accepts the same output options, and without the schema a resumed session that ends in prose would be misclassified as failure despite completed work.
 
 `<continuePrompt>` defaults to the exported `CODEX_CONTINUE_PROMPT` constant with `<briefPath>` substituted: "Continue from the current thread state. Re-read the brief at `<briefPath>`, pick the next highest-value step, and write the result envelope to the declared result path before exiting."
 
