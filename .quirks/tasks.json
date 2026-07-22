@@ -1941,9 +1941,9 @@
             "id": "QK-SKL-001-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "113f256",
+            "acceptedCommit": "113f256798cb12c2bc1cd11b1c05c5cf1f12ccd4",
             "commitRefs": [
-              "113f256"
+              "113f256798cb12c2bc1cd11b1c05c5cf1f12ccd4"
             ],
             "finishedAt": "2026-07-21T23:53:45Z",
             "outcomeReason": "Wave 2 overnight lane"
@@ -3741,9 +3741,9 @@
             "id": "QK-CTL-004E-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "295c008",
+            "acceptedCommit": "295c00893aa558fb8857a69476b208fae4a6e2a1",
             "commitRefs": [
-              "295c008"
+              "295c00893aa558fb8857a69476b208fae4a6e2a1"
             ],
             "finishedAt": "2026-07-21T23:53:45Z",
             "outcomeReason": "Wave 2 overnight lane"
@@ -3805,9 +3805,9 @@
             "id": "QK-CTL-004F-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "e16c215",
+            "acceptedCommit": "e16c215052568b36493ea52cecdc67fd5e19ca34",
             "commitRefs": [
-              "e16c215"
+              "e16c215052568b36493ea52cecdc67fd5e19ca34"
             ],
             "finishedAt": "2026-07-21T23:53:45Z",
             "outcomeReason": "Wave 2 overnight lane"
@@ -3870,9 +3870,9 @@
             "id": "QK-UI-004C-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "9127f4b",
+            "acceptedCommit": "9127f4b103d4b646bf9f303fd3b3d8bd3ab380ac",
             "commitRefs": [
-              "9127f4b"
+              "9127f4b103d4b646bf9f303fd3b3d8bd3ab380ac"
             ],
             "finishedAt": "2026-07-21T23:53:45Z",
             "outcomeReason": "Wave 2 overnight lane"
@@ -3982,9 +3982,9 @@
             "id": "QK-PLATFORM-REV-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "e383059",
+            "acceptedCommit": "e383059ddbd9db72768490a9847f5389af50918b",
             "commitRefs": [
-              "e383059"
+              "e383059ddbd9db72768490a9847f5389af50918b"
             ],
             "finishedAt": "2026-07-21T23:53:45Z",
             "outcomeReason": "Wave 2 overnight lane"
@@ -4039,9 +4039,9 @@
             "id": "QK-PLATFORM-INT-I1",
             "outcome": "completed",
             "completionBoundary": "accepted-commit",
-            "acceptedCommit": "e383059",
+            "acceptedCommit": "e383059ddbd9db72768490a9847f5389af50918b",
             "commitRefs": [
-              "e383059"
+              "e383059ddbd9db72768490a9847f5389af50918b"
             ],
             "finishedAt": "2026-07-21T23:53:45Z",
             "outcomeReason": "Wave 2 overnight lane"
