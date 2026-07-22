@@ -11,7 +11,7 @@ All flags below were verified against `codex-cli 0.144.1` (`codex exec --help`, 
 ```
 <executable> exec -m <model> -C <workspace> -s <sandbox> --add-dir <artifactDir> \
   -c model_reasoning_effort=<effort> --output-schema <schemaPath> \
-  --color never --json -o <resultPath> <promptText>
+  --color never --json -o <resultPath> -- <promptText>
 ```
 
 ## Resume argv
@@ -20,7 +20,7 @@ All flags below were verified against `codex-cli 0.144.1` (`codex exec --help`, 
 
 ```
 <executable> exec -s <sandbox> -c model_reasoning_effort=<effort> \
-  --color never --json -o <resultPath> resume <sessionHandle> <continuePrompt>
+  --color never --json -o <resultPath> resume <sessionHandle> -- <continuePrompt>
 ```
 
 `<continuePrompt>` defaults to the exported `CODEX_CONTINUE_PROMPT` constant with `<briefPath>` substituted: "Continue from the current thread state. Re-read the brief at `<briefPath>`, pick the next highest-value step, and write the result envelope to the declared result path before exiting."
@@ -39,6 +39,7 @@ All flags below were verified against `codex-cli 0.144.1` (`codex exec --help`, 
 | `--color` | `never` | Disables ANSI color so stdout stays mechanically parseable. |
 | `--json` | flag | Emits JSONL events on stdout; the thread/session id is captured from these events. |
 | `-o, --output-last-message` | `<artifactDir>/codex-result.json` (`codexResultPath()`) | Codex writes the final agent message (the schema-constrained envelope) to the declared result path. Required on resume too — without it the dispatcher classifies `missing_result_path`. |
+| `--` | separator | Terminates flag parsing before the prompt positional so briefs starting with `-` (YAML frontmatter, markdown lists) are never parsed as flags. |
 | `[PROMPT]` positional | brief contents, continue prompt, or pointer instruction | Must always be present: `codex exec` with no prompt positional reads stdin, which Quirks spawns as `ignore`. |
 
 ## Prompt delivery

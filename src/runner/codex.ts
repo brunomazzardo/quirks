@@ -121,6 +121,7 @@ export function buildCodexArgv(input: BuildCodexArgvInput): readonly string[] {
     "--json",
     "-o",
     input.resultPath,
+    "--",
     input.promptText,
   ];
 }
@@ -140,6 +141,7 @@ export function buildCodexResumeArgv(input: BuildCodexResumeArgvInput): readonly
     input.resultPath,
     "resume",
     input.sessionHandle,
+    "--",
     input.continuePrompt ?? CODEX_CONTINUE_PROMPT.replace("<briefPath>", input.briefPath),
   ];
 }

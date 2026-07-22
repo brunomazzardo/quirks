@@ -67,6 +67,14 @@ test("buildCodexArgv passes the prompt text as the final positional, not the bri
   assert.equal(argv.includes("artifacts/job-1/brief.md"), false);
 });
 
+test("buildCodexArgv terminates flag parsing before a prompt that starts with dashes", () => {
+  const frontmatterBrief = "---\ntitle: brief\n---\nDo the thing.\n";
+  const argv = buildCodexArgv({ ...freshInput, promptText: frontmatterBrief });
+
+  assert.equal(argv.at(-1), frontmatterBrief);
+  assert.equal(argv.at(-2), "--");
+});
+
 test("codexPromptText inlines brief contents under the size cap", () => {
   assert.equal(codexPromptText("/tmp/brief.md", "small brief"), "small brief");
 });
@@ -161,8 +169,9 @@ test("buildCodexResumeArgv keeps the result contract and continue prompt", () =>
   assert.notEqual(resumeIndex, -1);
   assert.equal(argv.indexOf("-o") < resumeIndex, true);
   assert.equal(argv[resumeIndex + 1], "codex-session-123");
-  assert.equal(argv[resumeIndex + 2], CODEX_CONTINUE_PROMPT.replace("<briefPath>", "artifacts/job-1/brief.md"));
-  assert.equal(argv.length, resumeIndex + 3);
+  assert.equal(argv[resumeIndex + 2], "--");
+  assert.equal(argv[resumeIndex + 3], CODEX_CONTINUE_PROMPT.replace("<briefPath>", "artifacts/job-1/brief.md"));
+  assert.equal(argv.length, resumeIndex + 4);
 });
 
 test("buildCodexResumeArgv maps read-only sandbox and honors an explicit continue prompt", () => {

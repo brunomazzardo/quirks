@@ -297,7 +297,8 @@ test("resumeJob builds the codex resume argv with the declared result contract",
   assert.equal(capturedArgv?.[outputIndex + 1], "/tmp/artifacts/job-1/codex-result.json");
   const resumeIndex = capturedArgv?.indexOf("resume") ?? -1;
   assert.equal(capturedArgv?.[resumeIndex + 1], "codex-session-abc");
-  assert.match(capturedArgv?.[resumeIndex + 2] ?? "", /\/repo\/brief\.md/);
+  assert.equal(capturedArgv?.[resumeIndex + 2], "--");
+  assert.match(capturedArgv?.[resumeIndex + 3] ?? "", /\/repo\/brief\.md/);
 });
 
 test("rejects a second resume attempt for the same job", async () => {
