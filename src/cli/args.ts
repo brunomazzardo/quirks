@@ -9,7 +9,7 @@ export type MutationCommand =
   | "block"
   | "release";
 
-export type Command = "validate" | "list" | "show" | "sync" | MutationCommand;
+export type Command = "validate" | "list" | "show" | "sync" | "claim-candidate" | MutationCommand;
 
 export class CliParseError extends Error {
   override readonly name = "CliParseError";
@@ -31,6 +31,7 @@ const COMMANDS = new Set<Command>([
   "list",
   "show",
   "sync",
+  "claim-candidate",
   "propose",
   "claim",
   "submit-review",
@@ -39,6 +40,9 @@ const COMMANDS = new Set<Command>([
   "block",
   "release",
 ]);
+
+// Runtime view of the parser table for the skill validator cross-check.
+export const TASK_CLI_COMMANDS: ReadonlySet<string> = COMMANDS;
 
 const MUTATION_COMMANDS = new Set<MutationCommand>([
   "propose",
