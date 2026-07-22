@@ -1,5 +1,6 @@
 import type { ResolvedRoute } from "./routing.js";
 import type { RunnerJobResult } from "../runner/types.js";
+import type { LandingInput, LandingResult } from "../git/landing.js";
 
 export interface WorktreePort {
   prepareTaskWorktree(taskId: string, baseCommit: string): Promise<{ path: string; branch: string }>;
@@ -15,6 +16,10 @@ export interface GitWorktreePort extends WorktreePort {
     campaignBranch: string;
   }): Promise<{ branch: string; commit: string }>;
   prepareReviewWorktree(taskId: string, candidateCommit: string): Promise<{ path: string; branch: string }>;
+}
+
+export interface LandingPort {
+  mergeCampaignToTarget(input: LandingInput): Promise<LandingResult>;
 }
 
 export interface RunnerPort {
