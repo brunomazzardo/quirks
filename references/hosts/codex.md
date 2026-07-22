@@ -20,7 +20,35 @@ node scripts/package-plugin.mjs
 
 ## Install
 
-Use the Codex plugin or marketplace mechanism to register this repository. Do not copy `skills/` into target repositories.
+```bash
+node hosts/codex/install.mjs
+```
+
+Default destination: `~/.codex/plugins/quirks`.
+
+Set `QUIRKS_CODEX_PLUGINS_DIR` to override the plugins directory in tests and sandboxes.
+
+The installer links the canonical plugin root into the reviewed plugin directory and never copies `skills/` into target repositories. It refuses to overwrite non-link destinations and prints one bounded JSON result when invoked directly.
+
+Install all supported hosts from the repository root:
+
+```bash
+node scripts/quirks-install.mjs --all --source . --json
+```
+
+Real user-directory installs require `QUIRKS_SMOKE_APPROVED=approve-marketplace-install`.
+
+## Uninstall
+
+```bash
+node hosts/codex/uninstall.mjs
+```
+
+Removes only the managed `quirks` plugin symlink.
+
+```bash
+node scripts/quirks-uninstall.mjs --all --source . --json
+```
 
 ## Control-plane entry
 
