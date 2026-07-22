@@ -4618,7 +4618,7 @@
       "title": "Codex plugin manifest and packaging",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-001"
       ],
@@ -4646,7 +4646,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -4661,7 +4661,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-002A-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "e1183162379c58000d55363c9c7f24a86dbaf95a",
+            "commitRefs": [
+              "e1183162379c58000d55363c9c7f24a86dbaf95a"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -4669,7 +4681,7 @@
       "title": "Claude Code host integration",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-002A"
       ],
@@ -4697,7 +4709,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -4712,7 +4724,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-002B-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "d37cdd9474a53c6efbbd5c493745b05963499c7c",
+            "commitRefs": [
+              "d37cdd9474a53c6efbbd5c493745b05963499c7c"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -4720,7 +4744,7 @@
       "title": "Cursor host integration",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-002A"
       ],
@@ -4748,7 +4772,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -4763,7 +4787,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-002C-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "1c989030076b1ea72428f438c6421c07eb0d9140",
+            "commitRefs": [
+              "1c989030076b1ea72428f438c6421c07eb0d9140"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -4771,7 +4807,7 @@
       "title": "Personal marketplace metadata",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-002A"
       ],
@@ -4799,7 +4835,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -4814,7 +4850,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-002D-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "e9dd36ae15b48cb3bbc7c923492c631368d2f791",
+            "commitRefs": [
+              "e9dd36ae15b48cb3bbc7c923492c631368d2f791"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -4822,7 +4870,7 @@
       "title": "Canonical host installation references",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-002B",
         "QK-HOST-002C",
@@ -4852,7 +4900,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -4867,7 +4915,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-002E-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "edb60ac6f494f1c18ba33ea5b927be3a0807c1da",
+            "commitRefs": [
+              "edb60ac6f494f1c18ba33ea5b927be3a0807c1da"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -4875,7 +4935,7 @@
       "title": "Cross-host skill discovery verification",
       "kind": "implementation",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-002E"
       ],
@@ -4903,7 +4963,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -4918,7 +4978,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-002F-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "47642242cc2973cc5898ce99e9781d517b80d730",
+            "commitRefs": [
+              "47642242cc2973cc5898ce99e9781d517b80d730"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -4926,7 +4998,7 @@
       "title": "Portable JSON task-source end-to-end fixture",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-002F"
       ],
@@ -4954,7 +5026,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -4969,7 +5041,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-003A-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "eae15f5bb05eea60c897bcf37d1de2ac77b01e93",
+            "commitRefs": [
+              "eae15f5bb05eea60c897bcf37d1de2ac77b01e93"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -4977,7 +5061,7 @@
       "title": "Portable external task-source end-to-end fixture",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-003A"
       ],
@@ -5005,7 +5089,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5020,7 +5104,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-003B-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "c775ce4e5e769c7df2e289e7c24014f4b03587cb",
+            "commitRefs": [
+              "c775ce4e5e769c7df2e289e7c24014f4b03587cb"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5028,7 +5124,7 @@
       "title": "Claude host portable acceptance fixture",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-003B"
       ],
@@ -5056,7 +5152,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5071,7 +5167,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-003C-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "3b8152996677304693e2cab666c54ba328070071",
+            "commitRefs": [
+              "3b8152996677304693e2cab666c54ba328070071"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5079,7 +5187,7 @@
       "title": "Codex host portable acceptance fixture",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-003C"
       ],
@@ -5107,7 +5215,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5122,7 +5230,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-003D-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "7bbac81bac14a0d65e4c57bc4388a9e7ca33f08b",
+            "commitRefs": [
+              "7bbac81bac14a0d65e4c57bc4388a9e7ca33f08b"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5130,7 +5250,7 @@
       "title": "Cursor host portable acceptance fixture",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-003D"
       ],
@@ -5158,7 +5278,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5173,7 +5293,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-003E-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "a13b04b402ff1cf0b102f460babc976c8be31319",
+            "commitRefs": [
+              "a13b04b402ff1cf0b102f460babc976c8be31319"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5181,7 +5313,7 @@
       "title": "Full portable acceptance verification",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-003E"
       ],
@@ -5209,7 +5341,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5224,7 +5356,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-003F-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "9002bc543d73cd873414802e02319f3065e7f8a0",
+            "commitRefs": [
+              "9002bc543d73cd873414802e02319f3065e7f8a0"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5232,7 +5376,7 @@
       "title": "Claude real host and runner smoke cells",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-003F"
       ],
@@ -5262,7 +5406,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5277,7 +5421,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-004A-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "eb745e16a03a9f1f5efaedef3cd88dbfa15f4f1a",
+            "commitRefs": [
+              "eb745e16a03a9f1f5efaedef3cd88dbfa15f4f1a"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5285,7 +5441,7 @@
       "title": "Codex real host and runner smoke cells",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-004A"
       ],
@@ -5315,7 +5471,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5330,7 +5486,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-004B-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "2c2d1d6ad0915a1a9ed8b63282272a9457b850c1",
+            "commitRefs": [
+              "2c2d1d6ad0915a1a9ed8b63282272a9457b850c1"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5338,7 +5506,7 @@
       "title": "Cursor real host and runner smoke cells",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-004B"
       ],
@@ -5368,7 +5536,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5383,7 +5551,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-004C-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "4ac83b75c31318ccf92ffce6df15ea74d6c19fb4",
+            "commitRefs": [
+              "4ac83b75c31318ccf92ffce6df15ea74d6c19fb4"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5391,7 +5571,7 @@
       "title": "Personal marketplace install verification",
       "kind": "verification",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-004C"
       ],
@@ -5421,7 +5601,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5436,7 +5616,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-005A-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "d4ce34564c982048abfa571fb1f0c74b57da7f6f",
+            "commitRefs": [
+              "d4ce34564c982048abfa571fb1f0c74b57da7f6f"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5444,7 +5636,7 @@
       "title": "One bounded real campaign",
       "kind": "operations",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-005A"
       ],
@@ -5474,7 +5666,7 @@
       "sourceRefs": [
         {
           "kind": "plan",
-          "path": "docs/superpowers/plans/2026-07-21-quirks-host-integration-acceptance.md",
+          "path": "docs/superpowers/plans/2026-07-21-quirks-host-packaging.md",
           "commit": "3958acba50e9a12f7389cede8fa150a349151cdb"
         }
       ],
@@ -5489,7 +5681,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-HOST-005B-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "2642ab5ccea99807d5f01ad5212a760e5d5076d2",
+            "commitRefs": [
+              "2642ab5ccea99807d5f01ad5212a760e5d5076d2"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     },
     {
@@ -5497,7 +5701,7 @@
       "title": "Release readiness review",
       "kind": "review",
       "priority": "P0",
-      "status": "proposed",
+      "status": "completed",
       "dependsOn": [
         "QK-HOST-005B"
       ],
@@ -5536,7 +5740,19 @@
       ],
       "provenance": {
         "schemaVersion": 1,
-        "iterations": []
+        "iterations": [
+          {
+            "id": "QK-RELEASE-REV-I1",
+            "outcome": "completed",
+            "completionBoundary": "accepted-commit",
+            "acceptedCommit": "7f6d6230c9d7fdcfda407b687cbea8735ce68f83",
+            "commitRefs": [
+              "7f6d6230c9d7fdcfda407b687cbea8735ce68f83"
+            ],
+            "finishedAt": "2026-07-22T01:30:00Z",
+            "outcomeReason": "Waves 5-7 overnight orchestrator"
+          }
+        ]
       }
     }
   ]
