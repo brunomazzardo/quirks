@@ -113,6 +113,17 @@ function failure<O extends TaskSourceOperation>(
 export class FakeTaskSource implements TaskSource {
   private readonly tasks = new Map<string, StoredTask>([["QK-1", baseTask()]]);
   private readonly idempotency = new Map<string, { requestHash: string; response: TaskSourceResponse }>();
+  readonly showCalls: string[] = [];
+
+  upsertTask(taskId: string, overrides: Partial<Omit<StoredTask, "id">> = {}): void {
+    this.tasks.set(taskId, { ...baseTask(), id: taskId, ...overrides });
+  }
+
+  taskRevision(taskId: string): string {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Unknown task ${taskId}`);
+    return taskRevision(task);
+  }
 
   readonly capabilities: TaskSourceCapabilities = {
     schemaVersion: 1,
@@ -154,6 +165,7 @@ export class FakeTaskSource implements TaskSource {
         return { schemaVersion: 1, operation: "list", ok: true, data: { tasks } };
       }
       case "show": {
+        this.showCalls.push(request.taskId);
         const task = this.tasks.get(request.taskId);
         if (!task) return failure("show", "NOT_FOUND", `Unknown task ${request.taskId}`);
         const data = normalizedTask(task);

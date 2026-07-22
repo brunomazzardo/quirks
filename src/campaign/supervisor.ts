@@ -242,12 +242,13 @@ export class CampaignSupervisor {
       if (isGitWorktreePort(this.context.worktree)) {
         const candidateCommit = await this.context.worktree.readCommit(worktree.path) ?? envelope.git.baseCommit;
         const reviewWorktree = await this.context.worktree.prepareReviewWorktree(taskId, candidateCommit);
+        const reviewerRoute = routeForTask(envelope, taskId, "reviewer", this.context.profileIndex);
         const reviewJobId = `${envelope.campaignId}:${taskId}:reviewer:1`;
         const reviewResult = await this.context.runner.dispatch({
           jobId: reviewJobId,
           taskId,
           role: "reviewer",
-          route: routeForTask(envelope, taskId, "reviewer", this.context.profileIndex),
+          route: reviewerRoute,
           briefPath,
           worktreePath: reviewWorktree.path,
         });
@@ -255,7 +256,7 @@ export class CampaignSupervisor {
         await sessions.register({
           jobId: reviewJobId,
           role: "reviewer",
-          profileId: route.profileId,
+          profileId: reviewerRoute.profileId,
           sessionHandle: reviewResult.sessionHandle,
           pid: process.pid,
           artifactPaths: [...reviewResult.artifactPaths],
@@ -270,7 +271,7 @@ export class CampaignSupervisor {
           from: "running",
           to: "running",
           reason: "review_dispatched",
-          evidence: { jobId: reviewJobId, taskId, profileId: route.profileId },
+          evidence: { jobId: reviewJobId, taskId, profileId: reviewerRoute.profileId },
         });
 
         this.dispatched.push({ jobId: reviewJobId, taskId, role: "reviewer" });
