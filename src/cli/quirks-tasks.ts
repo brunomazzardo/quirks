@@ -5,12 +5,12 @@ import { loadProjectContext } from "../project/config.js";
 import { createTaskSource } from "../task-source/factory.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { SyncOutbox } from "../sync/outbox.js";
-import { reconcilePending } from "../sync/reconciler.js";
+import { reconcileMutation, reconcilePending } from "../sync/reconciler.js";
 import { disposeTaskSource, type TaskSource } from "../task-source/task-source.js";
-import type { TaskSourceCapabilities, TaskSourceResponse } from "../task-source/types.js";
-import { CliParseError, parseArgs } from "./args.js";
+import type { MutationRequest, TaskSourceCapabilities, TaskSourceResponse } from "../task-source/types.js";
+import { CliParseError, isMutationCommand, parseArgs } from "./args.js";
+import { readMutationRequest } from "./mutation-request.js";
 import {
-  domainErrorCode,
   exitCodeForError,
   formatFreshness,
   localCoordinationLine,
@@ -60,6 +60,17 @@ async function reconcileAll(outbox: SyncOutbox, source: TaskSource): Promise<voi
   }
 }
 
+function campaignIdFromMutation(request: MutationRequest): string {
+  if ("campaignId" in request.input && typeof request.input.campaignId === "string") {
+    return request.input.campaignId;
+  }
+  const [campaignId] = request.idempotencyKey.split(":");
+  if (!campaignId) {
+    throw new QuirksError("PROTOCOL_VIOLATION", "Mutation idempotency key must include campaign identity");
+  }
+  return campaignId;
+}
+
 function withSource<T extends Record<string, unknown>>(
   driver: string,
   task: T,
@@ -91,6 +102,43 @@ async function run(): Promise<number> {
     const outbox = await openOutbox(context.repositoryId);
     const syncedAt = formatFreshness(new Date().toISOString());
     const counts = await syncCounts(outbox);
+
+    if (isMutationCommand(parsed.command)) {
+      const request = await readMutationRequest(
+        context.root,
+        parsed.requestFile!,
+        parsed.command,
+        capabilities.maxRequestBytes,
+      );
+      const response = await reconcileMutation({
+        campaignId: campaignIdFromMutation(request),
+        outbox,
+        source,
+        request,
+      });
+      const after = await syncCounts(outbox);
+      const ok = response.state === "acknowledged";
+      const payload = {
+        ok,
+        driver,
+        operation: request.operation,
+        response,
+        pending: after.pending,
+        conflicts: after.conflicts,
+      };
+      if (json) {
+        writeJson(process.stdout, payload);
+      } else {
+        writeHuman(process.stdout, [
+          `driver: ${driver}`,
+          `operation: ${request.operation}`,
+          `pending: ${after.pending}`,
+          `conflicts: ${after.conflicts}`,
+          `ok: ${ok}`,
+        ]);
+      }
+      return ok ? 0 : 3;
+    }
 
     if (parsed.command === "validate") {
       assertOkResponse(await source.execute({ schemaVersion: 1, operation: "validate", input: {} }), "validate");
@@ -192,20 +240,12 @@ async function run(): Promise<number> {
     return 0;
   } catch (error) {
     if (error instanceof CliParseError) {
-      if (!json) process.stderr.write(`${error.message}\n`);
+      process.stderr.write(`${error.message}\n`);
       return 2;
     }
 
     const exitCode = exitCodeForError(error);
-    if (json) {
-      writeJson(process.stdout, {
-        ok: false,
-        error: domainErrorCode(error),
-        message: error instanceof Error ? error.message : "Unexpected failure",
-      });
-    } else {
-      process.stderr.write(`${error instanceof Error ? error.message : "Unexpected failure"}\n`);
-    }
+    process.stderr.write(`${error instanceof Error ? error.message : "Unexpected failure"}\n`);
     return exitCode;
   } finally {
     await disposeTaskSource(source);
