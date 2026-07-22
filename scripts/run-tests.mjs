@@ -14,5 +14,12 @@ async function collectTests(directory) {
 
 const files = (await collectTests(path.resolve("dist/test"))).toSorted();
 if (files.length === 0) throw new Error("No compiled tests found under dist/test");
+
+// The prompt evaluation harness is a library plus embedded node:test cases.
+// Its default cases score stored JSONL results deterministically (no network,
+// no model call); the fresh-agent path stays opt-in via QUIRKS_PROMPT_EVAL_RUNNER.
+const promptEvaluationHarness = path.resolve("dist/test/prompt/evaluation-harness.js");
+if (!files.includes(promptEvaluationHarness)) files.push(promptEvaluationHarness);
+
 const result = spawnSync(process.execPath, ["--test", ...files], { stdio: "inherit" });
 process.exitCode = result.status ?? 1;
