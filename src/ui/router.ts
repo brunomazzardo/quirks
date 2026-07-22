@@ -27,6 +27,7 @@ export interface UiRouterOptions {
   preflightRead?: PreflightReadPort;
   campaignRead?: CampaignReadPort;
   taskHistory?: TaskHistorySource;
+  readOnly?: boolean;
   now?: () => string;
   onRead?: () => void;
   onApproveAttempt?: () => void;
@@ -66,6 +67,9 @@ async function routeApiRequest(req: IncomingMessage, res: ServerResponse, option
   });
   if (authorization.result !== "authorized") return sendJson(res, 401, UNAUTHORIZED_BODY);
   if (url.pathname === "/api/v1/approval") {
+    if (options.readOnly) {
+      return sendJson(res, 409, { schemaVersion: 1, result: "invalid", error: "read_only_workspace" });
+    }
     return handleApproval(req, res, {
       authority: options.authority,
       repositoryId: options.repositoryId,
