@@ -13,9 +13,9 @@ export class CampaignCliParseError extends Error {
 }
 
 export type ParsedCampaignArgs =
-  | { command: "preflight"; taskIds: string[]; configPath?: string; externalRouting: boolean; json: boolean }
+  | { command: "preflight"; taskIds: string[]; configPath?: string; externalRouting: boolean; maxConcurrency?: number; json: boolean }
   | { command: "approve"; campaignId: string; digest: string; json: boolean }
-  | { command: "start"; campaignId: string; json: boolean }
+  | { command: "start"; campaignId: string; singleWave: boolean; json: boolean }
   | { command: "status"; campaignId: string; json: boolean }
   | { command: "attach"; campaignId: string; json: boolean }
   | { command: "resume"; campaignId: string; json: boolean }
@@ -45,6 +45,7 @@ function parsePreflight(argv: readonly string[]): Extract<ParsedCampaignArgs, { 
   const taskIds: string[] = [];
   let configPath: string | undefined;
   let externalRouting = false;
+  let maxConcurrency: number | undefined;
   let json = false;
   let sawExternalRouting = false;
 
@@ -66,6 +67,17 @@ function parsePreflight(argv: readonly string[]): Extract<ParsedCampaignArgs, { 
       index += 1;
       continue;
     }
+    if (token === "--max-concurrency") {
+      if (maxConcurrency !== undefined) throw new CampaignCliParseError("Duplicate flag --max-concurrency");
+      const raw = takeValue(argv, index, "--max-concurrency");
+      const value = Number(raw);
+      if (!Number.isInteger(value) || value < 1) {
+        throw new CampaignCliParseError("--max-concurrency requires an integer >= 1");
+      }
+      maxConcurrency = value;
+      index += 1;
+      continue;
+    }
     if (token === "--external-routing") {
       if (sawExternalRouting) throw new CampaignCliParseError("Duplicate external routing flag");
       externalRouting = true;
@@ -83,11 +95,51 @@ function parsePreflight(argv: readonly string[]): Extract<ParsedCampaignArgs, { 
   }
 
   if (taskIds.length === 0) throw new CampaignCliParseError("preflight requires at least one --task");
-  return { command: "preflight", taskIds, ...(configPath ? { configPath } : {}), externalRouting, json };
+  return {
+    command: "preflight",
+    taskIds,
+    ...(configPath ? { configPath } : {}),
+    externalRouting,
+    ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
+    json,
+  };
+}
+
+function parseStart(argv: readonly string[]): Extract<ParsedCampaignArgs, { command: "start" }> {
+  let campaignId: string | undefined;
+  let singleWave = false;
+  let sawSingleWave = false;
+  let json = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]!;
+    if (token === "--json") {
+      if (json) throw new CampaignCliParseError("Duplicate flag --json");
+      json = true;
+      continue;
+    }
+    if (token === "--campaign") {
+      if (campaignId !== undefined) throw new CampaignCliParseError("Duplicate flag --campaign");
+      campaignId = takeValue(argv, index, "--campaign");
+      index += 1;
+      continue;
+    }
+    if (token === "--single-wave") {
+      if (sawSingleWave) throw new CampaignCliParseError("Duplicate flag --single-wave");
+      singleWave = true;
+      sawSingleWave = true;
+      continue;
+    }
+    if (token.startsWith("--")) throw new CampaignCliParseError(`Unknown option ${token}`);
+    throw new CampaignCliParseError(`Unexpected argument ${token}`);
+  }
+
+  if (!campaignId) throw new CampaignCliParseError("start requires --campaign <id>");
+  return { command: "start", campaignId, singleWave, json };
 }
 
 function parseCampaignScoped(
-  command: Exclude<CampaignCommand, "preflight" | "ui">,
+  command: Exclude<CampaignCommand, "preflight" | "start" | "ui">,
   argv: readonly string[],
   extra?: (token: string, argv: readonly string[], index: number) => number | "handled",
 ): ParsedCampaignArgs {
@@ -153,5 +205,6 @@ export function parseCampaignArgs(argv: readonly string[]): ParsedCampaignArgs {
   const rest = argv.slice(1);
   if (command === "ui") return { command: "ui", uiArgv: rest };
   if (command === "preflight") return parsePreflight(rest);
+  if (command === "start") return parseStart(rest);
   return parseCampaignScoped(command, rest);
 }
