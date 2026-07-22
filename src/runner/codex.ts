@@ -93,6 +93,17 @@ export function codexSandboxMode(capabilities: readonly string[]): CodexSandboxM
   return capabilities.includes("repository-write") ? "workspace-write" : "read-only";
 }
 
+const CODEX_REASONING_EFFORTS: Readonly<Record<string, string>> = {
+  mechanical: "low",
+  standard: "medium",
+  high: "high",
+  principal: "high",
+};
+
+export function codexReasoningEffort(effort: string): string {
+  return CODEX_REASONING_EFFORTS[effort] ?? effort;
+}
+
 export function codexPromptText(briefPath: string, briefContents: string | undefined): string {
   if (briefContents !== undefined && Buffer.byteLength(briefContents, "utf8") <= CODEX_PROMPT_MAX_BYTES) {
     return briefContents;
@@ -113,7 +124,7 @@ export function buildCodexArgv(input: BuildCodexArgvInput): readonly string[] {
     "--add-dir",
     input.artifactDir,
     "-c",
-    `model_reasoning_effort=${input.effort}`,
+    `model_reasoning_effort=${codexReasoningEffort(input.effort)}`,
     "--output-schema",
     input.schemaPath,
     "--color",
@@ -133,7 +144,7 @@ export function buildCodexResumeArgv(input: BuildCodexResumeArgvInput): readonly
     "-s",
     codexSandboxMode(input.capabilities),
     "-c",
-    `model_reasoning_effort=${input.effort}`,
+    `model_reasoning_effort=${codexReasoningEffort(input.effort)}`,
     "--color",
     "never",
     "--json",

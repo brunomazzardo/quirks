@@ -46,6 +46,21 @@ test("buildCodexArgv defaults to the read-only sandbox without repository-write"
   assert.equal(flagValue(argv, "-s"), "read-only");
 });
 
+test("buildCodexArgv maps profile effort tiers onto codex reasoning efforts", () => {
+  const cases = [
+    ["mechanical", "low"],
+    ["standard", "medium"],
+    ["high", "high"],
+    ["principal", "high"],
+    ["minimal", "minimal"],
+  ] as const;
+
+  for (const [effort, expected] of cases) {
+    const argv = buildCodexArgv({ ...freshInput, effort });
+    assert.equal(flagValue(argv, "-c"), `model_reasoning_effort=${expected}`);
+  }
+});
+
 test("buildCodexArgv emits model, workspace, artifact dir, effort, schema, color, json, and result flags", () => {
   const argv = buildCodexArgv(freshInput);
 
@@ -160,7 +175,7 @@ test("buildCodexResumeArgv keeps the result contract and continue prompt", () =>
 
   assert.deepEqual(argv.slice(0, 2), ["/usr/bin/codex", "exec"]);
   assert.equal(flagValue(argv, "-s"), "workspace-write");
-  assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=standard");
+  assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=medium");
   assert.equal(flagValue(argv, "--color"), "never");
   assert.equal(argv.includes("--json"), true);
   assert.equal(flagValue(argv, "-o"), "artifacts/job-1/result.json");
@@ -186,6 +201,7 @@ test("buildCodexResumeArgv maps read-only sandbox and honors an explicit continu
   });
 
   assert.equal(flagValue(argv, "-s"), "read-only");
+  assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=low");
   assert.equal(argv.at(-1), "Wrap up now.");
 });
 

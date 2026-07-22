@@ -34,7 +34,7 @@ All flags below were verified against `codex-cli 0.144.1` (`codex exec --help`, 
 | `-C, --cd` | worktree path | Agent working root. Fresh runs only; resume restores the recorded session context. |
 | `-s, --sandbox` | `workspace-write` when profile capabilities include `repository-write`, else `read-only` | Sandbox policy for model-generated shell commands (`danger-full-access` is never emitted). |
 | `--add-dir` | artifact directory (dirname of the brief path) | Grants writability to the artifact directory, which may sit outside the worktree, so the result envelope can be written. |
-| `-c model_reasoning_effort=<effort>` | profile `effort` | Config override carrying the profile effort; previously dropped for codex. |
+| `-c model_reasoning_effort=<effort>` | mapped profile `effort` (see table below) | Config override carrying the profile effort; previously dropped for codex. |
 | `--output-schema` | `schemas/codex-result.schema.json` (resolved via `codexResultSchemaPath()`) | JSON Schema constraining the model's final response to the Quirks result envelope. |
 | `--color` | `never` | Disables ANSI color so stdout stays mechanically parseable. |
 | `--json` | flag | Emits JSONL events on stdout; the thread/session id is captured from these events. |
@@ -57,4 +57,12 @@ Fresh runs pass the brief **contents** as the prompt positional, read at dispatc
 
 - `-s` accepts `read-only`, `workspace-write`, `danger-full-access`; Quirks maps capabilities only onto the first two.
 - `codex exec resume` itself does not accept `-s`/`--color`; both are passed at the `exec` level before the `resume` subcommand, which codex-cli 0.144.1 parses on the parent command.
-- `model_reasoning_effort` is passed through verbatim from the profile `effort` value.
+- Profile effort tiers are mapped onto the codex `model_reasoning_effort` enum (`minimal|low|medium|high`) by `codexReasoningEffort`:
+
+| Profile effort tier | `model_reasoning_effort` |
+|---|---|
+| `mechanical` | `low` |
+| `standard` | `medium` |
+| `high` | `high` |
+| `principal` | `high` |
+| any other value | passed through verbatim (supports codex-native values) |
