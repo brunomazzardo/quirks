@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -80,7 +80,7 @@ test("matrix markdown projection is deterministic", () => {
   assert.match(left, /claude/);
 });
 
-test("matrix markdown surfaces deviations on passed cells", () => {
+test("matrix markdown surfaces deviations on blocked fallback cells", () => {
   const markdown = projectMatrixMarkdown([
     {
       schemaVersion: 1,
@@ -93,13 +93,34 @@ test("matrix markdown surfaces deviations on passed cells", () => {
       model: "smoke-codex",
       effort: "standard",
       profileId: "smoke-implementer-codex",
-      outcome: "passed",
+      outcome: "blocked",
       sessionAvailable: true,
       artifactDigest: "a".repeat(64),
-      deviations: ["host-orchestrator-fallback"],
+      deviations: ["host-failed", "host-orchestrator-fallback"],
     },
   ]);
-  assert.match(markdown, /passed:host-orchestrator-fallback/);
+  assert.match(markdown, /blocked:host-failed,host-orchestrator-fallback/);
+});
+
+test("orchestrator fallback never records passed outcome", async () => {
+  const { configDir, fixtureRoot, executables, hostExecutable } = await createHarnessConfig();
+  await writeSmokeProfilesConfig(configDir, executables, "claude");
+  await writeSmokeHostsConfig(configDir, {
+    claude: hostExecutable,
+    codex: "/usr/bin/false",
+    cursor: hostExecutable,
+  });
+  const { evidence } = await runHostRunnerCell({
+    host: "codex",
+    runner: "claude",
+    fixtureRoot,
+    configDir,
+    approved: true,
+    orchestratorExecutable: hostExecutable,
+  });
+  assert.equal(evidence.outcome, "blocked");
+  assert.equal(evidence.deviations.includes("host-orchestrator-fallback"), true);
+  assert.equal(evidence.deviations.includes("host-failed"), true);
 });
 
 test("approved smoke executes a supplied host/runner cell", async () => {

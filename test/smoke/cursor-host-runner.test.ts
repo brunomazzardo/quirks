@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { access, constants } from "node:fs/promises";
 import { chmod, cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,8 +6,8 @@ import test from "node:test";
 import { validateHostRunnerEvidence } from "../../src/smoke/evidence.js";
 import { SMOKE_MATRIX } from "../../src/smoke/types.js";
 import {
-  installSmokeHostExecutable,
   prepareSmokeFixtureRoot,
+  resolveExecutable,
   runHostRunnerCell,
   writeSmokeHostsConfig,
   writeSmokeProfilesConfig,
@@ -16,49 +15,21 @@ import {
 
 const APPROVED = process.env.QUIRKS_SMOKE_APPROVED === "approve-paid-runner-probes";
 
-async function resolveExecutable(name: string): Promise<string | undefined> {
-  const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
-  for (const directory of searchPath) {
-    const candidate = path.join(directory, name);
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // continue
-    }
-  }
-  return undefined;
-}
-
-async function executableFakeRunner(scriptName: string, configDir: string): Promise<string> {
-  const fixtureDir = path.resolve("test/fixtures/fake-runners");
-  await cp(path.join(fixtureDir, "shared-modes.mjs"), path.join(configDir, "shared-modes.mjs"));
-  const source = path.join(fixtureDir, scriptName);
-  const target = path.join(configDir, scriptName);
-  const original = await readFile(source, "utf8");
-  await writeFile(target, `#!/usr/bin/env node\n${original}`, "utf8");
-  await chmod(target, 0o755);
-  return target;
-}
-
 async function createHostConfig() {
   const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-smoke-cursor-"));
-  const claude = await executableFakeRunner("fake-claude.mjs", configDir);
-  const codex = await executableFakeRunner("fake-codex.mjs", configDir);
-  const cursor = await executableFakeRunner("fake-cursor.mjs", configDir);
-  const realCursorHost = await resolveExecutable("cursor-agent");
-  const orchestratorFallback = await installSmokeHostExecutable(configDir);
-  await writeSmokeHostsConfig(configDir, {
-    claude: "claude",
-    codex: "codex",
-    cursor: realCursorHost ?? "cursor-agent",
-  });
-  return { configDir, executables: { claude, codex, cursor }, realCursorHost, orchestratorFallback };
+  const claude = await resolveExecutable("claude");
+  const codex = await resolveExecutable("codex");
+  const cursor = await resolveExecutable("cursor-agent");
+  if (!claude || !codex || !cursor) {
+    return { configDir, executables: undefined, realCursorHost: cursor };
+  }
+  await writeSmokeHostsConfig(configDir, { claude, codex, cursor });
+  return { configDir, executables: { claude, codex, cursor }, realCursorHost: cursor };
 }
 
 test("cursor host runner smoke matrix", { skip: !APPROVED }, async () => {
-  const { configDir, executables, realCursorHost, orchestratorFallback } = await createHostConfig();
-  if (!realCursorHost) {
+  const { configDir, executables, realCursorHost } = await createHostConfig();
+  if (!realCursorHost || !executables) {
     return;
   }
   for (const cell of SMOKE_MATRIX.filter((entry) => entry.host === "cursor")) {
@@ -70,10 +41,9 @@ test("cursor host runner smoke matrix", { skip: !APPROVED }, async () => {
       fixtureRoot,
       configDir,
       approved: true,
-      orchestratorExecutable: orchestratorFallback,
     });
     validateHostRunnerEvidence(evidence);
-    assert.notEqual(evidence.deviations.includes("host-orchestrator-shim"), true);
+    assert.equal(evidence.deviations.includes("host-orchestrator-fallback"), false);
     assert.ok(
       evidence.outcome === "passed" || evidence.outcome === "failed" || evidence.outcome === "blocked",
       `${cell.host}/${cell.runner} returned ${evidence.outcome}`,
@@ -82,9 +52,30 @@ test("cursor host runner smoke matrix", { skip: !APPROVED }, async () => {
 });
 
 test("cursor host runner smoke blocked without approval gate", { skip: APPROVED }, async () => {
-  const { configDir, executables } = await createHostConfig();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-smoke-cursor-blocked-"));
+  const claude = await resolveExecutable("claude") ?? "claude";
+  const codex = await resolveExecutable("codex") ?? "codex";
+  const cursor = await resolveExecutable("cursor-agent") ?? "cursor-agent";
+  const fixtureDir = path.resolve("test/fixtures/fake-runners");
+  await cp(path.join(fixtureDir, "shared-modes.mjs"), path.join(configDir, "shared-modes.mjs"));
+  for (const [name, script] of [
+    ["fake-claude.mjs", "fake-claude.mjs"],
+    ["fake-codex.mjs", "fake-codex.mjs"],
+    ["fake-cursor.mjs", "fake-cursor.mjs"],
+  ] as const) {
+    const source = path.join(fixtureDir, script);
+    const target = path.join(configDir, name);
+    const original = await readFile(source, "utf8");
+    await writeFile(target, `#!/usr/bin/env node\n${original}`, "utf8");
+    await chmod(target, 0o755);
+  }
+  await writeSmokeHostsConfig(configDir, { claude, codex, cursor });
   const fixtureRoot = await prepareSmokeFixtureRoot();
-  await writeSmokeProfilesConfig(configDir, executables, "cursor");
+  await writeSmokeProfilesConfig(configDir, {
+    claude: path.join(configDir, "fake-claude.mjs"),
+    codex: path.join(configDir, "fake-codex.mjs"),
+    cursor: path.join(configDir, "fake-cursor.mjs"),
+  }, "cursor");
   const { evidence } = await runHostRunnerCell({
     host: "cursor",
     runner: "cursor",

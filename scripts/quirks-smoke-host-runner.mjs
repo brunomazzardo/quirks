@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-import { access, constants } from "node:fs/promises";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { persistEvidence, projectMatrixMarkdown } from "../dist/src/smoke/evidence.js";
 import {
-  installSmokeHostExecutable,
   prepareSmokeFixtureRoot,
+  resolveExecutable,
   runHostRunnerCell,
   writeSmokeHostsConfig,
   writeSmokeProfilesConfig,
@@ -52,20 +51,6 @@ function parseArgs(argv) {
   return options;
 }
 
-async function resolveExecutable(name) {
-  const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
-  for (const directory of searchPath) {
-    const candidate = path.join(directory, name);
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // continue
-    }
-  }
-  return undefined;
-}
-
 async function main() {
   if (process.env.QUIRKS_SMOKE_APPROVED !== SMOKE_APPROVAL_ENV) {
     throw new Error(`Set QUIRKS_SMOKE_APPROVED=${SMOKE_APPROVAL_ENV}`);
@@ -87,8 +72,6 @@ async function main() {
     ...(cursor ? { cursor } : {}),
   });
 
-  const orchestratorFallback = await installSmokeHostExecutable(configDir);
-
   const records = [];
   for (const cell of cells) {
     const cellFixtureRoot = await prepareSmokeFixtureRoot();
@@ -103,7 +86,6 @@ async function main() {
       approved: true,
       evidenceDir: options.evidenceDir,
       campaignCli: path.join(repoRoot, "dist/src/cli/quirks-campaign.js"),
-      orchestratorExecutable: orchestratorFallback,
     });
     await persistEvidence(evidence, options.evidenceDir);
     records.push(evidence);

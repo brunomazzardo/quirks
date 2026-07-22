@@ -18,11 +18,17 @@ import type { HostRunnerEvidence, SmokeHost, SmokeHostConfig, SmokeRunner } from
 const execFileAsync = promisify(execFile);
 const DEFAULT_TASK_ID = "QK-101";
 const HOST_TIMEOUT_MS = 300_000;
+const MAX_DIAGNOSTIC_CHARS = 480;
 const DEFAULT_HOST_PATHS: Record<SmokeHost, string> = {
   claude: "claude",
   codex: "codex",
   cursor: "cursor-agent",
 };
+
+const COMMON_EXECUTABLE_DIRS = [
+  path.join(os.homedir(), ".local", "bin"),
+  path.join(os.homedir(), "bin"),
+] as const;
 
 export interface RunHostRunnerCellOptions {
   host: SmokeHost;
@@ -44,6 +50,18 @@ export interface RunHostRunnerCellResult {
   evidencePath?: string;
 }
 
+export interface HostInvocation {
+  argv: string[];
+  stdin?: string;
+}
+
+export interface HostProcessResult {
+  exitCode: number | null;
+  timedOut: boolean;
+  stdout: string;
+  stderr: string;
+}
+
 async function pathExists(target: string): Promise<boolean> {
   try {
     await access(target, constants.F_OK);
@@ -53,7 +71,7 @@ async function pathExists(target: string): Promise<boolean> {
   }
 }
 
-async function resolveExecutable(candidate: string): Promise<string | undefined> {
+export async function resolveExecutable(candidate: string): Promise<string | undefined> {
   if (path.isAbsolute(candidate)) {
     try {
       await access(candidate, constants.X_OK);
@@ -62,8 +80,16 @@ async function resolveExecutable(candidate: string): Promise<string | undefined>
       return undefined;
     }
   }
-  const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
-  for (const directory of searchPath) {
+
+  const searchDirs = new Set<string>();
+  for (const directory of process.env.PATH?.split(path.delimiter) ?? []) {
+    if (directory.length > 0) searchDirs.add(directory);
+  }
+  for (const directory of COMMON_EXECUTABLE_DIRS) {
+    searchDirs.add(directory);
+  }
+
+  for (const directory of searchDirs) {
     const absolute = path.join(directory, candidate);
     try {
       await access(absolute, constants.X_OK);
@@ -255,7 +281,25 @@ function buildHostBrief(input: {
   campaignCli: string;
   evidencePath: string;
   taskId: string;
+  host: SmokeHost;
+  runner: SmokeRunner;
 }): string {
+  const evidenceTemplate = {
+    schemaVersion: 1,
+    date: "YYYY-MM-DD",
+    os: "platform-id",
+    host: input.host,
+    hostVersion: "from QUIRKS_SMOKE_HOST_VERSION",
+    runner: input.runner,
+    runnerVersion: "from QUIRKS_SMOKE_RUNNER_VERSION",
+    model: "from QUIRKS_SMOKE_MODEL",
+    effort: "from QUIRKS_SMOKE_EFFORT",
+    profileId: `smoke-implementer-${input.runner}`,
+    outcome: "passed",
+    sessionAvailable: true,
+    artifactDigest: "64-char-sha256-hex-from-campaign-result",
+    deviations: [],
+  };
   return [
     "Run the Quirks campaign smoke flow for this repository.",
     `Repository root: ${input.fixtureRoot}`,
@@ -263,24 +307,83 @@ function buildHostBrief(input: {
     `Task id: ${input.taskId}`,
     `Evidence output path: ${input.evidencePath}`,
     "Steps:",
-    "1. quirks-campaign preflight --task <task> --external-routing --json",
-    "2. quirks-campaign approve --campaign <id> --digest <digest> --json",
-    "3. quirks-campaign start --campaign <id> --json",
-    "4. quirks-campaign status --campaign <id> --json",
-    "Write only the bounded evidence JSON file at the evidence output path.",
-    "Do not print secrets, home paths, or raw provider output.",
+    `1. node ${input.campaignCli} preflight --task ${input.taskId} --external-routing --json`,
+    "2. node <campaign-cli> approve --campaign <id> --digest <digest> --json",
+    "3. node <campaign-cli> start --campaign <id> --json",
+    "4. node <campaign-cli> status --campaign <id> --json",
+    "After the campaign flow completes, write ONLY the bounded smoke evidence JSON below to the evidence output path.",
+    "Do not include secrets, absolute home paths, raw provider stdout/stderr, or prompt bodies in the evidence file.",
+    "Required evidence JSON schema:",
+    JSON.stringify(evidenceTemplate, null, 2),
   ].join("\n");
 }
 
-function buildHostArgv(host: SmokeHost, executable: string, briefPath: string): string[] {
+export function buildHostInvocation(
+  host: SmokeHost,
+  executable: string,
+  briefContents: string,
+  fixtureRoot: string,
+): HostInvocation {
   switch (host) {
     case "claude":
-      return [executable, "-p", "--output-format", "json", "--dangerously-skip-permissions", briefPath];
+      return {
+        argv: [
+          executable,
+          "-p",
+          "--output-format",
+          "json",
+          "--allow-dangerously-skip-permissions",
+          "--dangerously-skip-permissions",
+          "--add-dir",
+          fixtureRoot,
+        ],
+        stdin: briefContents,
+      };
     case "codex":
-      return [executable, "exec", "--json", briefPath];
+      return {
+        argv: [executable, "exec", "--json", "-C", fixtureRoot, "-"],
+        stdin: briefContents,
+      };
     case "cursor":
-      return [executable, "-p", "--output-format", "json", "--file", briefPath];
+      return {
+        argv: [
+          executable,
+          "-p",
+          "--output-format",
+          "json",
+          "-f",
+          "--trust",
+          "--workspace",
+          fixtureRoot,
+          briefContents,
+        ],
+      };
   }
+}
+
+export function redactDiagnostic(text: string): string {
+  const homeDir = os.homedir();
+  let redacted = text.split(homeDir).join("~");
+  redacted = redacted.replace(/\bBearer\s+[A-Za-z0-9\-._~+/]+=*/gi, "Bearer [redacted]");
+  redacted = redacted.replace(/\bsk-[A-Za-z0-9]{16,}\b/g, "sk-[redacted]");
+  return redacted.trim().replace(/\s+/g, " ");
+}
+
+export function diagnosticDeviations(process: HostProcessResult): string[] {
+  const deviations: string[] = [];
+  if (process.timedOut) return deviations;
+  if (process.exitCode !== null && process.exitCode !== 0) {
+    deviations.push(`host-exit:${process.exitCode}`);
+  }
+  const stderr = redactDiagnostic(process.stderr);
+  if (stderr.length > 0) {
+    deviations.push(`host-stderr:${stderr.slice(0, MAX_DIAGNOSTIC_CHARS)}`);
+  }
+  const stdout = redactDiagnostic(process.stdout);
+  if (stdout.length > 0) {
+    deviations.push(`host-stdout:${stdout.slice(0, MAX_DIAGNOSTIC_CHARS)}`);
+  }
+  return deviations;
 }
 
 function isTransientFailure(error: unknown): boolean {
@@ -292,17 +395,25 @@ function isUsageLimit(evidence: HostRunnerEvidence): boolean {
   return evidence.outcome === "blocked" && evidence.deviations.some((entry) => /usage|quota|rate.?limit/i.test(entry));
 }
 
-async function spawnHostProcess(input: {
+function boundedStreamText(chunks: readonly Buffer[]): string {
+  const combined = Buffer.concat(chunks).toString("utf8");
+  return combined.slice(0, MAX_DIAGNOSTIC_CHARS * 2);
+}
+
+export async function spawnHostProcess(input: {
   argv: readonly string[];
   cwd: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
-}): Promise<{ exitCode: number | null; timedOut: boolean }> {
+  stdin?: string;
+}): Promise<HostProcessResult> {
   return new Promise((resolve, reject) => {
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
     const child = spawn(input.argv[0]!, input.argv.slice(1), {
       cwd: input.cwd,
       env: input.env,
-      stdio: ["ignore", "ignore", "ignore"],
+      stdio: [input.stdin ? "pipe" : "ignore", "pipe", "pipe"],
       shell: false,
     });
     let timedOut = false;
@@ -310,15 +421,50 @@ async function spawnHostProcess(input: {
       timedOut = true;
       child.kill("SIGTERM");
     }, input.timeoutMs);
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+    });
+
+    if (input.stdin && child.stdin) {
+      child.stdin.write(input.stdin);
+      child.stdin.end();
+    }
+
     child.once("error", (error) => {
       clearTimeout(timer);
       reject(error);
     });
     child.once("close", (code) => {
       clearTimeout(timer);
-      resolve({ exitCode: code, timedOut });
+      resolve({
+        exitCode: code,
+        timedOut,
+        stdout: boundedStreamText(stdoutChunks),
+        stderr: boundedStreamText(stderrChunks),
+      });
     });
   });
+}
+
+function applyOrchestratorFallbackOutcome(
+  evidence: HostRunnerEvidence,
+  priorAttempt?: HostRunnerEvidence,
+): HostRunnerEvidence {
+  const priorDeviations = priorAttempt?.deviations ?? [];
+  const fallbackDeviations = evidence.deviations.filter((entry) => entry !== "host-orchestrator-fallback");
+  return {
+    ...evidence,
+    outcome: "blocked",
+    deviations: [
+      ...priorDeviations,
+      ...fallbackDeviations,
+      "host-orchestrator-fallback",
+    ],
+  };
 }
 
 async function invokeHostCell(input: {
@@ -333,7 +479,7 @@ async function invokeHostCell(input: {
   runnerProfile: RunnerProfile;
   runnerVersion: string;
   evidencePath: string;
-  briefPath: string;
+  briefContents: string;
   taskId: string;
 }): Promise<HostRunnerEvidence> {
   const env = {
@@ -354,19 +500,21 @@ async function invokeHostCell(input: {
   };
 
   const usesOrchestratorShim = path.basename(input.hostExecutable) === "smoke-host.mjs";
-  const hostArgv = usesOrchestratorShim
-    ? [input.hostExecutable]
-    : buildHostArgv(input.host, input.hostExecutable, input.briefPath);
+  const invocation = usesOrchestratorShim
+    ? { argv: [input.hostExecutable] }
+    : buildHostInvocation(input.host, input.hostExecutable, input.briefContents, input.fixtureRoot);
 
-  const { exitCode, timedOut } = await spawnHostProcess({
-    argv: hostArgv,
+  const processResult = await spawnHostProcess({
+    argv: invocation.argv,
     cwd: input.fixtureRoot,
     env,
     timeoutMs: HOST_TIMEOUT_MS,
+    ...(invocation.stdin ? { stdin: invocation.stdin } : {}),
   });
 
   if (!(await pathExists(input.evidencePath))) {
-    if (timedOut) {
+    const diagnostics = diagnosticDeviations(processResult);
+    if (processResult.timedOut) {
       return blockedEvidence({
         host: input.host,
         runner: input.runner,
@@ -374,19 +522,33 @@ async function invokeHostCell(input: {
         hostVersion: input.hostVersion,
         runnerVersion: input.runnerVersion,
         profileId: input.runnerProfile.profileId,
+        extraDeviations: diagnostics,
       });
     }
     return blockedEvidence({
       host: input.host,
       runner: input.runner,
-      reason: exitCode === 0 ? "missing-evidence" : "host-failed",
+      reason: processResult.exitCode === 0 ? "missing-evidence" : "host-failed",
       hostVersion: input.hostVersion,
       runnerVersion: input.runnerVersion,
       profileId: input.runnerProfile.profileId,
+      extraDeviations: diagnostics,
     });
   }
 
-  const evidence = await readEvidenceFile(input.evidencePath);
+  const evidence = await readEvidenceFile(input.evidencePath).catch(() => undefined);
+  if (!evidence) {
+    const diagnostics = diagnosticDeviations(processResult);
+    return blockedEvidence({
+      host: input.host,
+      runner: input.runner,
+      reason: "invalid-evidence",
+      hostVersion: input.hostVersion,
+      runnerVersion: input.runnerVersion,
+      profileId: input.runnerProfile.profileId,
+      extraDeviations: diagnostics,
+    });
+  }
   return {
     ...evidence,
     host: input.host,
@@ -457,12 +619,15 @@ export async function runHostRunnerCell(options: RunHostRunnerCellOptions): Prom
   const workDir = await mkdtemp(path.join(os.tmpdir(), "quirks-smoke-work-"));
   const evidencePath = path.join(workDir, "evidence.json");
   const briefPath = path.join(workDir, "host-brief.md");
-  await writeFile(briefPath, buildHostBrief({
+  const briefContents = buildHostBrief({
     fixtureRoot,
     campaignCli,
     evidencePath,
     taskId,
-  }), "utf8");
+    host: options.host,
+    runner: options.runner,
+  });
+  await writeFile(briefPath, briefContents, "utf8");
 
   let lastEvidence: HostRunnerEvidence | undefined;
   let lastError: unknown;
@@ -484,7 +649,7 @@ export async function runHostRunnerCell(options: RunHostRunnerCellOptions): Prom
         runnerProfile,
         runnerVersion,
         evidencePath,
-        briefPath,
+        briefContents,
         taskId,
       });
       if (
@@ -497,11 +662,8 @@ export async function runHostRunnerCell(options: RunHostRunnerCellOptions): Prom
         lastEvidence = evidence;
         continue;
       }
-      const finalEvidence = useOrchestrator && evidence.outcome === "passed"
-        ? {
-            ...evidence,
-            deviations: [...evidence.deviations, "host-orchestrator-fallback"],
-          }
+      const finalEvidence = useOrchestrator
+        ? applyOrchestratorFallbackOutcome(evidence, lastEvidence)
         : evidence;
       validateHostRunnerEvidence(finalEvidence);
       let evidencePathWritten: string | undefined;
@@ -524,12 +686,13 @@ export async function runHostRunnerCell(options: RunHostRunnerCellOptions): Prom
   }
 
   if (lastEvidence) {
+    const finalEvidence = applyOrchestratorFallbackOutcome(lastEvidence);
     let evidencePathWritten: string | undefined;
     if (options.evidenceDir) {
-      evidencePathWritten = await persistEvidence(lastEvidence, options.evidenceDir);
+      evidencePathWritten = await persistEvidence(finalEvidence, options.evidenceDir);
     }
     await rm(workDir, { recursive: true, force: true });
-    return { evidence: lastEvidence, ...(evidencePathWritten ? { evidencePath: evidencePathWritten } : {}) };
+    return { evidence: finalEvidence, ...(evidencePathWritten ? { evidencePath: evidencePathWritten } : {}) };
   }
 
   await rm(workDir, { recursive: true, force: true });

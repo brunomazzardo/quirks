@@ -98,8 +98,10 @@ export function blockedEvidence(input: {
   hostVersion?: string;
   runnerVersion?: string;
   profileId?: string;
+  extraDeviations?: readonly string[];
 }): HostRunnerEvidence {
   const date = new Date().toISOString().slice(0, 10);
+  const deviations = [input.reason, ...(input.extraDeviations ?? [])];
   return {
     schemaVersion: 1,
     date,
@@ -114,7 +116,7 @@ export function blockedEvidence(input: {
     outcome: "blocked",
     sessionAvailable: false,
     artifactDigest: "n/a",
-    deviations: [input.reason],
+    deviations,
   };
 }
 
