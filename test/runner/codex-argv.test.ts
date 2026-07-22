@@ -144,5 +144,81 @@ test("parseCodexResult reads status, session, and artifact paths from the declar
     sessionHandle: "codex-session-456",
     artifactPaths: ["artifacts/job-1/result.json", "artifacts/job-1/patch.diff"],
     failure: undefined,
+    notes: [],
   });
+});
+
+const threadStartedEvent = JSON.stringify({ type: "thread.started", thread_id: "thread-789" });
+
+test("parseCodexResult captures the session handle from --json events when the envelope omits it", () => {
+  const result = parseCodexResult(`${threadStartedEvent}\n{"type":"turn.completed"}\n`, {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {
+      "artifacts/job-1/result.json": JSON.stringify({
+        status: "success",
+        artifactPaths: ["artifacts/job-1/result.json"],
+      }),
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.sessionHandle, "thread-789");
+  assert.deepEqual(result.notes, []);
+});
+
+test("parseCodexResult prefers the JSONL session handle and notes envelope disagreement", () => {
+  const result = parseCodexResult(`${threadStartedEvent}\n`, {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {
+      "artifacts/job-1/result.json": JSON.stringify({
+        status: "success",
+        sessionHandle: "self-reported-session",
+        artifactPaths: ["artifacts/job-1/result.json"],
+      }),
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.sessionHandle, "thread-789");
+  assert.deepEqual(result.notes, ["session_handle_mismatch"]);
+});
+
+test("parseCodexResult keeps the JSONL session handle when the result artifact is missing", () => {
+  const result = parseCodexResult(`${threadStartedEvent}\n`, {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {},
+  });
+
+  assert.equal(result.status, "failure");
+  assert.equal(result.sessionHandle, "thread-789");
+  assert.match(result.failure ?? "", /Missing Codex result artifact/);
+});
+
+test("parseCodexResult classifies usage-limit stream errors when the envelope is absent", () => {
+  const stdout = [
+    threadStartedEvent,
+    JSON.stringify({ type: "error", message: "You've hit your usage limit." }),
+  ].join("\n");
+  const result = parseCodexResult(`${stdout}\n`, {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {},
+  });
+
+  assert.equal(result.status, "usage_limit");
+  assert.equal(result.sessionHandle, "thread-789");
+  assert.match(result.failure ?? "", /usage limit/i);
+});
+
+test("parseCodexResult classifies interrupted turns when the envelope is absent", () => {
+  const stdout = [
+    threadStartedEvent,
+    JSON.stringify({ type: "turn.failed", error: { message: "Turn interrupted" } }),
+  ].join("\n");
+  const result = parseCodexResult(`${stdout}\n`, {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {},
+  });
+
+  assert.equal(result.status, "cancelled");
+  assert.match(result.failure ?? "", /interrupted/i);
 });

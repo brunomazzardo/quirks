@@ -120,3 +120,21 @@ test("dispatch executes codex resume argv against the declared result path", asy
   assert.equal(result.status, "success");
   assert.equal(result.artifactPaths.length > 0, true);
 });
+
+test("dispatch prefers the codex --json session handle and notes envelope disagreement", async () => {
+  const executable = await executableFakeCodex();
+  const artifactDir = await makeTempArtifactDir();
+  const resultPath = path.join(artifactDir, "codex-result.json");
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-codex-mismatch",
+    profile: codexProfile,
+    argv: [executable, "-o", resultPath, "--mode", "session-mismatch"],
+    artifactDir,
+    timeoutMs: 5_000,
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.sessionHandle, "jsonl-session-999");
+  assert.deepEqual(result.notes, ["session_handle_mismatch"]);
+});

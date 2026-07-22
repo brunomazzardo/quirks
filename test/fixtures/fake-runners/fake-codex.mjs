@@ -101,6 +101,16 @@ async function main() {
         });
       });
       return;
+    case "session-mismatch": {
+      process.stdout.write(`${JSON.stringify({ type: "thread.started", thread_id: "jsonl-session-999" })}\n`);
+      const artifactPath = await writeArtifact(outDir);
+      await writeCodexResult(resultPath, {
+        status: "success",
+        sessionHandle: "envelope-session-000",
+        artifactPaths: artifactPath ? [artifactPath] : [resultPath],
+      });
+      return;
+    }
     case "non-resumable": {
       await writeCodexResult(resultPath, {
         status: "failure",

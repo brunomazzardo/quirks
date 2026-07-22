@@ -36,6 +36,7 @@ export interface CodexResult {
   sessionHandle: string | undefined;
   artifactPaths: readonly string[];
   failure: string | undefined;
+  notes: readonly string[];
 }
 
 export interface CodexResultArtifacts {
@@ -49,6 +50,17 @@ interface CodexResultArtifact {
   artifactPaths?: unknown;
   failure?: unknown;
 }
+
+interface CodexStreamEvent {
+  type?: unknown;
+  thread_id?: unknown;
+  session_id?: unknown;
+  message?: unknown;
+  error?: { message?: unknown };
+}
+
+const USAGE_LIMIT_PATTERN = /usage limit|rate limit|quota/i;
+const INTERRUPTION_PATTERN = /interrupt|cancel|abort/i;
 
 const CODEX_STATUSES = new Set<CodexResultStatus>([
   "success",
@@ -132,42 +144,122 @@ export function buildCodexResumeArgv(input: BuildCodexResumeArgvInput): readonly
   ];
 }
 
-export function parseCodexResult(_stdout: string, artifacts: CodexResultArtifacts): CodexResult {
+function parseStreamEvents(stdout: string): CodexStreamEvent[] {
+  const events: CodexStreamEvent[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        events.push(parsed as CodexStreamEvent);
+      }
+    } catch {
+      // Ignore non-JSON transcript lines.
+    }
+  }
+  return events;
+}
+
+function streamSessionHandle(events: readonly CodexStreamEvent[]): string | undefined {
+  for (const event of events) {
+    if (event.type === "thread.started" && typeof event.thread_id === "string" && event.thread_id.length > 0) {
+      return event.thread_id;
+    }
+    if (
+      (event.type === "session.created" || event.type === "session_configured") &&
+      typeof event.session_id === "string" &&
+      event.session_id.length > 0
+    ) {
+      return event.session_id;
+    }
+  }
+  return undefined;
+}
+
+function streamErrorMessages(events: readonly CodexStreamEvent[]): string[] {
+  const messages: string[] = [];
+  for (const event of events) {
+    if (event.type === "error" && typeof event.message === "string") {
+      messages.push(event.message);
+    }
+    if (event.type === "turn.failed" && typeof event.error?.message === "string") {
+      messages.push(event.error.message);
+    }
+  }
+  return messages;
+}
+
+function streamFailure(events: readonly CodexStreamEvent[]): { status: CodexResultStatus; failure: string } | undefined {
+  for (const message of streamErrorMessages(events)) {
+    if (USAGE_LIMIT_PATTERN.test(message)) return { status: "usage_limit", failure: message };
+    if (INTERRUPTION_PATTERN.test(message)) return { status: "cancelled", failure: message };
+  }
+  return undefined;
+}
+
+export function parseCodexResult(stdout: string, artifacts: CodexResultArtifacts): CodexResult {
+  const events = parseStreamEvents(stdout);
+  const streamHandle = streamSessionHandle(events);
+
   const rawArtifact = artifacts.files[artifacts.declaredResultPath];
   if (rawArtifact === undefined) {
-    return failureResult(`Missing Codex result artifact at ${artifacts.declaredResultPath}`);
+    return missingEnvelopeResult(events, streamHandle, `Missing Codex result artifact at ${artifacts.declaredResultPath}`);
   }
 
   let parsed: CodexResultArtifact;
   try {
     parsed = JSON.parse(rawArtifact) as CodexResultArtifact;
   } catch {
-    return failureResult(`Invalid Codex result artifact JSON at ${artifacts.declaredResultPath}`);
+    return missingEnvelopeResult(events, streamHandle, `Invalid Codex result artifact JSON at ${artifacts.declaredResultPath}`);
   }
 
   if (!isCodexResultStatus(parsed.status)) {
-    return failureResult(`Invalid Codex result status in ${artifacts.declaredResultPath}`);
+    return missingEnvelopeResult(events, streamHandle, `Invalid Codex result status in ${artifacts.declaredResultPath}`);
   }
 
   const artifactPaths = parseArtifactPaths(parsed.artifactPaths, artifacts.declaredResultPath);
   if (parsed.status === "success" && artifactPaths.length === 0) {
-    return failureResult(`Codex success requires artifact evidence at ${artifacts.declaredResultPath}`);
+    return failureResult(`Codex success requires artifact evidence at ${artifacts.declaredResultPath}`, streamHandle);
   }
+
+  const envelopeHandle = typeof parsed.sessionHandle === "string" ? parsed.sessionHandle : undefined;
+  const mismatch = streamHandle !== undefined && envelopeHandle !== undefined && streamHandle !== envelopeHandle;
 
   return {
     status: parsed.status,
-    sessionHandle: typeof parsed.sessionHandle === "string" ? parsed.sessionHandle : undefined,
+    sessionHandle: streamHandle ?? envelopeHandle,
     artifactPaths,
     failure: typeof parsed.failure === "string" ? parsed.failure : undefined,
+    notes: mismatch ? ["session_handle_mismatch"] : [],
   };
 }
 
-function failureResult(failure: string): CodexResult {
+function missingEnvelopeResult(
+  events: readonly CodexStreamEvent[],
+  sessionHandle: string | undefined,
+  fallbackFailure: string,
+): CodexResult {
+  const failure = streamFailure(events);
+  if (failure !== undefined) {
+    return {
+      status: failure.status,
+      sessionHandle,
+      artifactPaths: [],
+      failure: failure.failure,
+      notes: [],
+    };
+  }
+  return failureResult(fallbackFailure, sessionHandle);
+}
+
+function failureResult(failure: string, sessionHandle?: string): CodexResult {
   return {
     status: "failure",
-    sessionHandle: undefined,
+    sessionHandle,
     artifactPaths: [],
     failure,
+    notes: [],
   };
 }
 

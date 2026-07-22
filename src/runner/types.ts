@@ -48,4 +48,5 @@ export interface RunnerJobResult {
   artifactPaths: readonly string[];
   usage: Readonly<Record<string, number>>;
   failure: RunnerJobFailure | undefined;
+  notes?: readonly string[];
 }
