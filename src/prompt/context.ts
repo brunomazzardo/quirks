@@ -25,6 +25,10 @@ export interface NormalizedTaskProjection {
   nativeRevision: string;
   acceptanceCriteria: readonly string[];
   verification: readonly string[];
+  effort?: PromptTaskContext["effort"];
+  risk?: readonly string[];
+  blockedReason?: string;
+  unblockCondition?: string;
 }
 
 /** Bounded campaign facts consumed by prompt assembly. */
@@ -66,6 +70,12 @@ function toTaskContext(task: NormalizedTaskProjection): PromptTaskContext {
     nativeRevision: task.nativeRevision,
     acceptanceCriteria: compactSummaries(task.acceptanceCriteria),
     verification: compactSummaries(task.verification),
+    ...(task.effort !== undefined ? { effort: task.effort } : {}),
+    ...(task.risk !== undefined ? { risk: [...task.risk] } : {}),
+    ...(task.blockedReason !== undefined ? { blockedReason: task.blockedReason.slice(0, MAX_SUMMARY_CHARS) } : {}),
+    ...(task.unblockCondition !== undefined
+      ? { unblockCondition: task.unblockCondition.slice(0, MAX_SUMMARY_CHARS) }
+      : {}),
   };
 }
 

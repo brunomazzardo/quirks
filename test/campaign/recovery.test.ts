@@ -19,10 +19,11 @@ async function crashedStoreFixture() {
   const lockDir = await mkdtemp(path.join(os.tmpdir(), "quirks-recovery-lock-"));
   const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), "quirks-recovery-repo-"));
 
+  const source = new FakeTaskSource();
   const incomplete = campaignEnvelope({
     campaignId: "cmp-recovery",
     taskIds: ["QK-1"],
-    taskRevisions: { "QK-1": "sha256:rev" },
+    taskRevisions: { "QK-1": source.taskRevision("QK-1") },
     routing: {
       "QK-1": {
         primary: { profileId: "cursor-standard", tier: "standard", effort: "standard" },
@@ -37,7 +38,6 @@ async function crashedStoreFixture() {
     campaignId: envelope.campaignId,
     envelope,
   });
-  const source = new FakeTaskSource();
   const outbox = SyncOutbox.open(store.syncOutboxFile);
   const context = {
     store,

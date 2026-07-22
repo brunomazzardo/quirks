@@ -43,11 +43,12 @@ async function supervisorWithGitWorktrees(): Promise<{
   const { stdout: headStdout } = await git("rev-parse", "HEAD");
   const head = headStdout.toString().trim();
 
+  const source = new FakeTaskSource();
   const incomplete = campaignEnvelope({
     campaignId: "cmp-wave3",
     repositoryId: "sha256:wave3-repo",
     taskIds: ["QK-1"],
-    taskRevisions: { "QK-1": "sha256:rev" },
+    taskRevisions: { "QK-1": source.taskRevision("QK-1") },
     git: {
       baseCommit: head,
       campaignBranch: "quirks/cmp-wave3/integration",
@@ -84,7 +85,6 @@ async function supervisorWithGitWorktrees(): Promise<{
     campaignBranch: envelope.git.campaignBranch,
   });
 
-  const source = new FakeTaskSource();
   const outbox = SyncOutbox.open(store.syncOutboxFile);
   const supervisor = await CampaignSupervisor.open({
     store,

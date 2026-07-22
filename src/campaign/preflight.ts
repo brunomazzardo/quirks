@@ -13,6 +13,7 @@ import { syncBoundary, type SyncBoundaryResult } from "../sync/boundaries.js";
 import type { OutboxPort, SyncIntent, SyncState } from "../sync/types.js";
 import { finalizeEnvelope } from "./envelope.js";
 import { inspectGit } from "./git-inspect.js";
+import { computeInstructionsHash } from "./task-brief.js";
 import { requiredTierForRole, resolveRoute, type RoutableProfile } from "./routing.js";
 import type { CampaignEnvelope, CampaignRoute, JudgmentTier } from "./types.js";
 
@@ -283,7 +284,7 @@ export async function runPreflight(input: RunPreflightInput): Promise<PreflightR
       hashes: {
         config: context.configHash,
         workflowPolicy: sha256(context.effectiveWorkflowPolicy),
-        instructions: sha256(context.config.workflowPolicy.skills),
+        instructions: computeInstructionsHash(context.config.workflowPolicy.skills),
       },
       externalRoutingEnabled: input.externalRoutingEnabled,
     });

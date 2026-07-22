@@ -3,9 +3,12 @@ import path from "node:path";
 import { QuirksError } from "../core/errors.js";
 import { hasDurableApproval } from "./approval.js";
 import { buildExecutionPlan, selectRunnableTasks } from "./scheduler.js";
+import { loadPlanOutline, type ImmutableSourceRef, type PlanOutline } from "./plan-outline.js";
 import type { RunnerPort, WorktreePort, GitWorktreePort } from "./ports.js";
 import type { CampaignStore } from "./store.js";
-import type { CampaignApproval, CampaignEnvelope } from "./types.js";
+import { buildTaskBrief, computeInstructionsHash } from "./task-brief.js";
+import type { CampaignApproval, CampaignEnvelope, JudgmentTier } from "./types.js";
+import type { NormalizedTaskProjection } from "../prompt/context.js";
 import type { RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
 import { RepositoryLock } from "../state/repository-lock.js";
@@ -25,6 +28,12 @@ export interface CampaignSupervisorContext {
   lockPath: string;
   repositoryRoot: string;
   profileIndex?: ReadonlyMap<string, RunnerProfile>;
+  /**
+   * Configured workflow skills frozen into `envelope.hashes.instructions` at
+   * preflight. When provided, startApproved reassembles the hash and rejects
+   * drift before dispatching any brief.
+   */
+  workflowSkills?: Readonly<Record<string, string>>;
   now?: () => string;
 }
 
@@ -49,10 +58,17 @@ function isGitWorktreePort(worktree: WorktreePort): worktree is GitWorktreePort 
 
 type NormalizedSupervisorTask = {
   id: string;
+  title: string;
   status: string;
   dependsOn: readonly string[];
   parallelismKeys: readonly string[];
   nativeRevision: string;
+  sourceRefs: readonly Record<string, unknown>[];
+  acceptanceCriteria: readonly string[];
+  verification: readonly string[];
+  effort: JudgmentTier;
+  risk: readonly string[];
+  statusDetail: null | { reason: string; unblockCondition: string };
 };
 
 const NON_CLAIMABLE_STATUSES = new Set(["proposed", "blocked", "cancelled"]);
@@ -93,20 +109,92 @@ async function loadNormalizedTask(
     throw new QuirksError("PROTOCOL_VIOLATION", `Cannot show task ${taskId}`);
   }
   const data = show.data as {
+    title?: string;
     status: string;
     dependsOn: readonly string[];
-    execution: { parallelismKeys?: readonly string[] };
+    sourceRefs?: readonly Record<string, unknown>[];
+    acceptanceCriteria?: readonly string[];
+    verification?: readonly string[];
+    statusDetail?: null | { reason: string; unblockCondition: string };
+    execution: { parallelismKeys?: readonly string[]; effort?: JudgmentTier; risk?: readonly string[] };
   };
   const nativeRevision = show.nativeRevision ?? envelope.taskRevisions[taskId];
   if (!nativeRevision) {
     throw new QuirksError("PROTOCOL_VIOLATION", `Missing revision for task ${taskId}`);
   }
+  const approvedRevision = envelope.taskRevisions[taskId];
+  if (data.status !== "completed" && approvedRevision !== undefined && nativeRevision !== approvedRevision) {
+    throw new QuirksError(
+      "PROTOCOL_VIOLATION",
+      `TASK_REVISION_DRIFT: task ${taskId} changed after approval; re-run preflight`,
+    );
+  }
   return {
     id: taskId,
+    title: data.title ?? taskId,
     status: data.status,
     dependsOn: data.dependsOn,
     parallelismKeys: data.execution.parallelismKeys ?? [],
     nativeRevision,
+    sourceRefs: data.sourceRefs ?? [],
+    acceptanceCriteria: data.acceptanceCriteria ?? [],
+    verification: data.verification ?? [],
+    effort: data.execution.effort ?? "standard",
+    risk: data.execution.risk ?? [],
+    statusDetail: data.statusDetail ?? null,
+  };
+}
+
+function briefTaskProjection(task: NormalizedSupervisorTask): NormalizedTaskProjection {
+  return {
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    dependsOn: task.dependsOn,
+    nativeRevision: task.nativeRevision,
+    acceptanceCriteria: task.acceptanceCriteria,
+    verification: task.verification,
+    effort: task.effort,
+    risk: task.risk,
+    ...(task.statusDetail ? { blockedReason: task.statusDetail.reason } : {}),
+    ...(task.statusDetail ? { unblockCondition: task.statusDetail.unblockCondition } : {}),
+  };
+}
+
+function immutablePlanRefs(task: NormalizedSupervisorTask): ImmutableSourceRef[] {
+  const refs: ImmutableSourceRef[] = [];
+  for (const ref of task.sourceRefs) {
+    if (ref["kind"] !== "plan") continue;
+    if (typeof ref["path"] !== "string" || typeof ref["commit"] !== "string") continue;
+    refs.push({
+      kind: "plan",
+      path: ref["path"],
+      commit: ref["commit"],
+      ...(typeof ref["task"] === "number" ? { task: ref["task"] } : {}),
+    });
+  }
+  return refs;
+}
+
+async function resolveTaskPlanOutline(
+  repositoryRoot: string,
+  task: NormalizedSupervisorTask,
+): Promise<PlanOutline | undefined> {
+  const refs = immutablePlanRefs(task);
+  if (refs.length === 0) return undefined;
+  const outlines: PlanOutline[] = [];
+  for (const ref of refs) {
+    outlines.push(await loadPlanOutline(repositoryRoot, [ref]));
+  }
+  const first = outlines[0]!;
+  const merged = outlines
+    .filter((outline) => outline.path === first.path && outline.commit === first.commit)
+    .flatMap((outline) => outline.tasks);
+  const seen = new Set<number>();
+  return {
+    path: first.path,
+    commit: first.commit,
+    tasks: merged.filter((entry) => (seen.has(entry.task) ? false : (seen.add(entry.task), true))),
   };
 }
 
@@ -129,6 +217,16 @@ export class CampaignSupervisor {
     const envelope = await this.context.store.readEnvelope();
     if (!(await hasDurableApproval(this.context.store, envelope.digest))) {
       throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_REQUIRED");
+    }
+
+    if (this.context.workflowSkills !== undefined) {
+      const reassembled = computeInstructionsHash(this.context.workflowSkills);
+      if (reassembled !== envelope.hashes.instructions) {
+        throw new QuirksError(
+          "PROTOCOL_VIOLATION",
+          "INSTRUCTIONS_DRIFT: prompt instructions changed after approval; re-run preflight",
+        );
+      }
     }
 
     this.lockHandle = await RepositoryLock.acquire(this.context.lockPath, {
@@ -198,13 +296,38 @@ export class CampaignSupervisor {
     const runnable = selectRunnableTasks(plan, new Set(), new Set());
 
     const sessions = await SessionRegistry.open(this.context.store);
+    const briefProfiles = [...(this.context.profileIndex?.values() ?? [])];
+    const briefSkills = this.context.workflowSkills ?? {};
+    const campaignProjection = {
+      campaignId: envelope.campaignId,
+      state: "running" as const,
+      approved: true,
+      envelopeDigest: envelope.digest,
+    };
+
     for (const taskId of runnable) {
+      const taskDetail = taskMeta.get(taskId);
+      if (!taskDetail) {
+        throw new QuirksError("PROTOCOL_VIOLATION", `Missing normalized task metadata for ${taskId}`);
+      }
+      const planOutline = await resolveTaskPlanOutline(this.context.repositoryRoot, taskDetail);
       const worktree = await this.context.worktree.prepareTaskWorktree(taskId, envelope.git.baseCommit);
       const route = routeForTask(envelope, taskId, "implementer", this.context.profileIndex);
       const jobId = `${envelope.campaignId}:${taskId}:implementer:1`;
       const briefPath = path.join(this.context.repositoryRoot, ".quirks", "briefs", `${taskId}.md`);
       await mkdir(path.dirname(briefPath), { recursive: true });
-      await writeFile(briefPath, `# ${taskId}\n`, "utf8");
+      const implementerBrief = await buildTaskBrief({
+        role: "implementer",
+        repositoryId: envelope.repositoryId,
+        campaign: campaignProjection,
+        task: briefTaskProjection(taskDetail),
+        ...(planOutline ? { plan: planOutline } : {}),
+        git: { baseCommit: envelope.git.baseCommit },
+        skills: briefSkills,
+        profiles: briefProfiles,
+        ...(this.context.profileIndex?.has(route.profileId) ? { implementerProfileId: route.profileId } : {}),
+      });
+      await writeFile(briefPath, implementerBrief, "utf8");
 
       const result = await this.context.runner.dispatch({
         jobId,
@@ -244,12 +367,25 @@ export class CampaignSupervisor {
         const reviewWorktree = await this.context.worktree.prepareReviewWorktree(taskId, candidateCommit);
         const reviewerRoute = routeForTask(envelope, taskId, "reviewer", this.context.profileIndex);
         const reviewJobId = `${envelope.campaignId}:${taskId}:reviewer:1`;
+        const reviewerBriefPath = path.join(this.context.repositoryRoot, ".quirks", "briefs", `${taskId}.reviewer.md`);
+        const reviewerBrief = await buildTaskBrief({
+          role: "reviewer",
+          repositoryId: envelope.repositoryId,
+          campaign: campaignProjection,
+          task: briefTaskProjection(taskDetail),
+          ...(planOutline ? { plan: planOutline } : {}),
+          git: { baseCommit: envelope.git.baseCommit, candidateCommit },
+          skills: briefSkills,
+          profiles: briefProfiles,
+          ...(this.context.profileIndex?.has(route.profileId) ? { implementerProfileId: route.profileId } : {}),
+        });
+        await writeFile(reviewerBriefPath, reviewerBrief, "utf8");
         const reviewResult = await this.context.runner.dispatch({
           jobId: reviewJobId,
           taskId,
           role: "reviewer",
           route: reviewerRoute,
-          briefPath,
+          briefPath: reviewerBriefPath,
           worktreePath: reviewWorktree.path,
         });
 

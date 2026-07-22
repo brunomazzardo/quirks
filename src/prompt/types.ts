@@ -39,6 +39,10 @@ export interface PromptTaskContext {
   nativeRevision: string;
   acceptanceCriteria: readonly string[];
   verification: readonly string[];
+  effort?: JudgmentTier;
+  risk?: readonly string[];
+  blockedReason?: string;
+  unblockCondition?: string;
 }
 
 export interface PromptPlanTaskContext {
