@@ -213,7 +213,10 @@ export class FakeTaskSource implements TaskSource {
           task.coordination = null;
         });
       case "attach-provenance":
-        return this.applyMutation(request, () => undefined);
+        return this.applyMutation(request, (task) => {
+          const provenance = task.provenance as { schemaVersion: 1; iterations: Array<Record<string, unknown>> };
+          provenance.iterations.push(request.input.iteration as Record<string, unknown>);
+        });
       case "propose":
         return this.applyMutation(request, () => undefined);
     }

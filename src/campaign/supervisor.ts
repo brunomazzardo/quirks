@@ -79,9 +79,23 @@ interface TaskDispatchOutcome {
   implementerRoute: ResolvedRoute;
   reviewer?: RunnerJobResult;
   reviewerRoute?: ResolvedRoute;
+  candidateCommit?: string;
   jobs: readonly DispatchedJob[];
   startedAt: string;
   finishedAt: string;
+}
+
+// An attempt is accepted only when the implementer job succeeded AND, whenever a
+// reviewer was dispatched for the attempt, the reviewer job succeeded as well.
+function attemptSucceeded(outcome: TaskDispatchOutcome | undefined): boolean {
+  if (!outcome || outcome.implementer.status !== "success") return false;
+  return outcome.reviewer === undefined || outcome.reviewer.status === "success";
+}
+
+function attemptFailingResult(outcome: TaskDispatchOutcome): RunnerJobResult | undefined {
+  if (outcome.implementer.status !== "success") return outcome.implementer;
+  if (outcome.reviewer && outcome.reviewer.status !== "success") return outcome.reviewer;
+  return undefined;
 }
 
 const NON_CLAIMABLE_STATUSES = new Set(["proposed", "blocked", "cancelled"]);
@@ -166,7 +180,7 @@ export class CampaignSupervisor {
     const completed: string[] = [];
     for (const taskId of runnable) {
       const outcome = await this.dispatchTask(run, taskId, 1, "awaiting_approval");
-      if (outcome.implementer.status === "success") completed.push(taskId);
+      if (attemptSucceeded(outcome)) completed.push(taskId);
     }
     await this.journalWave(run, "wave.completed", 0, runnable, { completedTaskIds: completed.join(",") });
     await this.writeRunningState(run, new Set());
@@ -233,25 +247,21 @@ export class CampaignSupervisor {
           budgetExceeded = true;
         }
 
-        const succeeded = outcome?.implementer.status === "success";
-        if (succeeded) {
+        const succeeded = attemptSucceeded(outcome);
+        if (succeeded && outcome) {
           completedTasks.add(taskId);
           waveCompleted.push(taskId);
           for (const lane of lanes) laneFailures.set(lane, 0);
+          completedJobs.push(...outcome.jobs);
         } else {
           for (const lane of lanes) laneFailures.set(lane, (laneFailures.get(lane) ?? 0) + 1);
         }
-        if (outcome) {
-          for (const job of outcome.jobs) {
-            const result = job.role === "implementer" ? outcome.implementer : outcome.reviewer;
-            if (result?.status === "success") completedJobs.push(job);
-          }
-        }
 
+        const failingResult = outcome ? attemptFailingResult(outcome) : undefined;
         const failureClass: FailureClass | undefined = succeeded
           ? undefined
-          : outcome
-            ? classifyFailure({ status: outcome.implementer.status, failure: outcome.implementer.failure })
+          : failingResult
+            ? classifyFailure({ status: failingResult.status, failure: failingResult.failure })
             : "transient_runner";
         const consecutive = lanes.reduce((max, lane) => Math.max(max, laneFailures.get(lane) ?? 0), 0);
         const decision = evaluateCircuitBreakers(this.breakerInput(budgets, consecutive, failureClass, budgetExceeded));
@@ -265,7 +275,11 @@ export class CampaignSupervisor {
         }
 
         if (succeeded && outcome) {
-          await this.attachProvenance(run, outcome);
+          await this.attachProvenance(run, outcome, "completed");
+        } else if (outcome && outcome.implementer.status === "success" && outcome.reviewer) {
+          // Implementer output existed but the reviewer rejected it: record the
+          // attempt honestly instead of claiming acceptance.
+          await this.attachProvenance(run, outcome, "failed");
         }
       }
 
@@ -455,8 +469,11 @@ export class CampaignSupervisor {
 
     let reviewer: RunnerJobResult | undefined;
     let reviewerRoute: ResolvedRoute | undefined;
-    if (isGitWorktreePort(this.context.worktree)) {
-      const candidateCommit = await this.context.worktree.readCommit(worktree.path) ?? envelope.git.baseCommit;
+    let candidateCommit: string | undefined;
+    // A reviewer is only dispatched when the implementer produced a candidate;
+    // reviewing a failed implementer attempt would waste budget on no output.
+    if (result.status === "success" && isGitWorktreePort(this.context.worktree)) {
+      candidateCommit = await this.context.worktree.readCommit(worktree.path) ?? envelope.git.baseCommit;
       const reviewWorktree = await this.context.worktree.prepareReviewWorktree(taskId, candidateCommit);
       reviewerRoute = routeForTask(envelope, taskId, "reviewer", this.context.profileIndex);
       const reviewJobId = `${envelope.campaignId}:${taskId}:reviewer:${attempt}`;
@@ -502,6 +519,7 @@ export class CampaignSupervisor {
       implementerRoute: route,
       ...(reviewer ? { reviewer } : {}),
       ...(reviewerRoute ? { reviewerRoute } : {}),
+      ...(candidateCommit ? { candidateCommit } : {}),
       jobs,
       startedAt,
       finishedAt,
@@ -609,7 +627,11 @@ export class CampaignSupervisor {
     });
   }
 
-  private async attachProvenance(run: PreparedRun, outcome: TaskDispatchOutcome): Promise<void> {
+  private async attachProvenance(
+    run: PreparedRun,
+    outcome: TaskDispatchOutcome,
+    iterationOutcome: "completed" | "failed",
+  ): Promise<void> {
     const task = await loadNormalizedTask(this.context.source, outcome.taskId, run.envelope);
     const iterationId = `${run.envelope.campaignId}.${outcome.taskId}.${outcome.attempt}`
       .replaceAll(":", "-")
@@ -628,6 +650,16 @@ export class CampaignSupervisor {
           }]
         : []),
     ];
+    // acceptedCommit is only claimed for reviewer-approved attempts with a real
+    // candidate commit; failed reviews record outcome "failed" with the verdict.
+    const acceptedCommit =
+      iterationOutcome === "completed" && outcome.candidateCommit && /^[a-f0-9]{40}$/.test(outcome.candidateCommit)
+        ? outcome.candidateCommit
+        : undefined;
+    const outcomeReason =
+      iterationOutcome === "failed" && outcome.reviewer
+        ? `review_failed:${outcome.reviewer.status}${outcome.reviewer.failure ? `:${outcome.reviewer.failure.code}` : ""}`
+        : undefined;
     await reconcileMutation({
       campaignId: run.envelope.campaignId,
       outbox: this.context.outbox,
@@ -644,9 +676,11 @@ export class CampaignSupervisor {
             campaignId: run.envelope.campaignId,
             envelopeDigest: run.envelope.digest,
             taskRevision: task.nativeRevision,
-            outcome: "completed",
+            outcome: iterationOutcome,
             completionBoundary: "accepted-commit",
             baseCommit: run.envelope.git.baseCommit,
+            ...(acceptedCommit ? { acceptedCommit } : {}),
+            ...(outcomeReason ? { outcomeReason } : {}),
             startedAt: outcome.startedAt,
             finishedAt: outcome.finishedAt,
             durationMs: elapsedMs(outcome.startedAt, outcome.finishedAt),

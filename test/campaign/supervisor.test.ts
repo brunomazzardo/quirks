@@ -375,6 +375,109 @@ test("runToCompletion dispatches waves concurrently within envelope maxConcurren
   await supervisor.stop();
 });
 
+async function provenanceIterations(
+  source: FakeTaskSource,
+  taskId: string,
+): Promise<Array<Record<string, unknown>>> {
+  const show = await source.execute({ schemaVersion: 1, operation: "show", taskId, input: {} });
+  assert.equal(show.ok, true);
+  const data = (show as { data: { provenance: { iterations: Array<Record<string, unknown>> } } }).data;
+  return data.provenance.iterations;
+}
+
+test("runToCompletion refuses task completion when the reviewer rejects the work", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  source.upsertTask("QK-B", { status: "ready", dependsOn: ["QK-A"], execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  runner.queueResult("cmp-supervisor:QK-A:reviewer:1", {
+    ...failureResult("cmp-supervisor:QK-A:reviewer:1"),
+    failure: { code: "task_rejection", message: "reviewer rejected the candidate" },
+  });
+  runner.queueResult("cmp-supervisor:QK-A:reviewer:2", {
+    ...failureResult("cmp-supervisor:QK-A:reviewer:2"),
+    failure: { code: "task_rejection", message: "reviewer rejected the candidate" },
+  });
+  const context = await testContext({
+    taskIds: ["QK-A", "QK-B"],
+    taskRevisions: {
+      "QK-A": source.taskRevision("QK-A"),
+      "QK-B": source.taskRevision("QK-B"),
+    },
+    budgets: { maxTasks: 4, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A", "QK-B"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.notEqual(outcome.status, "completed");
+  assert.equal(runner.dispatches.some((dispatch) => dispatch.taskId === "QK-B"), false);
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-A"), false);
+
+  const iterations = await provenanceIterations(source, "QK-A");
+  assert.ok(iterations.length >= 1, "expected honest provenance for the rejected attempts");
+  for (const iteration of iterations) {
+    assert.equal(iteration["outcome"], "failed");
+    assert.equal(iteration["acceptedCommit"], undefined);
+    assert.match(String(iteration["outcomeReason"]), /review/);
+    const roles = (iteration["participants"] as Array<{ role: string }>).map((participant) => participant.role);
+    assert.deepEqual(roles.toSorted(), ["implementer", "reviewer"]);
+  }
+  await supervisor.stop();
+});
+
+test("runToCompletion skips reviewer dispatch for failed implementer attempts", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  runner.queueResult("cmp-supervisor:QK-A:implementer:1", failureResult("cmp-supervisor:QK-A:implementer:1"));
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 2, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "completed");
+  const dispatchedJobIds = runner.dispatches.map((dispatch) => dispatch.jobId);
+  assert.equal(dispatchedJobIds.includes("cmp-supervisor:QK-A:reviewer:1"), false);
+  assert.equal(dispatchedJobIds.includes("cmp-supervisor:QK-A:reviewer:2"), true);
+  assert.equal(outcome.completedJobs.some((job) => job.jobId === "cmp-supervisor:QK-A:implementer:2"), true);
+  await supervisor.stop();
+});
+
+test("runToCompletion records accepted provenance only for reviewer-approved attempts", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 1, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "completed");
+  const iterations = await provenanceIterations(source, "QK-A");
+  assert.equal(iterations.length, 1);
+  assert.equal(iterations[0]?.["outcome"], "completed");
+  assert.equal(iterations[0]?.["acceptedCommit"], "a".repeat(40));
+  const roles = (iterations[0]?.["participants"] as Array<{ role: string }>).map((participant) => participant.role);
+  assert.deepEqual(roles.toSorted(), ["implementer", "reviewer"]);
+  await supervisor.stop();
+});
+
 function steppingClock(startMs: number, stepMs: number): () => string {
   let current = startMs;
   return () => {
