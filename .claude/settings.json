@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/quirks-tasks:*)",
+      "Bash(node scripts/quirks-campaign:*)",
+      "Bash(node scripts/quirks-watchdog:*)",
+      "Bash(node dist/src/cli/quirks-tasks.js:*)",
+      "Bash(node dist/src/cli/quirks-campaign.js:*)",
+      "Bash(node dist/src/cli/quirks-watchdog.js:*)",
+      "Bash(pnpm quirks:*)",
+      "Bash(pnpm check:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm validate:skills:*)",
+      "Bash(pnpm build:*)",
+      "Bash(npx playwright test:*)",
+      "Bash(git worktree remove:*)",
+      "Bash(git worktree prune:*)",
+      "Bash(git branch -d:*)"
+    ]
+  }
+}
