@@ -26,7 +26,7 @@ export interface PromptReadPort {
 }
 
 export interface CampaignPromptFacts extends CampaignPromptProjection {
-  baseCommit: string;
+  baseCommit?: string;
   implementerProfileId?: string;
 }
 
@@ -37,7 +37,7 @@ export interface CreatePromptReadPortInput {
   skills: Readonly<Record<string, string>>;
   profiles: readonly RunnerProfile[];
   /** Durable campaign facts; absent means campaign authority is missing and campaign contexts fail closed. */
-  campaign?: () => Promise<CampaignPromptFacts | undefined>;
+  campaign?: (campaignId?: string) => Promise<CampaignPromptFacts | undefined>;
   /** Validated candidate commit for a task under review, when one exists. */
   candidateCommit?: (taskId: string) => Promise<string | undefined>;
 }
@@ -46,7 +46,7 @@ async function loadCampaignFacts(
   input: CreatePromptReadPortInput,
   requestedCampaignId: string | undefined,
 ): Promise<CampaignPromptFacts | undefined> {
-  const facts = await input.campaign?.();
+  const facts = await input.campaign?.(requestedCampaignId);
   if (!facts) return undefined;
   if (requestedCampaignId !== undefined && facts.campaignId !== requestedCampaignId) {
     throw new QuirksError(
@@ -96,7 +96,7 @@ export function createPromptReadPort(input: CreatePromptReadPortInput): PromptRe
         const facts = taskFactsFromShow(taskId, shown.data as NormalizedTaskRecord, shown.nativeRevision);
         task = briefTaskProjection(facts);
         plan = await resolveTaskPlanOutline(input.repositoryRoot, facts);
-        if (campaign) {
+        if (campaign?.baseCommit !== undefined) {
           const candidate = await input.candidateCommit?.(taskId);
           git = {
             baseCommit: campaign.baseCommit,
