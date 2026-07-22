@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { QuirksError } from "../../src/core/errors.js";
 import { consumeApprovalToken, createApprovalChallenge } from "../../src/campaign/approval.js";
 import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.js";
 import { CampaignSupervisor, type CampaignSupervisorContext } from "../../src/campaign/supervisor.js";
@@ -506,6 +507,60 @@ test("a paused lane does not starve dependency-satisfied tasks on healthy lanes"
   const state = await context.store.readState();
   assert.equal(state.activeLanes?.includes("lane-b"), true);
   assert.equal(state.activeLanes?.includes("lane-a"), false);
+  await supervisor.stop();
+});
+
+class ThrowingWorktreePort extends FakeWorktreePort {
+  constructor(private readonly failTaskId: string) {
+    super();
+  }
+
+  override async prepareTaskWorktree(taskId: string, baseCommit: string): Promise<{ path: string; branch: string }> {
+    if (taskId === this.failTaskId) {
+      throw new QuirksError("PROTOCOL_VIOLATION", `worktree provisioning failed for ${taskId}`);
+    }
+    return super.prepareTaskWorktree(taskId, baseCommit);
+  }
+}
+
+test("supervisor-side dispatch errors halt the campaign instead of retrying as task failures", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  source.upsertTask("QK-B", { status: "ready", execution: executionFor(["lane-b"]) });
+  const runner = new FakeRunnerPort();
+  const context = await testContext({
+    taskIds: ["QK-A", "QK-B"],
+    taskRevisions: {
+      "QK-A": source.taskRevision("QK-A"),
+      "QK-B": source.taskRevision("QK-B"),
+    },
+    budgets: { maxTasks: 4, maxConcurrency: 2, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A", "QK-B"]),
+    source,
+    runner,
+    worktree: new ThrowingWorktreePort("QK-B"),
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "paused");
+  assert.equal(outcome.breaker, undefined);
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-A" && job.role === "implementer"), true);
+  assert.equal(runner.dispatches.some((dispatch) => dispatch.taskId === "QK-B"), false);
+
+  const state = await context.store.readState();
+  assert.equal(state.status, "paused");
+  assert.equal(state.pausedReason, "SUPERVISOR_ERROR");
+
+  const events = await context.store.readEvents();
+  const waveStarted = events.filter((event) => event.type === "wave.started");
+  assert.equal(waveStarted.length, 1, "the failing task must not be silently re-dispatched");
+  const paused = events.find((event) => event.type === "campaign.paused");
+  assert.ok(paused, "expected campaign.paused event");
+  assert.equal(paused.reason, "SUPERVISOR_ERROR");
+  assert.equal(paused.evidence["taskId"], "QK-B");
+  assert.match(paused.evidence["message"] ?? "", /worktree provisioning failed/);
   await supervisor.stop();
 });
 

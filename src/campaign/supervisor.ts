@@ -233,22 +233,30 @@ export class CampaignSupervisor {
       );
 
       let halting: CircuitBreakerDecision | undefined;
+      let supervisorFailure: { taskId: string; error: unknown } | undefined;
       const waveCompleted: string[] = [];
       for (const [index, { taskId }] of waveAttempts.entries()) {
         const entry = settled[index]!;
-        const outcome = entry.status === "fulfilled" ? entry.value : undefined;
+        if (entry.status === "rejected") {
+          // A rejected dispatch promise is a supervisor-side infrastructure
+          // error (worktree, journal, session registry), not a runner verdict.
+          // It must never be recycled into the retry path as a task failure.
+          supervisorFailure ??= { taskId, error: entry.reason };
+          continue;
+        }
+        const outcome = entry.value;
         const lanes = this.lanesForTask(run.plan, taskId);
 
         let budgetExceeded = false;
         try {
-          tracker.recordTask({ wallClockMs: outcome ? elapsedMs(outcome.startedAt, outcome.finishedAt) : 0 });
+          tracker.recordTask({ wallClockMs: elapsedMs(outcome.startedAt, outcome.finishedAt) });
         } catch (error) {
           if (!(error instanceof BudgetExceededError)) throw error;
           budgetExceeded = true;
         }
 
         const succeeded = attemptSucceeded(outcome);
-        if (succeeded && outcome) {
+        if (succeeded) {
           completedTasks.add(taskId);
           waveCompleted.push(taskId);
           for (const lane of lanes) laneFailures.set(lane, 0);
@@ -257,12 +265,10 @@ export class CampaignSupervisor {
           for (const lane of lanes) laneFailures.set(lane, (laneFailures.get(lane) ?? 0) + 1);
         }
 
-        const failingResult = outcome ? attemptFailingResult(outcome) : undefined;
-        const failureClass: FailureClass | undefined = succeeded
+        const failingResult = attemptFailingResult(outcome);
+        const failureClass: FailureClass | undefined = succeeded || !failingResult
           ? undefined
-          : failingResult
-            ? classifyFailure({ status: failingResult.status, failure: failingResult.failure })
-            : "transient_runner";
+          : classifyFailure({ status: failingResult.status, failure: failingResult.failure });
         const consecutive = lanes.reduce((max, lane) => Math.max(max, laneFailures.get(lane) ?? 0), 0);
         const decision = evaluateCircuitBreakers(this.breakerInput(budgets, consecutive, failureClass, budgetExceeded));
 
@@ -274,9 +280,9 @@ export class CampaignSupervisor {
           halting ??= decision;
         }
 
-        if (succeeded && outcome) {
+        if (succeeded) {
           await this.attachProvenance(run, outcome, "completed");
-        } else if (outcome && outcome.implementer.status === "success" && outcome.reviewer) {
+        } else if (outcome.implementer.status === "success" && outcome.reviewer) {
           // Implementer output existed but the reviewer rejected it: record the
           // attempt honestly instead of claiming acceptance.
           await this.attachProvenance(run, outcome, "failed");
@@ -284,6 +290,16 @@ export class CampaignSupervisor {
       }
 
       await this.journalWave(run, "wave.completed", wave, runnable, { completedTaskIds: waveCompleted.join(",") });
+
+      if (supervisorFailure) {
+        const message = supervisorFailure.error instanceof Error
+          ? supervisorFailure.error.message
+          : String(supervisorFailure.error);
+        return this.haltRun(run, "paused", "SUPERVISOR_ERROR", undefined, completedJobs, pausedLanes, {
+          taskId: supervisorFailure.taskId,
+          message: message.slice(0, 4096),
+        });
+      }
 
       if (halting) {
         const status = halting.action === "stop" ? "stopped" : halting.action === "hold" ? "hold" : "paused";
@@ -578,9 +594,10 @@ export class CampaignSupervisor {
     run: PreparedRun,
     status: "paused" | "hold" | "stopped",
     reason: string,
-    decision: CircuitBreakerDecision,
+    decision: CircuitBreakerDecision | undefined,
     completedJobs: readonly DispatchedJob[],
     pausedLanes: ReadonlySet<string>,
+    extraEvidence: Record<string, string> = {},
   ): Promise<RunToCompletionOutcome> {
     const toState: CampaignStatus = status === "hold" ? "hold" : "paused";
     const at = nowIso(this.context);
@@ -594,9 +611,9 @@ export class CampaignSupervisor {
       to: toState,
       reason,
       evidence: {
-        breakerAction: decision.action,
-        breakerReason: decision.reason,
+        ...(decision ? { breakerAction: decision.action, breakerReason: decision.reason } : {}),
         pausedLanes: [...pausedLanes].toSorted().join(",").slice(0, 4096),
+        ...extraEvidence,
       },
     });
     await this.context.store.writeState({
@@ -612,7 +629,7 @@ export class CampaignSupervisor {
       status,
       completedJobs: [...completedJobs],
       pausedLanes: [...pausedLanes].toSorted(),
-      breaker: decision,
+      ...(decision ? { breaker: decision } : {}),
     };
   }
 
