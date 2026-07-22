@@ -1,6 +1,5 @@
 import type { ResolvedRoute } from "./routing.js";
 import type { RunnerJobResult } from "../runner/types.js";
-import type { GitWorktreePort } from "../git/worktree.js";
 
 export interface WorktreePort {
   prepareTaskWorktree(taskId: string, baseCommit: string): Promise<{ path: string; branch: string }>;
@@ -8,7 +7,15 @@ export interface WorktreePort {
   readCommit(path: string): Promise<string | undefined>;
 }
 
-export type { GitWorktreePort };
+export interface GitWorktreePort extends WorktreePort {
+  ensureIntegrationBranch(input: {
+    repositoryRoot: string;
+    campaignId: string;
+    baseCommit: string;
+    campaignBranch: string;
+  }): Promise<{ branch: string; commit: string }>;
+  prepareReviewWorktree(taskId: string, candidateCommit: string): Promise<{ path: string; branch: string }>;
+}
 
 export interface RunnerPort {
   dispatch(input: {
