@@ -22,6 +22,7 @@ Each context exposes one recommended action and a small **More prompts** menu. A
 - Preserve Quirks security, approval, scope, provenance, and canonical-state boundaries.
 - Keep copying fast while allowing users to inspect the exact prompt.
 - Make prompt quality deterministic, reviewable, versioned, and testable.
+- Make approved brainstorming produce durable implementation tasks as well as specifications and plans.
 
 ## 3. Non-goals
 
@@ -321,3 +322,37 @@ The first implementation should establish the shared catalog, context assembler,
 5. adversarial task review with concrete different-model selection.
 
 Additional specialist recipes reuse the same contract and can follow after the core paths and quality evaluations are stable. This keeps the first implementation bounded while preserving the approved product shape.
+
+## 13. Brainstorm-to-task materialization
+
+Quirks brainstorming does not finish when prose artifacts are written. Its successful terminal output is:
+
+1. an approved specification;
+2. one or more committed implementation plans;
+3. one or more durable Quirks task records that reference the exact immutable plan commits and numbered plan tasks; and
+4. the created task IDs returned to the operator for later campaign selection.
+
+The number of queue tasks follows execution and review boundaries, not the number of headings in a plan. A cohesive feature may produce one Quirks task whose `sourceRefs` enumerate every applicable numbered task in one plan. A feature with independently schedulable or rejectable work may produce three or four Quirks tasks, each referencing its own plan or a disjoint set of numbered plan tasks.
+
+The task record remains compact. It stores dependencies, workflow phase and design-gate result, execution risk/capabilities, deliverables, acceptance criteria, verification commands, and immutable source references. It does not copy specification or plan bodies into task-source data. “The plan is inside the task” means the task projection resolves and exposes its exact committed plan outline and numbered steps through `sourceRefs`, including Plan Progress and generated prompts.
+
+### 13.1 Materialization workflow
+
+1. The brainstorming skill completes specification approval and planning.
+2. The writing-tasks skill validates the selected task source and proposes a task partition from the committed plan set.
+3. The operator approves the proposed partition when the number or boundaries of tasks require judgment.
+4. `quirks-tasks propose --json` creates each task through the selected TaskSource with expected revision and idempotency semantics; direct task-file edits remain prohibited.
+5. Each created task references the exact specification and plan commits. A single task may contain several plan `sourceRefs`, one per numbered plan task.
+6. The materializer reads each task back, verifies its immutable references and workflow policy, and returns the created IDs.
+
+Human-guided brainstorming invokes this materialization after the user approves the plan. Delegated brainstorming preserves independent design review and the frozen decision envelope, then invokes the same writing-tasks workflow. It must not expand the approved scope while partitioning tasks.
+
+### 13.2 Automatic execution briefs
+
+When a created task later enters a campaign, the supervisor builds its worker brief from the normalized task, immutable plan outline, configured workflow skills, approved campaign envelope, selected route, and role-specific prompt recipe. Implementer and reviewer briefs are distinct. The reviewer brief uses the approved independent route and candidate commit instead of reusing the implementer brief.
+
+The brief compiler is shared with contextual UI copy actions. This guarantees that a copied prompt and an automatically dispatched worker receive the same authoritative task/plan bindings and required skill instructions for the same action recipe.
+
+### 13.3 This feature's task shape
+
+The contextual-copy-prompts feature is one Quirks implementation task backed by one implementation plan. That task references every numbered task in the plan, so Quirks tracks one cohesive feature while Plan Progress exposes its internal implementation sequence. The plan includes task authoring/materialization, shared brief compilation, server prompt projections, UI interactions, adversarial routing, security tests, prompt evaluations, and final integration verification.
