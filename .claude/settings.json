@@ -1,4 +1,8 @@
 {
+  "worktree": {
+    "baseRef": "head",
+    "symlinkDirectories": ["node_modules"]
+  },
   "permissions": {
     "allow": [
       "Bash(node scripts/quirks-tasks:*)",
