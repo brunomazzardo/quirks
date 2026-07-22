@@ -37,7 +37,25 @@ export function extractCampaignId(request: MutationRequest): string {
   return campaignId;
 }
 
-export function applyClaim(task: NativeTask, request: Extract<MutationRequest, { operation: "claim" }>): MutationFailure<"claim"> | void {
+function dependenciesSatisfied(task: NativeTask, tasks: readonly NativeTask[]): boolean {
+  const dependsOn = Array.isArray(task.dependsOn) ? task.dependsOn as string[] : [];
+  return dependsOn.every((dependencyId) => {
+    const dependency = tasks.find((entry) => entry.id === dependencyId);
+    return dependency?.status === "completed";
+  });
+}
+
+export function applyClaim(
+  task: NativeTask,
+  request: Extract<MutationRequest, { operation: "claim" }>,
+  tasks: readonly NativeTask[] = [],
+): MutationFailure<"claim"> | void {
+  if (task.status === "proposed") {
+    if (!dependenciesSatisfied(task, tasks)) {
+      return failure("claim", "SOURCE_CONFLICT", "Task dependencies are not satisfied");
+    }
+    task.status = "ready";
+  }
   if (task.status !== "ready") {
     return failure("claim", "SOURCE_CONFLICT", "Task is not ready to claim");
   }
@@ -168,6 +186,17 @@ export function applyAttachProvenance(
     return;
   }
   provenance.iterations.push(iteration);
+
+  if (iteration.outcome === "blocked" && task.status === "completed") {
+    task.status = "blocked";
+    task.statusDetail = {
+      reason: typeof iteration.outcomeReason === "string"
+        ? iteration.outcomeReason
+        : "Corrective reconciliation superseded false completion",
+      unblockCondition: "Independent review confirms replacement evidence or task cancellation",
+    };
+    task.coordination = null;
+  }
 }
 
 export function applyPropose(

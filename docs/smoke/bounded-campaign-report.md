@@ -37,3 +37,4 @@ Harness validates full bounded-campaign orchestration with fake runners, disposa
 - `runBoundedCampaign` now wires `bareRemote` via `wireFixtureToBareRemote` (remote add + initial push when needed).
 - Default unapproved path rejects immediately (`QUIRKS_SMOKE_APPROVED` gate).
 - Human operators may use `quirks-campaign ui open` for digest approval; harness uses headless `createApprovalChallenge` + `consumeApprovalToken`.
+- Task 7 (`QK-DGF-002G`) reconciled Wave 7 false completions via corrective `attach-provenance`; operator pass remains blocked at Codex reviewer.
