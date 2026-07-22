@@ -207,8 +207,18 @@ export class CampaignSupervisor {
     while (completedTasks.size < run.planTaskIds.length) {
       const runnable = selectRunnableTasks(run.plan, completedTasks, pausedLanes);
       if (runnable.length === 0) {
-        const decision = lastLaneBreaker ?? { action: "pause_lane" as const, reason: "LANE_FAILURE_THRESHOLD" };
-        return this.haltRun(run, "paused", "ALL_LANES_PAUSED", decision, completedJobs, pausedLanes);
+        // Reachable only when every remaining task is blocked behind a paused
+        // lane; NO_RUNNABLE_TASKS is a defensive fallback that never fabricates
+        // a breaker decision that did not fire.
+        const stalledByLanes = pausedLanes.size > 0;
+        return this.haltRun(
+          run,
+          "paused",
+          stalledByLanes ? "ALL_LANES_PAUSED" : "NO_RUNNABLE_TASKS",
+          stalledByLanes ? lastLaneBreaker : undefined,
+          completedJobs,
+          pausedLanes,
+        );
       }
 
       for (const taskId of runnable) {
