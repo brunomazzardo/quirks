@@ -41,6 +41,9 @@ const COMMANDS = new Set<Command>([
   "release",
 ]);
 
+// Runtime view of the parser table for the skill validator cross-check.
+export const TASK_CLI_COMMANDS: ReadonlySet<string> = COMMANDS;
+
 const MUTATION_COMMANDS = new Set<MutationCommand>([
   "propose",
   "claim",

@@ -36,6 +36,9 @@ const COMMANDS = new Set<CampaignCommand>([
   "ui",
 ]);
 
+// Runtime view of the parser table for the skill validator cross-check.
+export const CAMPAIGN_CLI_COMMANDS: ReadonlySet<string> = COMMANDS;
+
 function takeValue(argv: readonly string[], index: number, flag: string): string {
   const value = argv[index + 1];
   if (value === undefined || value.startsWith("-")) {
