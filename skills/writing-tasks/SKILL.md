@@ -10,14 +10,14 @@ Use this skill when proposing or refining tasks in a Quirks repository.
 ## Required workflow
 
 1. Run `quirks-tasks validate` before proposing any task change.
-2. Use semantic `quirks-tasks propose` (or the documented CLI path)—never mutate `.quirks/tasks.json` or provider task files directly.
+2. Create a repository-relative proposal request under `.quirks/requests/` and run `quirks-tasks propose --request-file .quirks/requests/propose-TASK_ID.json --json`—never mutate `.quirks/tasks.json` or provider task files directly.
 3. Validate `dependsOn`, design gates, and `workflowPolicy.skills` alignment for every proposal.
 4. Reject tasks that broaden campaign scope or weaken design-gate defaults.
 5. Submit only compact candidate references for provenance—never embed spec or plan bodies in task records.
 
 ## Reference
 
-See `references/workflow-policy.md` for design-gate and dependency checks.
+See `references/workflow-policy.md` for design-gate and dependency checks, and `references/task-mutation-requests.md` for the transient request-file schema, operation match, and acknowledgement cleanup rule.
 
 ## Prohibited patterns
 

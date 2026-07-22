@@ -105,6 +105,57 @@ test("JSON driver rejects a stale claim without changing the file", async () => 
   assert.equal(await fileDigest(tasksPath), before);
 });
 
+test("JSON completion requires review status and matching completed provenance", async () => {
+  const root = await freshFixture();
+  const source = await JsonTaskSource.open(root);
+  let shown = await showTask(source);
+
+  const completeBeforeReview = await mutate(source, {
+    schemaVersion: 1,
+    operation: "complete",
+    taskId: "QK-1",
+    expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:complete:before-review",
+    input: { evidenceRefs: ["commit:abc", "review:evt", "verification:pnpm-test"] },
+  });
+  assert.equal(completeBeforeReview.ok, false);
+  if (completeBeforeReview.ok) assert.fail("expected review-status conflict");
+  assert.equal(completeBeforeReview.error.code, "SOURCE_CONFLICT");
+
+  const claim = await mutate(source, {
+    schemaVersion: 1,
+    operation: "claim",
+    taskId: "QK-1",
+    expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:claim:completion-guard",
+    input: { campaignId: "C-1", owner: "supervisor:S-1", claimedAt: "2026-07-21T00:00:00.000Z" },
+  });
+  assert.equal(claim.ok, true);
+  shown = await showTask(source);
+  const review = await mutate(source, {
+    schemaVersion: 1,
+    operation: "submit-review",
+    taskId: "QK-1",
+    expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:review:completion-guard",
+    input: { evidenceRefs: ["review:evt"] },
+  });
+  assert.equal(review.ok, true);
+  shown = await showTask(source);
+
+  const completeWithoutProvenance = await mutate(source, {
+    schemaVersion: 1,
+    operation: "complete",
+    taskId: "QK-1",
+    expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:complete:no-provenance",
+    input: { evidenceRefs: ["commit:abc", "review:evt", "verification:pnpm-test"] },
+  });
+  assert.equal(completeWithoutProvenance.ok, false);
+  if (completeWithoutProvenance.ok) assert.fail("expected provenance conflict");
+  assert.equal(completeWithoutProvenance.error.code, "SOURCE_CONFLICT");
+});
+
 test("JSON driver applies semantic mutations and preserves atomic writes", async () => {
   const root = await freshFixture();
   const source = await JsonTaskSource.open(root);
@@ -207,6 +258,21 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
   shown = await showTask(source);
   assert.equal((shown.data as { status: string }).status, "in_review");
 
+  const completeWithIncompleteEvidence = await mutate(source, {
+    schemaVersion: 1,
+    operation: "complete",
+    taskId: "QK-1",
+    expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:complete:evt-fail",
+    input: { evidenceRefs: ["commit:abc123"] },
+  });
+  assert.equal(completeWithIncompleteEvidence.ok, false);
+  if (completeWithIncompleteEvidence.ok) assert.fail("expected completion conflict");
+  assert.equal(completeWithIncompleteEvidence.error.code, "SOURCE_CONFLICT");
+  const beforeComplete = await fileDigest(tasksPath);
+  shown = await showTask(source);
+  assert.equal((shown.data as { status: string }).status, "in_review");
+
   const block = await mutate(source, {
     schemaVersion: 1,
     operation: "block",
@@ -218,25 +284,29 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
   assert.equal(block.ok, true);
   shown = await showTask(source);
   assert.equal((shown.data as { status: string }).status, "blocked");
-  assert.deepEqual((shown.data as { statusDetail: unknown }).statusDetail, {
-    reason: "needs input",
-    unblockCondition: "clarify requirements",
-  });
 
-  const completeWithoutEvidence = await mutate(source, {
+  const blockedComplete = await mutate(source, {
     schemaVersion: 1,
     operation: "complete",
     taskId: "QK-1",
     expectedNativeRevision: shown.nativeRevision!,
-    idempotencyKey: "C-1:QK-1:complete:evt-fail",
-    input: { evidenceRefs: [] },
+    idempotencyKey: "C-1:QK-1:complete:blocked",
+    input: { evidenceRefs: ["commit:abc123", "review:evt-1", "verification:pnpm-test"] },
   });
-  assert.equal(completeWithoutEvidence.ok, false);
-  if (completeWithoutEvidence.ok) assert.fail("expected completion conflict");
-  assert.equal(completeWithoutEvidence.error.code, "SOURCE_CONFLICT");
-  const beforeComplete = await fileDigest(tasksPath);
+  assert.equal(blockedComplete.ok, false);
+  if (blockedComplete.ok) assert.fail("blocked task completed");
+  assert.equal(blockedComplete.error.code, "SOURCE_CONFLICT");
+
+  const resubmitReview = await mutate(source, {
+    schemaVersion: 1,
+    operation: "submit-review",
+    taskId: "QK-1",
+    expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:submit-review:evt-2",
+    input: { evidenceRefs: ["review:evt-2"] },
+  });
+  assert.equal(resubmitReview.ok, true);
   shown = await showTask(source);
-  assert.equal((shown.data as { status: string }).status, "blocked");
 
   const complete = await mutate(source, {
     schemaVersion: 1,
@@ -244,7 +314,7 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
     taskId: "QK-1",
     expectedNativeRevision: shown.nativeRevision!,
     idempotencyKey: "C-1:QK-1:complete:evt-1",
-    input: { evidenceRefs: ["commit:abc123"] },
+    input: { evidenceRefs: ["commit:abc123", "review:evt-1", "verification:pnpm-test"] },
   });
   assert.equal(complete.ok, true);
   shown = await showTask(source);

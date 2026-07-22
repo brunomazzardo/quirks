@@ -3,6 +3,7 @@ import path from "node:path";
 import { QuirksError } from "../core/errors.js";
 import { loadProjectContext } from "../project/config.js";
 import { createTaskSource } from "../task-source/factory.js";
+import { validateSchema } from "../schema/validate.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { SyncOutbox } from "../sync/outbox.js";
 import { reconcileMutation, reconcilePending } from "../sync/reconciler.js";
@@ -29,7 +30,7 @@ async function readCapabilities(source: TaskSource): Promise<TaskSourceCapabilit
   if (!response.ok || response.operation !== "capabilities") {
     throw new QuirksError("SOURCE_UNAVAILABLE", "Task source capabilities are unavailable");
   }
-  return response.data as TaskSourceCapabilities;
+  return validateSchema<TaskSourceCapabilities>("task-source-capabilities-v1", response.data);
 }
 
 function assertOkResponse<O extends TaskSourceResponse["operation"]>(
@@ -71,6 +72,17 @@ function campaignIdFromMutation(request: MutationRequest): string {
   return campaignId;
 }
 
+function compactMutationResult(intent: Awaited<ReturnType<typeof reconcileMutation>>) {
+  const acknowledgement = intent.acknowledgement;
+  const nativeRevision = acknowledgement?.ok ? acknowledgement.nativeRevision : undefined;
+  return {
+    state: intent.state,
+    operation: intent.operation,
+    taskId: intent.taskId,
+    ...(nativeRevision ? { nativeRevision } : {}),
+  };
+}
+
 function withSource<T extends Record<string, unknown>>(
   driver: string,
   task: T,
@@ -104,6 +116,9 @@ async function run(): Promise<number> {
     const counts = await syncCounts(outbox);
 
     if (isMutationCommand(parsed.command)) {
+      if (!capabilities.operations.includes(parsed.command)) {
+        throw new QuirksError("PROTOCOL_VIOLATION", `Task source does not support ${parsed.command}`);
+      }
       const request = await readMutationRequest(
         context.root,
         parsed.requestFile!,
@@ -122,7 +137,7 @@ async function run(): Promise<number> {
         ok,
         driver,
         operation: request.operation,
-        response,
+        mutation: compactMutationResult(response),
         pending: after.pending,
         conflicts: after.conflicts,
       };

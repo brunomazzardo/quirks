@@ -80,10 +80,23 @@ export function applyComplete(
   request: Extract<MutationRequest, { operation: "complete" }>,
   evidenceMap: Readonly<Partial<Record<CompletionBoundary, readonly EvidenceKind[]>>>,
 ): MutationFailure<"complete"> | void {
+  if (task.status !== "in_review") {
+    return failure("complete", "SOURCE_CONFLICT", "Task must be in review before completion");
+  }
   const boundary = (task.execution as { completionBoundary: CompletionBoundary }).completionBoundary;
   const requiredKinds = evidenceMap[boundary] ?? [];
-  if (requiredKinds.length > 0 && request.input.evidenceRefs.length === 0) {
-    return failure("complete", "SOURCE_CONFLICT", `Completion requires evidence for boundary ${boundary}`);
+  const evidenceKinds = new Set(
+    request.input.evidenceRefs.flatMap((reference) => {
+      const separator = reference.indexOf(":");
+      return separator > 0 && reference.slice(separator + 1).length > 0 ? [reference.slice(0, separator)] : [];
+    }),
+  );
+  if (requiredKinds.some((kind) => !evidenceKinds.has(kind))) {
+    return failure("complete", "SOURCE_CONFLICT", `Completion requires ${boundary} evidence kinds`);
+  }
+  const iterations = (task.provenance as { iterations?: Array<Record<string, unknown>> }).iterations ?? [];
+  if (!iterations.some((iteration) => iteration.outcome === "completed" && iteration.completionBoundary === boundary)) {
+    return failure("complete", "SOURCE_CONFLICT", `Completion requires completed provenance for boundary ${boundary}`);
   }
   task.status = "completed";
   task.coordination = null;

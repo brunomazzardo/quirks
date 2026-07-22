@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { open, realpath } from "node:fs/promises";
 import path from "node:path";
 import { QuirksError } from "../core/errors.js";
 import { assertRepositoryRelativePath } from "../core/repository-path.js";
@@ -35,9 +35,28 @@ export async function readMutationRequest(
     throw new CliParseError("request file must remain inside the repository");
   }
 
-  const raw = await readFile(resolved, "utf8");
-  if (Buffer.byteLength(raw, "utf8") > maxRequestBytes) {
-    throw new QuirksError("SCHEMA_INVALID", `Request file exceeds ${maxRequestBytes} bytes`);
+  const file = await open(resolved, "r");
+  let raw: string;
+  try {
+    const metadata = await file.stat();
+    if (!metadata.isFile()) {
+      throw new QuirksError("SCHEMA_INVALID", "Request path must be a regular file");
+    }
+    if (metadata.size > maxRequestBytes) {
+      throw new QuirksError("SCHEMA_INVALID", `Request file exceeds ${maxRequestBytes} bytes`);
+    }
+    const buffer = Buffer.allocUnsafe(maxRequestBytes + 1);
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+    if (bytesRead > maxRequestBytes) {
+      throw new QuirksError("SCHEMA_INVALID", `Request file exceeds ${maxRequestBytes} bytes`);
+    }
+    try {
+      raw = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, bytesRead));
+    } catch {
+      throw new QuirksError("SCHEMA_INVALID", "Request file is not valid UTF-8");
+    }
+  } finally {
+    await file.close();
   }
 
   let value: unknown;

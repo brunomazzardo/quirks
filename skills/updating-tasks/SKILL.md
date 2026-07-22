@@ -10,7 +10,7 @@ Use this skill when syncing or mutating task status through the selected task so
 ## Required workflow
 
 1. Run `quirks-tasks sync` (or equivalent refresh) before any native mutation.
-2. Pass expected native revision on every mutating CLI call.
+2. Pass expected native revision and a repository-relative `--request-file .quirks/requests/MUTATION-TASK_ID.json` on every mutating CLI call.
 3. Report honest `pending_sync` state—never claim completion while sync is outstanding.
 4. Pause or block when the canonical source disagrees with local projections.
 5. Never silently merge provider metadata over canonical status.
@@ -18,7 +18,9 @@ Use this skill when syncing or mutating task status through the selected task so
 
 ## Reference
 
-See `references/sync-conflicts.md` for conflict handling.
+See `references/sync-conflicts.md` for conflict handling, and `references/task-mutation-requests.md` for request schema, matching operations, idempotency keys, and cleanup after acknowledgement.
+
+Examples: `quirks-tasks claim --request-file .quirks/requests/claim-QK-123.json --json`; `quirks-tasks block --request-file .quirks/requests/block-QK-123.json --json`; `quirks-tasks release --request-file .quirks/requests/release-QK-123.json --json`.
 
 ## Prohibited patterns
 
