@@ -17,3 +17,10 @@
 ## Provenance
 
 - Record compact `sourceRefs` only—never paste plan or spec bodies into task JSON.
+
+## Plan partition boundaries
+
+- Partition committed plans by independently schedulable or reviewable boundaries, never one queue task per plan heading.
+- Each materialized task carries one immutable plan `sourceRefs` entry per numbered plan task it owns, pinned to the exact plan commit.
+- No two proposals may claim the same numbered plan task in the same plan.
+- Materialization is complete only when every created task has been read back, its refs and workflow verified, and its ID returned to the operator.

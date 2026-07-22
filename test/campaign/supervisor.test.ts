@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,7 +8,9 @@ import { consumeApprovalToken, createApprovalChallenge } from "../../src/campaig
 import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.js";
 import { CampaignSupervisor, type CampaignSupervisorContext } from "../../src/campaign/supervisor.js";
 import { CampaignStore } from "../../src/campaign/store.js";
+import { computeInstructionsHash } from "../../src/campaign/task-brief.js";
 import { SessionRegistry } from "../../src/runner/sessions.js";
+import type { RunnerProfile } from "../../src/runner/types.js";
 import { RepositoryLock } from "../../src/state/repository-lock.js";
 import { SyncOutbox } from "../../src/sync/outbox.js";
 import type { CampaignEnvelope } from "../../src/campaign/types.js";
@@ -26,7 +28,31 @@ interface TestContextOptions {
   source?: FakeTaskSource;
   runner?: RunnerPort;
   worktree?: FakeWorktreePort;
+  workflowSkills?: Readonly<Record<string, string>>;
+  staleInstructionsHash?: boolean;
+  profiles?: readonly RunnerProfile[];
   now?: () => string;
+}
+
+function supervisorProfile(
+  profileId: string,
+  runnerType: RunnerProfile["runnerType"],
+  model: string,
+): RunnerProfile {
+  return {
+    schemaVersion: 1,
+    profileId,
+    runnerType,
+    executable: "bin/runner",
+    accountAlias: "acct",
+    quotaPoolId: "default",
+    tier: "principal",
+    model,
+    effort: "standard",
+    capabilities: [],
+    wallClockMs: 3_600_000,
+    redactionRules: [],
+  };
 }
 
 async function testContext(options: TestContextOptions = {}): Promise<CampaignSupervisorContext> {
@@ -45,6 +71,15 @@ async function testContext(options: TestContextOptions = {}): Promise<CampaignSu
     taskIds: [...taskIds],
     taskRevisions,
     ...(options.budgets ? { budgets: options.budgets } : {}),
+    ...(options.staleInstructionsHash
+      ? {}
+      : {
+          hashes: {
+            config: "sha256:cfg",
+            workflowPolicy: "sha256:wf",
+            instructions: computeInstructionsHash(options.workflowSkills ?? {}),
+          },
+        }),
     routing: options.routing ?? {
       "QK-1": {
         primary: { profileId: "cursor-standard", tier: "standard", effort: "standard" },
@@ -69,6 +104,10 @@ async function testContext(options: TestContextOptions = {}): Promise<CampaignSu
     worktree: options.worktree ?? new FakeWorktreePort(),
     lockPath: path.join(lockDir, "repository.lock"),
     repositoryRoot,
+    workflowSkills: options.workflowSkills ?? {},
+    ...(options.profiles
+      ? { profileIndex: new Map(options.profiles.map((profile) => [profile.profileId, profile])) }
+      : {}),
     ...(options.now ? { now: options.now } : {}),
   };
 }
@@ -836,4 +875,92 @@ test("builds scheduler with real dependsOn and parallelismKeys", async () => {
   const status = await supervisor.status();
   assert.equal(status.dispatchedJobs[0]?.taskId, "QK-1");
   assert.equal(status.dispatchedJobs.some((job) => job.taskId === "QK-2"), false);
+});
+
+test("reviewer gets a distinct read-only brief bound to the candidate commit", async () => {
+  const candidateCommit = "b".repeat(40);
+  const source = new FakeTaskSource();
+  const runner = new FakeRunnerPort();
+  const worktree = new FakeWorktreePort();
+  worktree.seed("QK-1", {
+    path: "/tmp/quirks-worktree/QK-1",
+    branch: "quirks/task/QK-1",
+    modifiedFiles: [],
+    commit: candidateCommit,
+  });
+  const context = await testContext({
+    source,
+    runner,
+    worktree,
+    workflowSkills: { execute: "executing-tasks" },
+    profiles: [
+      supervisorProfile("codex-implementer", "codex", "gpt-5.6-sol"),
+      supervisorProfile("claude-reviewer", "claude", "opus-4.8"),
+    ],
+    routing: {
+      "QK-1": {
+        primary: { profileId: "codex-implementer", tier: "standard", effort: "standard" },
+        fallbacks: [{ profileId: "claude-reviewer", tier: "high", effort: "standard" }],
+      },
+    },
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.startApproved();
+
+  const [implementer, reviewer] = runner.dispatches;
+  assert.ok(implementer && reviewer, "expected implementer and reviewer dispatches");
+  assert.notEqual(implementer.briefPath, reviewer.briefPath);
+
+  const implementerBrief = await readFile(implementer.briefPath, "utf8");
+  assert.notEqual(implementerBrief.trim(), "# QK-1", "ID-only briefs are prohibited");
+  assert.match(implementerBrief, /^Objective:/m);
+  assert.match(implementerBrief, /executing-tasks/);
+
+  const reviewerBrief = await readFile(reviewer.briefPath, "utf8");
+  assert.match(reviewerBrief, /Do not modify code/);
+  assert.match(reviewerBrief, new RegExp(candidateCommit));
+  assert.match(reviewerBrief, /executing-tasks/);
+  assert.notEqual(implementerBrief, reviewerBrief);
+});
+
+test("rejects instructions drift between the envelope and configured workflow skills", async () => {
+  const context = await testContext({
+    workflowSkills: { execute: "executing-tasks" },
+    staleInstructionsHash: true,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /INSTRUCTIONS_DRIFT/);
+});
+
+test("refuses dispatch when workflow skills are absent instead of skipping the freeze check", async () => {
+  const context = await testContext();
+  // Simulate a JS caller that bypasses the compile-time requirement.
+  delete (context as { workflowSkills?: unknown }).workflowSkills;
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /INSTRUCTIONS_UNVERIFIED/);
+  const status = await supervisor.status();
+  assert.deepEqual(status.claimedTaskIds, [], "no task may be claimed with unverified instructions");
+  assert.deepEqual(status.dispatchedJobs, [], "no brief may be dispatched with unverified instructions");
+});
+
+test("TASK_REVISION_DRIFT: a stale approved revision refuses dispatch before any claim", async () => {
+  const source = new FakeTaskSource();
+  const runner = new FakeRunnerPort();
+  const context = await testContext({
+    source,
+    runner,
+    taskRevisions: { "QK-1": `sha256:${"5".repeat(64)}` },
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /TASK_REVISION_DRIFT/);
+
+  const status = await supervisor.status();
+  assert.deepEqual(status.claimedTaskIds, [], "drift must refuse before any claim mutation");
+  assert.deepEqual(runner.dispatches, [], "drift must refuse before any dispatch");
+  const shown = await source.execute({ schemaVersion: 1, operation: "show", taskId: "QK-1", input: {} });
+  assert.equal(shown.ok && (shown.data as { status: string }).status, "ready", "task stays unclaimed at the source");
 });

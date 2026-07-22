@@ -1,4 +1,5 @@
 import { sha256 } from "../../src/core/hash.js";
+import { validateSchema } from "../../src/schema/validate.js";
 import {
   assertMutationIdentity,
   MAX_PROTOCOL_BYTES,
@@ -35,6 +36,7 @@ type StoredTask = {
 
 const SUPPORTED_OPERATIONS: readonly TaskSourceOperation[] = [
   "capabilities",
+  "validate",
   "list",
   "show",
   "claim",
@@ -218,8 +220,59 @@ export class FakeTaskSource implements TaskSource {
           provenance.iterations.push(request.input.iteration as Record<string, unknown>);
         });
       case "propose":
-        return this.applyMutation(request, () => undefined);
+        return this.applyPropose(request);
     }
+  }
+
+  private applyPropose(request: Extract<MutationRequest, { operation: "propose" }>): TaskSourceResponse {
+    const requestHash = mutationRequestHash(request);
+    const cached = this.idempotency.get(request.idempotencyKey);
+    if (cached) {
+      if (cached.requestHash !== requestHash) {
+        return failure("propose", "SOURCE_CONFLICT", "Idempotency key reused with different request");
+      }
+      return cached.response;
+    }
+
+    const candidate = request.input.task;
+    if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
+      return failure("propose", "SCHEMA_INVALID", "Proposed task must be an object");
+    }
+    const proposed = candidate as Partial<StoredTask> & { id?: unknown; status?: unknown };
+    if (typeof proposed.id !== "string" || proposed.id !== request.taskId) {
+      return failure("propose", "SOURCE_CONFLICT", "Proposed task id must match request taskId");
+    }
+    if (proposed.status !== "proposed" && proposed.status !== "ready") {
+      return failure("propose", "SOURCE_CONFLICT", "Proposed task must start proposed or ready");
+    }
+    if (this.tasks.has(proposed.id)) {
+      return failure("propose", "SOURCE_CONFLICT", `Task ${proposed.id} already exists`);
+    }
+
+    // Match the real JSON adapter's applyPropose: the whole envelope including
+    // the raw candidate must satisfy json-task-file-v1 before it is stored.
+    try {
+      validateSchema("json-task-file-v1", {
+        schemaVersion: 1,
+        tasks: [...this.tasks.values(), proposed],
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Proposed task violates json-task-file-v1";
+      return failure("propose", "SCHEMA_INVALID", message);
+    }
+
+    const stored: StoredTask = { ...baseTask(), ...(proposed as Partial<StoredTask>), id: proposed.id };
+    this.tasks.set(stored.id, stored);
+    const data = normalizedTask(stored);
+    const response = {
+      schemaVersion: 1,
+      operation: "propose",
+      ok: true,
+      nativeRevision: data.nativeRevision,
+      data,
+    } satisfies TaskSourceResponse;
+    this.idempotency.set(request.idempotencyKey, { requestHash, response });
+    return response;
   }
 
   private applyMutation(

@@ -14,6 +14,7 @@ import { SyncOutbox } from "../../src/sync/outbox.js";
 import { validateSkills } from "../../scripts/validate-skills.mjs";
 import { FakeTaskSource } from "../task-source/fake-source.js";
 import { campaignEnvelope } from "../campaign/support.js";
+import { computeInstructionsHash } from "../../src/campaign/task-brief.js";
 import { FakeRunnerPort } from "../campaign/support/fake-runner-port.js";
 
 async function supervisorWithGitWorktrees(): Promise<{
@@ -43,11 +44,17 @@ async function supervisorWithGitWorktrees(): Promise<{
   const { stdout: headStdout } = await git("rev-parse", "HEAD");
   const head = headStdout.toString().trim();
 
+  const source = new FakeTaskSource();
   const incomplete = campaignEnvelope({
     campaignId: "cmp-wave3",
     repositoryId: "sha256:wave3-repo",
     taskIds: ["QK-1"],
-    taskRevisions: { "QK-1": "sha256:rev" },
+    taskRevisions: { "QK-1": source.taskRevision("QK-1") },
+    hashes: {
+      config: "sha256:cfg",
+      workflowPolicy: "sha256:wf",
+      instructions: computeInstructionsHash({}),
+    },
     git: {
       baseCommit: head,
       campaignBranch: "quirks/cmp-wave3/integration",
@@ -84,7 +91,6 @@ async function supervisorWithGitWorktrees(): Promise<{
     campaignBranch: envelope.git.campaignBranch,
   });
 
-  const source = new FakeTaskSource();
   const outbox = SyncOutbox.open(store.syncOutboxFile);
   const supervisor = await CampaignSupervisor.open({
     store,
@@ -94,6 +100,7 @@ async function supervisorWithGitWorktrees(): Promise<{
     worktree: manager,
     lockPath: path.join(lockDir, "repository.lock"),
     repositoryRoot,
+    workflowSkills: {},
   });
 
   return { supervisor, store, manager, stateDir, lockPath: path.join(lockDir, "repository.lock") };

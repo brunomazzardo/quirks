@@ -6,6 +6,7 @@ import test from "node:test";
 import { consumeApprovalToken, createApprovalChallenge } from "../../src/campaign/approval.js";
 import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.js";
 import { recoverCampaign } from "../../src/campaign/recovery.js";
+import { computeInstructionsHash } from "../../src/campaign/task-brief.js";
 import { CampaignSupervisor } from "../../src/campaign/supervisor.js";
 import { CampaignStore } from "../../src/campaign/store.js";
 import { SyncOutbox } from "../../src/sync/outbox.js";
@@ -19,10 +20,16 @@ async function crashedStoreFixture() {
   const lockDir = await mkdtemp(path.join(os.tmpdir(), "quirks-recovery-lock-"));
   const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), "quirks-recovery-repo-"));
 
+  const source = new FakeTaskSource();
   const incomplete = campaignEnvelope({
     campaignId: "cmp-recovery",
     taskIds: ["QK-1"],
-    taskRevisions: { "QK-1": "sha256:rev" },
+    taskRevisions: { "QK-1": source.taskRevision("QK-1") },
+    hashes: {
+      config: "sha256:cfg",
+      workflowPolicy: "sha256:wf",
+      instructions: computeInstructionsHash({}),
+    },
     routing: {
       "QK-1": {
         primary: { profileId: "cursor-standard", tier: "standard", effort: "standard" },
@@ -37,7 +44,6 @@ async function crashedStoreFixture() {
     campaignId: envelope.campaignId,
     envelope,
   });
-  const source = new FakeTaskSource();
   const outbox = SyncOutbox.open(store.syncOutboxFile);
   const context = {
     store,
@@ -47,6 +53,7 @@ async function crashedStoreFixture() {
     worktree: new FakeWorktreePort(),
     lockPath: path.join(lockDir, "repository.lock"),
     repositoryRoot,
+    workflowSkills: {},
   };
 
   const challenge = createApprovalChallenge({

@@ -8,6 +8,15 @@ import { classifyFailure, type FailureClass } from "./failures.js";
 import { buildExecutionPlan, selectRunnableTasks, type ExecutionPlan } from "./scheduler.js";
 import type { RunnerPort, WorktreePort, GitWorktreePort } from "./ports.js";
 import type { CampaignStore } from "./store.js";
+import {
+  buildTaskBrief,
+  briefTaskProjection,
+  computeInstructionsHash,
+  resolveTaskPlanOutline,
+  taskFactsFromShow,
+  type AuthoritativeTaskFacts,
+  type NormalizedTaskRecord,
+} from "./task-brief.js";
 import type { CampaignApproval, CampaignEnvelope, CampaignStatus } from "./types.js";
 import type { RunnerJobResult, RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
@@ -28,6 +37,13 @@ export interface CampaignSupervisorContext {
   lockPath: string;
   repositoryRoot: string;
   profileIndex?: ReadonlyMap<string, RunnerProfile>;
+  /**
+   * Configured workflow skills frozen into `envelope.hashes.instructions` at
+   * preflight. Required: prepareRun reassembles the hash and rejects drift
+   * before any claim or dispatch, and refuses to run when the skills are
+   * absent — the freeze check is never silently skipped.
+   */
+  workflowSkills: Readonly<Record<string, string>>;
   now?: () => string;
 }
 
@@ -57,12 +73,8 @@ function isGitWorktreePort(worktree: WorktreePort): worktree is GitWorktreePort 
   return typeof (worktree as GitWorktreePort).prepareReviewWorktree === "function";
 }
 
-type NormalizedSupervisorTask = {
-  id: string;
-  status: string;
-  dependsOn: readonly string[];
+type NormalizedSupervisorTask = AuthoritativeTaskFacts & {
   parallelismKeys: readonly string[];
-  nativeRevision: string;
 };
 
 interface PreparedRun {
@@ -125,6 +137,7 @@ async function loadNormalizedTask(
   source: TaskSource,
   taskId: string,
   envelope: CampaignEnvelope,
+  options: { allowClaimedByCampaign?: boolean } = {},
 ): Promise<NormalizedSupervisorTask> {
   const show = await source.execute({
     schemaVersion: 1,
@@ -135,22 +148,27 @@ async function loadNormalizedTask(
   if (!show.ok || show.operation !== "show") {
     throw new QuirksError("PROTOCOL_VIOLATION", `Cannot show task ${taskId}`);
   }
-  const data = show.data as {
-    status: string;
-    dependsOn: readonly string[];
-    execution: { parallelismKeys?: readonly string[] };
-  };
+  const data = show.data as NormalizedTaskRecord;
   const nativeRevision = show.nativeRevision ?? envelope.taskRevisions[taskId];
   if (!nativeRevision) {
     throw new QuirksError("PROTOCOL_VIOLATION", `Missing revision for task ${taskId}`);
   }
-  return {
-    id: taskId,
-    status: data.status,
-    dependsOn: data.dependsOn,
-    parallelismKeys: data.execution.parallelismKeys ?? [],
-    nativeRevision,
-  };
+  const facts = taskFactsFromShow(taskId, data, nativeRevision);
+  const approvedRevision = envelope.taskRevisions[taskId];
+  const claimedByThisCampaign =
+    options.allowClaimedByCampaign === true && facts.coordination?.campaignId === envelope.campaignId;
+  if (
+    facts.status !== "completed" &&
+    !claimedByThisCampaign &&
+    approvedRevision !== undefined &&
+    nativeRevision !== approvedRevision
+  ) {
+    throw new QuirksError(
+      "PROTOCOL_VIOLATION",
+      `TASK_REVISION_DRIFT: task ${taskId} changed after approval; re-run preflight`,
+    );
+  }
+  return { ...facts, parallelismKeys: data.execution.parallelismKeys ?? [] };
 }
 
 function elapsedMs(startedAt: string, finishedAt: string): number {
@@ -356,6 +374,22 @@ export class CampaignSupervisor {
       throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_REQUIRED");
     }
 
+    if (this.context.workflowSkills === undefined) {
+      // Fail closed for JS callers that bypass the compile-time requirement:
+      // dispatch without the configured skills would skip the freeze check.
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        "INSTRUCTIONS_UNVERIFIED: configured workflow skills are required to verify the frozen prompt instructions",
+      );
+    }
+    const reassembled = computeInstructionsHash(this.context.workflowSkills);
+    if (reassembled !== envelope.hashes.instructions) {
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        "INSTRUCTIONS_DRIFT: prompt instructions changed after approval; re-run preflight",
+      );
+    }
+
     this.lockHandle = await RepositoryLock.acquire(this.context.lockPath, {
       campaignId: envelope.campaignId,
     });
@@ -453,12 +487,39 @@ export class CampaignSupervisor {
   ): Promise<TaskDispatchOutcome> {
     const { envelope, sessions } = run;
     const startedAt = nowIso(this.context);
+    // Briefs bind the task exactly as the worker will find it: re-shown after
+    // this campaign's claim. ID-only briefs are prohibited; every role receives
+    // an authoritative rendered brief from the shared prompt kernel.
+    const taskDetail = await loadNormalizedTask(this.context.source, taskId, envelope, {
+      allowClaimedByCampaign: true,
+    });
+    const planOutline = await resolveTaskPlanOutline(this.context.repositoryRoot, taskDetail);
+    const briefProfiles = [...(this.context.profileIndex?.values() ?? [])];
+    const briefSkills = this.context.workflowSkills;
+    const campaignProjection = {
+      campaignId: envelope.campaignId,
+      state: "running" as const,
+      approved: true,
+      envelopeDigest: envelope.digest,
+    };
+
     const worktree = await this.context.worktree.prepareTaskWorktree(taskId, envelope.git.baseCommit);
     const route = routeForTask(envelope, taskId, "implementer", this.context.profileIndex);
     const jobId = `${envelope.campaignId}:${taskId}:implementer:${attempt}`;
     const briefPath = path.join(this.context.repositoryRoot, ".quirks", "briefs", `${taskId}.md`);
     await mkdir(path.dirname(briefPath), { recursive: true });
-    await writeFile(briefPath, `# ${taskId}\n`, "utf8");
+    const implementerBrief = await buildTaskBrief({
+      role: "implementer",
+      repositoryId: envelope.repositoryId,
+      campaign: campaignProjection,
+      task: briefTaskProjection(taskDetail),
+      ...(planOutline ? { plan: planOutline } : {}),
+      git: { baseCommit: envelope.git.baseCommit },
+      skills: briefSkills,
+      profiles: briefProfiles,
+      ...(this.context.profileIndex?.has(route.profileId) ? { implementerProfileId: route.profileId } : {}),
+    });
+    await writeFile(briefPath, implementerBrief, "utf8");
 
     const result = await this.context.runner.dispatch({
       jobId,
@@ -503,12 +564,32 @@ export class CampaignSupervisor {
       const reviewWorktree = await this.context.worktree.prepareReviewWorktree(taskId, candidateCommit);
       reviewerRoute = routeForTask(envelope, taskId, "reviewer", this.context.profileIndex);
       const reviewJobId = `${envelope.campaignId}:${taskId}:reviewer:${attempt}`;
+      // The reviewer brief is distinct from the implementer brief: read-only
+      // authority, bound to the candidate commit, never a reused briefPath.
+      const reviewerBriefPath = path.join(
+        this.context.repositoryRoot,
+        ".quirks",
+        "briefs",
+        `${taskId}.reviewer.md`,
+      );
+      const reviewerBrief = await buildTaskBrief({
+        role: "reviewer",
+        repositoryId: envelope.repositoryId,
+        campaign: campaignProjection,
+        task: briefTaskProjection(taskDetail),
+        ...(planOutline ? { plan: planOutline } : {}),
+        git: { baseCommit: envelope.git.baseCommit, candidateCommit },
+        skills: briefSkills,
+        profiles: briefProfiles,
+        ...(this.context.profileIndex?.has(route.profileId) ? { implementerProfileId: route.profileId } : {}),
+      });
+      await writeFile(reviewerBriefPath, reviewerBrief, "utf8");
       reviewer = await this.context.runner.dispatch({
         jobId: reviewJobId,
         taskId,
         role: "reviewer",
         route: reviewerRoute,
-        briefPath,
+        briefPath: reviewerBriefPath,
         worktreePath: reviewWorktree.path,
       });
 
@@ -659,7 +740,9 @@ export class CampaignSupervisor {
     outcome: TaskDispatchOutcome,
     iterationOutcome: "completed" | "failed",
   ): Promise<void> {
-    const task = await loadNormalizedTask(this.context.source, outcome.taskId, run.envelope);
+    const task = await loadNormalizedTask(this.context.source, outcome.taskId, run.envelope, {
+      allowClaimedByCampaign: true,
+    });
     const iterationId = `${run.envelope.campaignId}.${outcome.taskId}.${outcome.attempt}`
       .replaceAll(":", "-")
       .slice(0, 128);

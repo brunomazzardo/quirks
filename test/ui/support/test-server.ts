@@ -10,6 +10,7 @@ import { createUiServer } from "../../../src/ui/server.js";
 import { FakeApprovalWritePort } from "./fake-approval-write.js";
 import { fakeCampaignReadPort } from "./fake-campaigns.js";
 import { fakePreflightPort } from "./fake-preflight.js";
+import { fakePromptReadPort } from "./fake-prompts.js";
 
 export type TestCampaign = { repositoryId: string; envelopeDigest: string; status?: CampaignStatus };
 
@@ -57,6 +58,17 @@ export async function createTestUiServer(options?: {
     getProjectContext: () => loadProjectContext(projectRoot, { mode: "inspection" }),
     preflightRead: fakePreflightPort(options?.preflightProposals),
     campaignRead: fakeCampaignReadPort(),
+    promptRead: fakePromptReadPort(),
+    taskHistory: {
+      getHistory: async (taskId: string) => ({
+        schemaVersion: 1,
+        taskId,
+        entries: [],
+        totalIterations: 0,
+        partialCount: 0,
+        supersededCount: 0,
+      }),
+    },
     clientScript,
     onRead: () => {
       readPortCalls += 1;

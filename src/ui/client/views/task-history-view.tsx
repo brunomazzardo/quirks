@@ -1,8 +1,10 @@
 import { createColumnHelper } from "@tanstack/react-table";
 import type { Identity } from "../../../provenance/types.js";
 import type { UiArtifactAction, UiArtifactAvailability, UiTaskHistoryV1 } from "../../read-models/task-history.js";
+import type { UiPromptSetV1 } from "../../../prompt/types.js";
 import { classifyUrl } from "../../security/url-policy.js";
 import { DataTable } from "../components/data-table.js";
+import { PromptActions } from "../components/prompt-actions.js";
 import { StatusBadge, type StatusTone } from "../components/status-badge.js";
 
 type ArtifactRef = UiTaskHistoryV1["iterations"][number]["artifactRefs"][number];
@@ -130,9 +132,11 @@ const columns = [
 
 export interface TaskHistoryViewProps {
   projection: UiTaskHistoryV1;
+  /** State-valid copy actions for this task, when the server offers any. */
+  promptSet?: UiPromptSetV1;
 }
 
-export function TaskHistoryView({ projection }: TaskHistoryViewProps) {
+export function TaskHistoryView({ projection, promptSet }: TaskHistoryViewProps) {
   const rows: HistoryRow[] = projection.iterations.flatMap((iteration) =>
     iteration.artifactRefs.map((artifactRef, index) => ({
       rowId: `${iteration.id}#${index}`,
@@ -145,6 +149,7 @@ export function TaskHistoryView({ projection }: TaskHistoryViewProps) {
   return (
     <section aria-labelledby="task-history-heading">
       <h1 id="task-history-heading">Task history: {projection.taskId}</h1>
+      {promptSet ? <PromptActions promptSet={promptSet} /> : null}
       <DataTable
         caption={`History for ${projection.taskId}`}
         columns={columns}

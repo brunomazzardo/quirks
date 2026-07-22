@@ -23,6 +23,19 @@ const SUMMARIES: UiCampaignSummaryItem[] = [
 ];
 
 const DETAILS: Record<string, UiCampaignDetail> = {
+  "C-approved": {
+    campaignId: "C-approved",
+    repositoryId: "sha256:repo-1",
+    state: "awaiting_approval",
+    taskCount: 1,
+    tasks: [{ taskId: "QK-1", title: "Contract task", status: "ready" }],
+    waves: [],
+    runners: [],
+    commits: [],
+    pullRequests: [],
+    verification: [],
+    sync: { pending: 0, conflicts: 0 },
+  },
   "C-1": {
     campaignId: "C-1",
     repositoryId: "sha256:repo-1",

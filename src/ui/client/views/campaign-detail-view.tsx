@@ -3,7 +3,9 @@ import { createColumnHelper } from "@tanstack/react-table";
 import type { UiCampaignCommit, UiCampaignDetail, UiCampaignPullRequest, UiCampaignRunner, UiCampaignTask, UiCampaignVerification, UiPlanProgressV1 } from "../../ports/campaign-read.js";
 import { PlanProgressLedger, PlanProgressUnavailable } from "../components/plan-progress-ledger.js";
 import { classifyUrl } from "../../security/url-policy.js";
+import type { UiPromptSetV1 } from "../../../prompt/types.js";
 import { DataTable } from "../components/data-table.js";
+import { PromptActions } from "../components/prompt-actions.js";
 import { StatusBadge, type StatusTone } from "../components/status-badge.js";
 import { SyncBanner } from "../components/sync-banner.js";
 
@@ -82,6 +84,7 @@ export interface CampaignDetailViewProps {
   planProgress?: UiPlanProgressV1;
   planProgressPending?: boolean;
   planProgressUnavailable?: boolean;
+  promptSet?: UiPromptSetV1;
 }
 
 export function CampaignDetailView({
@@ -89,6 +92,7 @@ export function CampaignDetailView({
   planProgress,
   planProgressPending,
   planProgressUnavailable,
+  promptSet,
 }: CampaignDetailViewProps) {
   return (
     <section aria-labelledby="campaign-detail-heading">
@@ -98,6 +102,7 @@ export function CampaignDetailView({
         {detail.outcome ? ` — outcome ${detail.outcome}` : ""}
       </p>
       <SyncBanner pending={detail.sync.pending} conflicts={detail.sync.conflicts} />
+      {promptSet ? <PromptActions promptSet={promptSet} /> : null}
       <p>
         <Link to="/">Run again</Link>
       </p>

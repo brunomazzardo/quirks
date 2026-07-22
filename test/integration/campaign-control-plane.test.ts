@@ -147,6 +147,7 @@ async function openSupervisorContext(
     outbox: SyncOutbox.open(store.syncOutboxFile),
     runner: new FakeRunnerPort(),
     worktree: new FakeWorktreePort(),
+    workflowSkills: project.config.workflowPolicy.skills,
     lockPath: path.join(lockDir, "repository.lock"),
     repositoryRoot: root,
     dispose: async () => {

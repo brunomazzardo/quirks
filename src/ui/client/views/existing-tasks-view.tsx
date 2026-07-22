@@ -1,7 +1,9 @@
 import { createColumnHelper } from "@tanstack/react-table";
 import type { UiExistingTasksV1 } from "../../read-models/existing-tasks.js";
+import type { UiPromptSetV1 } from "../../../prompt/types.js";
 import { classifyUrl } from "../../security/url-policy.js";
 import { DataTable } from "../components/data-table.js";
+import { PromptActions } from "../components/prompt-actions.js";
 import { StatusBadge, type StatusTone } from "../components/status-badge.js";
 import { SyncBanner } from "../components/sync-banner.js";
 
@@ -111,9 +113,11 @@ const columns = [
 
 export interface ExistingTasksViewProps {
   projection: UiExistingTasksV1;
+  /** State-valid copy actions for the selected task, when the server offers any. */
+  promptSet?: UiPromptSetV1;
 }
 
-export function ExistingTasksView({ projection }: ExistingTasksViewProps) {
+export function ExistingTasksView({ projection, promptSet }: ExistingTasksViewProps) {
   return (
     <section aria-labelledby="existing-tasks-heading">
       <h1 id="existing-tasks-heading">Existing tasks</h1>
@@ -125,6 +129,12 @@ export function ExistingTasksView({ projection }: ExistingTasksViewProps) {
         leaseNotice={projection.leaseNotice}
         refreshedAt={projection.refreshedAt}
       />
+      {promptSet ? (
+        <>
+          {promptSet.context.taskId ? <h2>Prompts for {promptSet.context.taskId}</h2> : <h2>Prompts</h2>}
+          <PromptActions promptSet={promptSet} />
+        </>
+      ) : null}
       <DataTable
         caption="Existing tasks"
         columns={columns}

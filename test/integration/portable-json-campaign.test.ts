@@ -76,6 +76,7 @@ test("portable JSON fixture completes preflight, approval, and start boundaries"
     worktree: new FakeWorktreePort(),
     lockPath: path.join(stateDir, "repository.lock"),
     repositoryRoot: canonicalRoot,
+    workflowSkills: project.config.workflowPolicy.skills,
   });
   await supervisor.startApproved();
   const status = await supervisor.status();

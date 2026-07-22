@@ -53,6 +53,7 @@ async function supervisorContext(store: CampaignStore, repositoryRoot: string) {
     runner: runtime.runner,
     worktree: runtime.worktree,
     profileIndex: runtime.profiles,
+    workflowSkills: context.config.workflowPolicy.skills,
     lockPath: lockPathFor(envelope.repositoryId),
     repositoryRoot,
     envelope,

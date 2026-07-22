@@ -252,6 +252,116 @@ test("standalone campaigns list skips invalid campaign records", async () => {
   }
 });
 
+test("read-only workspace serves state-valid prompt projections for ledger tasks", async () => {
+  const { authority, server, viewerToken } = await createReadOnlyServer();
+  try {
+    const unauthorized = await fetch(`${authority.baseUrl}/api/v1/prompts?contextKind=task&taskId=QK-1`, {
+      headers: {
+        Host: authority.hostHeader,
+        Origin: authority.origin,
+        "Sec-Fetch-Site": "same-origin",
+      },
+    });
+    assert.equal(unauthorized.status, 401);
+
+    const headers = readHeaders(authority, viewerToken);
+    const response = await fetch(`${authority.baseUrl}/api/v1/prompts?contextKind=task&taskId=QK-1`, { headers });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      recommendedRecipeId: string;
+      recipes: Array<{ recipeId: string; authority: string; prompt: string }>;
+    };
+    assert.equal(body.recommendedRecipeId, "continue-task", "ready ledger task defaults to continue");
+    assert.equal(
+      body.recipes.some((recipe) => recipe.recipeId === "start-approved-campaign"),
+      false,
+      "no state-changing start recipe without a recorded approval",
+    );
+    assert.ok(body.recipes[0]!.prompt.includes("QK-1"), "prompt binds the real ledger task");
+    assert.equal(JSON.stringify(body).includes("approvalToken"), false);
+
+    const missing = await fetch(`${authority.baseUrl}/api/v1/prompts?contextKind=task&taskId=QK-MISSING`, { headers });
+    assert.equal(missing.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
+test("production openWorkspace serves contextual prompts in both workspace modes", async () => {
+  const repositoryRoot = await createFixtureProject();
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-prompt-open-"));
+  const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
+  await seedCampaign(stateDir, context.repositoryId, "C-await", { status: "awaiting_approval" });
+
+  // Standalone read-only mode.
+  const readOnly = await openWorkspace({
+    repositoryRoot,
+    stateDir,
+    deps: { json: true, isTty: false },
+  });
+  try {
+    assert.equal(readOnly.readOnly, true);
+    const viewerToken = /viewToken=([^&]+)/.exec(readOnly.launchUrl)?.[1];
+    assert.ok(viewerToken);
+    const headers = {
+      Authorization: `Bearer ${decodeURIComponent(viewerToken)}`,
+      Origin: readOnly.authority,
+      "Sec-Fetch-Site": "same-origin",
+    };
+
+    const taskPrompts = await fetch(`${readOnly.authority}/api/v1/prompts?contextKind=task&taskId=QK-1`, { headers });
+    assert.equal(taskPrompts.status, 200);
+    const taskBody = (await taskPrompts.json()) as { recommendedRecipeId: string };
+    assert.equal(taskBody.recommendedRecipeId, "continue-task");
+
+    const campaignPrompts = await fetch(
+      `${readOnly.authority}/api/v1/prompts?contextKind=campaign&campaignId=C-await`,
+      { headers },
+    );
+    assert.equal(campaignPrompts.status, 200);
+    const campaignBody = (await campaignPrompts.json()) as {
+      recommendedRecipeId: string;
+      recipes: Array<{ recipeId: string }>;
+    };
+    assert.equal(campaignBody.recommendedRecipeId, "review-campaign-plan");
+    assert.equal(
+      campaignBody.recipes.some((recipe) => recipe.recipeId === "start-approved-campaign"),
+      false,
+      "read-only workspace never offers start without a recorded approval",
+    );
+  } finally {
+    await readOnly.close?.();
+  }
+
+  // Campaign-bound mode over the same durable state.
+  const campaignBound = await openWorkspace({
+    campaignId: "C-await",
+    repositoryRoot,
+    stateDir,
+    ports: "production",
+    deps: { json: true, isTty: false },
+  });
+  try {
+    assert.equal(campaignBound.readOnly, false);
+    const viewerToken = /viewToken=([^&]+)/.exec(campaignBound.launchUrl)?.[1];
+    assert.ok(viewerToken);
+    const headers = {
+      Authorization: `Bearer ${decodeURIComponent(viewerToken)}`,
+      Origin: campaignBound.authority,
+      "Sec-Fetch-Site": "same-origin",
+    };
+    const campaignPrompts = await fetch(
+      `${campaignBound.authority}/api/v1/prompts?contextKind=campaign&campaignId=C-await`,
+      { headers },
+    );
+    assert.equal(campaignPrompts.status, 200);
+    const campaignBody = (await campaignPrompts.json()) as { recommendedRecipeId: string };
+    assert.equal(campaignBody.recommendedRecipeId, "review-campaign-plan");
+  } finally {
+    await campaignBound.close?.();
+  }
+});
+
 test("standalone openWorkspace wires read-only projections end to end", async () => {
   const repositoryRoot = await createFixtureProject();
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-read-only-open-"));

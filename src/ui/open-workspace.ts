@@ -19,6 +19,11 @@ import { createLoopbackAuthority } from "./authority.js";
 import { InMemoryViewerSessionStore } from "./auth/viewer-session-store.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
 import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem, UiCampaignTask } from "./ports/campaign-read.js";
+import {
+  createPromptReadPort,
+  type CampaignPromptFacts,
+  type PromptReadPort,
+} from "./ports/prompt-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
 import { loadClientBundle } from "./shell.js";
 import { createUiServer } from "./server.js";
@@ -348,10 +353,94 @@ function createLedgerTaskHistorySource(
   };
 }
 
+async function readStoredCampaignPromptFacts(
+  stateDir: string,
+  repositoryId: string,
+  campaignId: string | undefined,
+): Promise<CampaignPromptFacts | undefined> {
+  if (campaignId === undefined) return undefined;
+  const campaignDir = path.join(
+    stateDir,
+    "repositories",
+    repositoryId.replaceAll(":", "-"),
+    "campaigns",
+    campaignId,
+  );
+  const record = await readStoredCampaign(campaignDir, campaignId);
+  if (!record || record.campaign.repositoryId !== repositoryId) return undefined;
+  const state = record.state as { status: CampaignStatus; digest?: string };
+  const envelope = record.campaign as { git?: { baseCommit?: string } };
+  const digest = typeof state.digest === "string" ? state.digest : undefined;
+  if (digest === undefined) return undefined;
+
+  // Approval is durable evidence, never inferred: only a recorded approval
+  // bound to the current envelope digest counts.
+  let approved = false;
+  try {
+    const raw = await readFile(path.join(campaignDir, "approvals.jsonl"), "utf8");
+    approved = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .some((line) => {
+        try {
+          const entry = JSON.parse(line) as { digest?: string };
+          return entry.digest === digest;
+        } catch {
+          return false;
+        }
+      });
+  } catch {
+    approved = false;
+  }
+
+  return {
+    campaignId,
+    state: state.status,
+    approved,
+    envelopeDigest: digest,
+    ...(typeof envelope.git?.baseCommit === "string" ? { baseCommit: envelope.git.baseCommit } : {}),
+  };
+}
+
+/**
+ * Production prompt read port for `ui open`: assembles prompt contexts from
+ * the real TaskSource and durable stored campaign state. Serves both the
+ * campaign-bound and the standalone read-only workspace; recommendations stay
+ * state-valid because approval is read from durable records only.
+ */
+export function createWorkspacePromptReadPort(options: {
+  repositoryRoot: string;
+  stateDir: string;
+  getProjectContext: () => Promise<ProjectContext>;
+}): PromptReadPort {
+  return {
+    async getContext(request) {
+      const context = await options.getProjectContext();
+      return withTaskSource(context, async (source) => {
+        const port = createPromptReadPort({
+          repositoryId: context.repositoryId,
+          repositoryRoot: options.repositoryRoot,
+          source,
+          skills: context.config.workflowPolicy.skills,
+          // Approved runner routes are campaign-envelope facts; the workspace
+          // has none of its own, and absent routes stay absent (visible
+          // independence warnings instead of invented profiles).
+          profiles: [],
+          campaign: (campaignId) =>
+            readStoredCampaignPromptFacts(options.stateDir, context.repositoryId, campaignId),
+        });
+        return port.getContext(request);
+      });
+    },
+  };
+}
+
 export type StandaloneWorkspacePorts = {
   getProjectContext: () => Promise<ProjectContext>;
   campaignRead: CampaignReadPort;
   taskHistory: TaskHistorySource;
+  promptRead: PromptReadPort;
 };
 
 export function createStandaloneWorkspacePorts(options: {
@@ -363,6 +452,11 @@ export function createStandaloneWorkspacePorts(options: {
     getProjectContext,
     campaignRead: createStoredCampaignReadPort(options.stateDir, getProjectContext),
     taskHistory: createLedgerTaskHistorySource(options.repositoryRoot, getProjectContext),
+    promptRead: createWorkspacePromptReadPort({
+      repositoryRoot: options.repositoryRoot,
+      stateDir: options.stateDir,
+      getProjectContext,
+    }),
   };
 }
 
@@ -379,11 +473,12 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
 
   const ports = await resolvePorts(input, stateDir);
   const readOnly = input.campaignId === undefined;
+  const repositoryRoot = input.repositoryRoot ?? process.cwd();
   let repositoryId: string;
   let campaign: ResolvedCampaign | undefined;
   let standalonePorts: StandaloneWorkspacePorts | undefined;
+  let promptRead: PromptReadPort | undefined;
   if (input.campaignId === undefined) {
-    const repositoryRoot = input.repositoryRoot ?? process.cwd();
     const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
     repositoryId = context.repositoryId;
     standalonePorts = createStandaloneWorkspacePorts({ repositoryRoot, stateDir });
@@ -393,6 +488,13 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
       throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${input.campaignId} was not found`);
     }
     repositoryId = campaign.repositoryId;
+    // Campaign-bound workspaces expose the same contextual copy prompts as
+    // the standalone read-only mode, from the same durable state.
+    promptRead = createWorkspacePromptReadPort({
+      repositoryRoot,
+      stateDir,
+      getProjectContext: () => loadProjectContext(repositoryRoot, { mode: "inspection" }),
+    });
   }
 
   const getNow = input.deps?.now ?? (() => new Date().toISOString());
@@ -425,6 +527,7 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
     now: getNow,
     clientScript,
     ...(readOnly ? { readOnly: true } : {}),
+    ...(promptRead ? { promptRead } : {}),
     ...standalonePorts,
   };
   const server = await createUiServer(routerOptions);

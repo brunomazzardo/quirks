@@ -8,10 +8,12 @@ import { handleExistingTasks } from "./api/existing-tasks.js";
 import { handlePreflight } from "./api/preflight.js";
 import { sendJson, UNAUTHORIZED_BODY } from "./api/errors.js";
 import { handlePlanProgress, matchPlanProgressRoute } from "./api/plan-progress.js";
+import { handlePrompts } from "./api/prompts.js";
 import { handleTaskHistory, matchTaskHistoryRoute, type TaskHistorySource } from "./api/task-history.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
 import type { CampaignReadPort } from "./ports/campaign-read.js";
 import type { PreflightReadPort } from "./ports/preflight-read.js";
+import type { PromptReadPort } from "./ports/prompt-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
 import { matchShellRoute, renderShell } from "./shell.js";
 
@@ -27,6 +29,7 @@ export interface UiRouterOptions {
   preflightRead?: PreflightReadPort;
   campaignRead?: CampaignReadPort;
   taskHistory?: TaskHistorySource;
+  promptRead?: PromptReadPort;
   readOnly?: boolean;
   now?: () => string;
   onRead?: () => void;
@@ -43,6 +46,7 @@ function bearer(req: IncomingMessage): string | undefined {
 function isReadRoute(pathname: string): boolean {
   return (
     pathname === "/api/v1/existing-tasks" ||
+    pathname === "/api/v1/prompts" ||
     pathname === "/api/v1/campaigns" ||
     /^\/api\/v1\/campaigns\/[^/]+$/.test(pathname) ||
     /^\/api\/v1\/campaigns\/[^/]+\/preflight$/.test(pathname) ||
@@ -92,6 +96,12 @@ async function routeApiRequest(req: IncomingMessage, res: ServerResponse, option
       getProjectContext: options.getProjectContext,
       ...(options.now ? { now: options.now } : {}),
     });
+  }
+  if (url.pathname === "/api/v1/prompts") {
+    if (!options.promptRead) {
+      return sendJson(res, 503, { schemaVersion: 1, result: "invalid" });
+    }
+    return handlePrompts(res, { url, port: options.promptRead });
   }
   const preflightMatch = /^\/api\/v1\/campaigns\/([^/]+)\/preflight$/.exec(url.pathname);
   if (preflightMatch) {
