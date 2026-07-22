@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import type { ApiClient } from "./api-client.js";
+import type { ApiClient, PromptQueryInput } from "./api-client.js";
 
 export const queryKeys = {
   existingTasks: () => ["ui", "existing-tasks"] as const,
@@ -11,6 +11,9 @@ export const queryKeys = {
   campaignDetail: (campaignId: string) => ["ui", "campaign-detail", campaignId] as const,
   taskHistory: (taskId: string) => ["ui", "task-history", taskId] as const,
   planProgress: (taskId: string, campaignId: string) => ["ui", "plan-progress", taskId, campaignId] as const,
+  // Prompt query keys carry only context identifiers — never prompt text or credentials.
+  prompts: (input: PromptQueryInput) =>
+    ["ui", "prompts", input.contextKind, input.campaignId ?? "", input.taskId ?? ""] as const,
 };
 
 export function existingTasksQueryOptions(api: ApiClient) {
@@ -45,6 +48,13 @@ export function taskHistoryQueryOptions(api: ApiClient, taskId: string) {
   return queryOptions({
     queryKey: queryKeys.taskHistory(taskId),
     queryFn: () => api.getTaskHistory(taskId),
+  });
+}
+
+export function promptQueryOptions(api: ApiClient, input: PromptQueryInput) {
+  return queryOptions({
+    queryKey: queryKeys.prompts(input),
+    queryFn: () => api.getPrompts(input),
   });
 }
 

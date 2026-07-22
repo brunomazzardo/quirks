@@ -2,8 +2,15 @@ import type { UiExistingTasksV1 } from "../read-models/existing-tasks.js";
 import type { UiCampaignDetail, UiCampaignSummaryItem, UiPlanProgressV1 } from "../ports/campaign-read.js";
 import type { UiTaskHistoryV1 } from "../read-models/task-history.js";
 import type { UiPreflightProposalV1 } from "../types/preflight-proposal.js";
+import type { PromptContextKind, UiPromptSetV1 } from "../../prompt/types.js";
 import { createApprovalFetcher, createReadFetcher } from "./fetch-json.js";
 import type { TokenVault } from "./token-vault.js";
+
+export interface PromptQueryInput {
+  contextKind: PromptContextKind;
+  campaignId?: string;
+  taskId?: string;
+}
 
 export type UiCampaignSummaryV1 = {
   schemaVersion: 1;
@@ -28,6 +35,7 @@ export interface ApiClient {
   getCampaignDetail(campaignId: string): Promise<UiCampaignDetailV1>;
   getTaskHistory(taskId: string): Promise<UiTaskHistoryV1>;
   getPlanProgress(taskId: string, campaignId: string): Promise<UiPlanProgressV1>;
+  getPrompts(input: PromptQueryInput): Promise<UiPromptSetV1>;
   submitApproval(input: { campaignId: string; envelopeDigest: string }): Promise<UiApprovalResponseV1>;
 }
 
@@ -65,6 +73,12 @@ export function createApiClient(vault: TokenVault): ApiClient {
     async getPlanProgress(taskId, campaignId) {
       const params = new URLSearchParams({ campaignId });
       return readJson(await fetchRead(`/api/v1/tasks/${encodeURIComponent(taskId)}/plan-progress?${params.toString()}`));
+    },
+    async getPrompts(input) {
+      const params = new URLSearchParams({ contextKind: input.contextKind });
+      if (input.campaignId !== undefined) params.set("campaignId", input.campaignId);
+      if (input.taskId !== undefined) params.set("taskId", input.taskId);
+      return readJson(await fetchRead(`/api/v1/prompts?${params.toString()}`));
     },
     async submitApproval(input) {
       return readJson(
