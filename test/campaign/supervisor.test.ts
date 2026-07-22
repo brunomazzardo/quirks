@@ -472,9 +472,11 @@ test("runToCompletion records accepted provenance only for reviewer-approved att
   assert.equal(outcome.status, "completed");
   const iterations = await provenanceIterations(source, "QK-A");
   assert.equal(iterations.length, 1);
-  assert.equal(iterations[0]?.["outcome"], "completed");
-  assert.equal(iterations[0]?.["acceptedCommit"], "a".repeat(40));
-  const roles = (iterations[0]?.["participants"] as Array<{ role: string }>).map((participant) => participant.role);
+  const iteration = iterations[0];
+  assert.ok(iteration, "expected a provenance iteration");
+  assert.equal(iteration["outcome"], "completed");
+  assert.equal(iteration["acceptedCommit"], "a".repeat(40));
+  const roles = (iteration["participants"] as Array<{ role: string }>).map((participant) => participant.role);
   assert.deepEqual(roles.toSorted(), ["implementer", "reviewer"]);
   await supervisor.stop();
 });
@@ -507,6 +509,112 @@ test("a paused lane does not starve dependency-satisfied tasks on healthy lanes"
   const state = await context.store.readState();
   assert.equal(state.activeLanes?.includes("lane-b"), true);
   assert.equal(state.activeLanes?.includes("lane-a"), false);
+  await supervisor.stop();
+});
+
+test("usage-limit results pause the lane without burning retries", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  source.upsertTask("QK-B", { status: "ready", execution: executionFor(["lane-b"]) });
+  const runner = new FakeRunnerPort();
+  runner.queueResult("cmp-supervisor:QK-A:implementer:1", {
+    ...failureResult("cmp-supervisor:QK-A:implementer:1"),
+    status: "usage_limit",
+    failure: undefined,
+  });
+  const context = await testContext({
+    taskIds: ["QK-A", "QK-B"],
+    taskRevisions: {
+      "QK-A": source.taskRevision("QK-A"),
+      "QK-B": source.taskRevision("QK-B"),
+    },
+    budgets: { maxTasks: 4, maxConcurrency: 2, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A", "QK-B"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "paused");
+  assert.deepEqual(outcome.pausedLanes, ["lane-a"]);
+  assert.deepEqual(outcome.breaker, { action: "pause_lane", reason: "USAGE_LIMIT_WITHOUT_RESET" });
+  assert.equal(
+    runner.dispatches.filter((dispatch) => dispatch.taskId === "QK-A" && dispatch.role === "implementer").length,
+    1,
+    "usage-limited lane must not be retried",
+  );
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-B" && job.role === "implementer"), true);
+
+  const lanePaused = (await context.store.readEvents()).find((event) => event.type === "lane.paused");
+  assert.equal(lanePaused?.reason, "USAGE_LIMIT_WITHOUT_RESET");
+  await supervisor.stop();
+});
+
+test("integration failures pause the whole campaign", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  runner.queueResult("cmp-supervisor:QK-A:implementer:1", {
+    ...failureResult("cmp-supervisor:QK-A:implementer:1"),
+    failure: { code: "integration_failure", message: "integration branch broke" },
+  });
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 2, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "paused");
+  assert.deepEqual(outcome.breaker, { action: "pause_campaign", reason: "INTEGRATION_FAILURE" });
+  assert.equal(runner.dispatches.filter((dispatch) => dispatch.role === "implementer").length, 1);
+
+  const state = await context.store.readState();
+  assert.equal(state.status, "paused");
+  assert.equal(state.pausedReason, "INTEGRATION_FAILURE");
+  const paused = (await context.store.readEvents()).find((event) => event.type === "campaign.paused");
+  assert.equal(paused?.reason, "INTEGRATION_FAILURE");
+  await supervisor.stop();
+});
+
+test("ambiguous accepted-or-pushed failures hold the campaign", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  runner.queueResult("cmp-supervisor:QK-A:implementer:1", {
+    ...failureResult("cmp-supervisor:QK-A:implementer:1"),
+    failure: { code: "ambiguous_mutation", message: "cannot tell whether work landed" },
+  });
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 2, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "hold");
+  assert.deepEqual(outcome.breaker, { action: "hold", reason: "AMBIGUOUS_ACCEPTED_OR_PUSHED_STATE" });
+  assert.equal(runner.dispatches.filter((dispatch) => dispatch.role === "implementer").length, 1);
+
+  const state = await context.store.readState();
+  assert.equal(state.status, "hold");
+  const holdEvent = (await context.store.readEvents()).find((event) => event.type === "campaign.hold");
+  assert.ok(holdEvent, "expected campaign.hold event");
+  assert.equal(holdEvent.from, "running");
+  assert.equal(holdEvent.to, "hold");
+  assert.equal(holdEvent.reason, "AMBIGUOUS_ACCEPTED_OR_PUSHED_STATE");
   await supervisor.stop();
 });
 
