@@ -104,6 +104,17 @@ test("codexResultPath is unique per job so concurrent jobs never clobber each ot
   assert.match(second, /job-2/);
 });
 
+function codexDispatchInput(jobId: string) {
+  return {
+    jobId,
+    taskId: "QK-1",
+    role: "implementer" as const,
+    route: { profileId: "codex-standard", runnerType: "codex" as const, tier: "standard" as const, effort: "standard" as const, quotaPoolId: "pool" },
+    briefPath: "/tmp/artifacts/briefs/brief.md",
+    worktreePath: "/tmp/worktree",
+  };
+}
+
 test("codex dispatch argv declares a job-unique result path per dispatched job", () => {
   const profile: RunnerProfile = {
     schemaVersion: 1,
@@ -119,17 +130,9 @@ test("codex dispatch argv declares a job-unique result path per dispatched job",
     wallClockMs: 5_000,
     redactionRules: [],
   };
-  const dispatchInput = (jobId: string) => ({
-    jobId,
-    taskId: "QK-1",
-    role: "implementer" as const,
-    route: { profileId: "codex-standard", runnerType: "codex" as const, tier: "standard" as const, effort: "standard" as const, quotaPoolId: "pool" },
-    briefPath: "/tmp/artifacts/briefs/brief.md",
-    worktreePath: "/tmp/worktree",
-  });
 
-  const first = flagValue(buildRunnerArgv(profile, dispatchInput("job-1"), "/tmp/artifacts/briefs", "# brief\n"), "-o");
-  const second = flagValue(buildRunnerArgv(profile, dispatchInput("job-2"), "/tmp/artifacts/briefs", "# brief\n"), "-o");
+  const first = flagValue(buildRunnerArgv(profile, codexDispatchInput("job-1"), "/tmp/artifacts/briefs", "# brief\n"), "-o");
+  const second = flagValue(buildRunnerArgv(profile, codexDispatchInput("job-2"), "/tmp/artifacts/briefs", "# brief\n"), "-o");
 
   assert.notEqual(first, second);
   assert.match(first ?? "", /job-1/);
