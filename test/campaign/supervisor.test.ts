@@ -11,6 +11,7 @@ import { SessionRegistry } from "../../src/runner/sessions.js";
 import { RepositoryLock } from "../../src/state/repository-lock.js";
 import { SyncOutbox } from "../../src/sync/outbox.js";
 import type { CampaignEnvelope } from "../../src/campaign/types.js";
+import type { RunnerPort } from "../../src/campaign/ports.js";
 import { FakeTaskSource } from "../task-source/fake-source.js";
 import { campaignEnvelope } from "./support.js";
 import { FakeRunnerPort } from "./support/fake-runner-port.js";
@@ -22,7 +23,7 @@ interface TestContextOptions {
   routing?: CampaignEnvelope["routing"];
   budgets?: CampaignEnvelope["budgets"];
   source?: FakeTaskSource;
-  runner?: FakeRunnerPort;
+  runner?: RunnerPort;
   worktree?: FakeWorktreePort;
 }
 
@@ -306,6 +307,69 @@ test("runToCompletion drives a two-wave DAG to completion in one call", async ()
   assert.equal(waveStarted[1]?.evidence["taskIds"], "QK-B");
   const waveCompleted = events.filter((event) => event.type === "wave.completed");
   assert.equal(waveCompleted.length, 2);
+  await supervisor.stop();
+});
+
+class OverlapRecordingRunnerPort implements RunnerPort {
+  private implementersInFlight = 0;
+  maxImplementerOverlap = 0;
+  readonly dispatchedJobIds: string[] = [];
+
+  async dispatch(input: {
+    jobId: string;
+    taskId: string;
+    role: "supervisor" | "implementer" | "reviewer";
+    route: { profileId: string; runnerType: "claude" | "codex" | "cursor"; effort: string };
+  }) {
+    this.dispatchedJobIds.push(input.jobId);
+    if (input.role === "implementer") {
+      this.implementersInFlight += 1;
+      this.maxImplementerOverlap = Math.max(this.maxImplementerOverlap, this.implementersInFlight);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      this.implementersInFlight -= 1;
+    }
+    return {
+      schemaVersion: 1 as const,
+      jobId: input.jobId,
+      runner: input.route.profileId,
+      runnerType: input.route.runnerType,
+      resolvedModel: "test-model",
+      effort: input.route.effort,
+      status: "success" as const,
+      sessionHandle: "overlap-session",
+      artifactPaths: [],
+      usage: {},
+      failure: undefined,
+    };
+  }
+}
+
+test("runToCompletion dispatches waves concurrently within envelope maxConcurrency", async () => {
+  const source = new FakeTaskSource();
+  for (const taskId of ["QK-A", "QK-B", "QK-C"]) {
+    source.upsertTask(taskId, { status: "ready", execution: executionFor([`lane-${taskId}`]) });
+  }
+  const runner = new OverlapRecordingRunnerPort();
+  const context = await testContext({
+    taskIds: ["QK-A", "QK-B", "QK-C"],
+    taskRevisions: Object.fromEntries(["QK-A", "QK-B", "QK-C"].map((taskId) => [taskId, source.taskRevision(taskId)])),
+    budgets: { maxTasks: 3, maxConcurrency: 2, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A", "QK-B", "QK-C"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "completed");
+  assert.equal(runner.maxImplementerOverlap, 2);
+
+  const events = await context.store.readEvents();
+  const waveStarted = events.filter((event) => event.type === "wave.started");
+  assert.equal(waveStarted.length, 2);
+  assert.equal(waveStarted[0]?.evidence["taskIds"], "QK-A,QK-B");
+  assert.equal(waveStarted[1]?.evidence["taskIds"], "QK-C");
   await supervisor.stop();
 });
 
