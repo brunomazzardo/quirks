@@ -421,6 +421,71 @@ test("runToCompletion stops on exhausted wall-clock budget without further dispa
   await supervisor.stop();
 });
 
+function failureResult(jobId: string): Parameters<FakeRunnerPort["queueResult"]>[1] {
+  return {
+    schemaVersion: 1,
+    jobId,
+    runner: "cursor-standard",
+    runnerType: "cursor",
+    resolvedModel: "test-model",
+    effort: "standard",
+    status: "failure",
+    sessionHandle: "failed-session",
+    artifactPaths: [],
+    usage: {},
+    failure: { code: "task_rejection", message: "implementer rejected the task" },
+  };
+}
+
+test("runToCompletion pauses only the failing lane while other lanes proceed", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  source.upsertTask("QK-C", { status: "ready", execution: executionFor(["lane-c"]) });
+  const runner = new FakeRunnerPort();
+  runner.queueResult("cmp-supervisor:QK-A:implementer:1", failureResult("cmp-supervisor:QK-A:implementer:1"));
+  runner.queueResult("cmp-supervisor:QK-A:implementer:2", failureResult("cmp-supervisor:QK-A:implementer:2"));
+  const context = await testContext({
+    taskIds: ["QK-A", "QK-C"],
+    taskRevisions: {
+      "QK-A": source.taskRevision("QK-A"),
+      "QK-C": source.taskRevision("QK-C"),
+    },
+    budgets: { maxTasks: 4, maxConcurrency: 2, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A", "QK-C"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "paused");
+  assert.deepEqual(outcome.pausedLanes, ["lane-a"]);
+  assert.deepEqual(outcome.breaker, { action: "pause_lane", reason: "LANE_FAILURE_THRESHOLD" });
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-C" && job.role === "implementer"), true);
+
+  const implementerAttempts = runner.dispatches
+    .filter((dispatch) => dispatch.taskId === "QK-A" && dispatch.role === "implementer")
+    .map((dispatch) => dispatch.jobId);
+  assert.deepEqual(implementerAttempts, [
+    "cmp-supervisor:QK-A:implementer:1",
+    "cmp-supervisor:QK-A:implementer:2",
+  ]);
+
+  const events = await context.store.readEvents();
+  const lanePaused = events.find((event) => event.type === "lane.paused");
+  assert.ok(lanePaused, "expected lane.paused event");
+  assert.equal(lanePaused.reason, "LANE_FAILURE_THRESHOLD");
+  assert.equal(lanePaused.evidence["lanes"], "lane-a");
+
+  const state = await context.store.readState();
+  assert.equal(state.status, "paused");
+  assert.equal(state.pausedReason, "ALL_LANES_PAUSED");
+  assert.equal(state.activeLanes?.includes("lane-a"), false);
+  assert.equal(state.activeLanes?.includes("lane-c"), true);
+  await supervisor.stop();
+});
+
 test("builds scheduler with real dependsOn and parallelismKeys", async () => {
   const source = new FakeTaskSource();
   source.upsertTask("QK-1", {
