@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -116,6 +116,52 @@ test("JSON driver rejects a stale claim without changing the file", async () => 
   if (response.ok) assert.fail("stale mutation succeeded");
   assert.equal(response.error.code, "STALE_REVISION");
   assert.equal(await fileDigest(tasksPath), before);
+});
+
+test("JSON mutation failures are atomic for evidence and terminal transitions", async () => {
+  const root = await freshFixture();
+  const source = await JsonTaskSource.open(root);
+  const pathToTasks = tasksFile(root);
+  const assertUnchanged = async (before: string, response: Awaited<ReturnType<typeof mutate>>) => {
+    assert.equal(response.ok, false);
+    if (response.ok) assert.fail("expected conflict");
+    assert.equal(response.error.code, "SOURCE_CONFLICT");
+    assert.equal(await fileDigest(pathToTasks), before);
+  };
+  let shown = await showTask(source);
+  let before = await fileDigest(pathToTasks);
+  await assertUnchanged(before, await mutate(source, {
+    schemaVersion: 1, operation: "complete", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-atomic:QK-1:complete:before-review", input: { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/review.md", "verification:pnpm test"] },
+  }));
+  const claim = await mutate(source, { schemaVersion: 1, operation: "claim", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!, idempotencyKey: "C-atomic:QK-1:claim", input: { campaignId: "C-atomic", owner: "test", claimedAt: "2026-07-21T00:00:00.000Z" } });
+  assert.equal(claim.ok, true);
+  shown = await showTask(source);
+  const iteration = { ...correlatedIteration, id: "atomic", verificationRefs: [{ kind: "verification", reference: "pnpm test", outcome: "failed" }] };
+  const attach = await mutate(source, { schemaVersion: 1, operation: "attach-provenance", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!, idempotencyKey: "C-atomic:QK-1:attach", input: { iteration } });
+  assert.equal(attach.ok, true);
+  shown = await showTask(source);
+  const review = await mutate(source, { schemaVersion: 1, operation: "submit-review", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!, idempotencyKey: "C-atomic:QK-1:review", input: { evidenceRefs: ["review:docs/review.md"] } });
+  assert.equal(review.ok, true);
+  shown = await showTask(source);
+  before = await fileDigest(pathToTasks);
+  await assertUnchanged(before, await mutate(source, { schemaVersion: 1, operation: "complete", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!, idempotencyKey: "C-atomic:QK-1:failed", input: { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/review.md", "verification:pnpm test"] } }));
+
+  const blockedRoot = await freshFixture();
+  const blockedSource = await JsonTaskSource.open(blockedRoot);
+  let blockedShown = await showTask(blockedSource);
+  await mutate(blockedSource, { schemaVersion: 1, operation: "claim", taskId: "QK-1", expectedNativeRevision: blockedShown.nativeRevision!, idempotencyKey: "C-blocked:claim", input: { campaignId: "C-blocked", owner: "test", claimedAt: "2026-07-21T00:00:00.000Z" } });
+  blockedShown = await showTask(blockedSource);
+  await mutate(blockedSource, { schemaVersion: 1, operation: "attach-provenance", taskId: "QK-1", expectedNativeRevision: blockedShown.nativeRevision!, idempotencyKey: "C-blocked:attach", input: { iteration: { ...correlatedIteration, id: "blocked", verificationRefs: [{ kind: "verification", reference: "pnpm test", outcome: "blocked" }] } } });
+  blockedShown = await showTask(blockedSource);
+  await mutate(blockedSource, { schemaVersion: 1, operation: "submit-review", taskId: "QK-1", expectedNativeRevision: blockedShown.nativeRevision!, idempotencyKey: "C-blocked:review", input: { evidenceRefs: ["review:docs/review.md"] } });
+  blockedShown = await showTask(blockedSource);
+  const blockedDigest = await fileDigest(tasksFile(blockedRoot));
+  const blockedResult = await mutate(blockedSource, { schemaVersion: 1, operation: "complete", taskId: "QK-1", expectedNativeRevision: blockedShown.nativeRevision!, idempotencyKey: "C-blocked:complete", input: { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/review.md", "verification:pnpm test"] } });
+  assert.equal(blockedResult.ok, false);
+  if (blockedResult.ok) assert.fail("blocked verification completed task");
+  assert.equal(blockedResult.error.code, "SOURCE_CONFLICT");
+  assert.equal(await fileDigest(tasksFile(blockedRoot)), blockedDigest);
 });
 
 test("JSON proposals reject injected active and terminal state", async () => {
