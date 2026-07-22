@@ -22,6 +22,11 @@ async function main() {
   const { mode, sessionId, resultPath } = parseRunnerArgs(process.argv);
   const outDir = process.env.QUIRKS_FAKE_RUNNER_OUTDIR;
 
+  if (outDir) {
+    await mkdir(outDir, { recursive: true });
+    await writeFile(path.join(outDir, "codex-argv.json"), `${JSON.stringify(process.argv.slice(2))}\n`, "utf8");
+  }
+
   switch (mode) {
     case "success": {
       const artifactPath = await writeArtifact(outDir);
