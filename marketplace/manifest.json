@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "protocol": "quirks-marketplace-v1",
+  "name": "quirks-personal",
+  "description": "Personal Quirks plugin marketplace for local host installation",
+  "plugins": [
+    {
+      "id": "quirks",
+      "name": "Quirks",
+      "version": "0.0.0",
+      "description": "Portable agent campaigns for repository task orchestration",
+      "source": {
+        "kind": "local-repository",
+        "path": "."
+      },
+      "hosts": ["codex", "claude", "cursor"],
+      "skillsPath": "skills",
+      "installDocs": "references/hosts"
+    }
+  ]
+}
