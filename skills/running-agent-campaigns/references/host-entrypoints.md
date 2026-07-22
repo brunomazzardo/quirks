@@ -4,9 +4,9 @@ All three supported hosts invoke the same Quirks control plane.
 
 | Host | Install reference | Durable parent | Reattach |
 |---|---|---|---|
-| Claude Code | `references/hosts/claude.md` | `quirks-campaign` + `quirks-watchdog` | `quirks-campaign status --campaign <id>` |
-| Codex | `references/hosts/codex.md` | `quirks-campaign` + `quirks-watchdog` | `quirks-campaign status --campaign <id>` |
-| Cursor | `references/hosts/cursor.md` | `quirks-campaign` + `quirks-watchdog` | `quirks-campaign status --campaign <id>` |
+| Claude Code | `../../references/hosts/claude.md` | `quirks-campaign` + `quirks-watchdog` | `quirks-campaign status --campaign <id>` |
+| Codex | `../../references/hosts/codex.md` | `quirks-campaign` + `quirks-watchdog` | `quirks-campaign status --campaign <id>` |
+| Cursor | `../../references/hosts/cursor.md` | `quirks-campaign` + `quirks-watchdog` | `quirks-campaign status --campaign <id>` |
 
 ## Required flow
 

@@ -44,6 +44,49 @@ async function walkFiles(directory) {
   return files;
 }
 
+const MARKDOWN_REFERENCE_PATTERN = /`([^`\n]+\.md)`/g;
+
+/**
+ * @param {string} content
+ */
+function extractMarkdownReferences(content) {
+  /** @type {string[]} */
+  const references = [];
+  for (const match of content.matchAll(MARKDOWN_REFERENCE_PATTERN)) {
+    references.push(match[1]);
+  }
+  return references;
+}
+
+/**
+ * @param {string} filePath
+ * @param {string} skillRoot
+ * @param {string} packageRoot
+ */
+async function validateMarkdownReferences(filePath, skillRoot, packageRoot) {
+  /** @type {string[]} */
+  const errors = [];
+  const relativeFile = path.relative(packageRoot, filePath);
+  const content = await readFile(filePath, "utf8");
+  for (const reference of extractMarkdownReferences(content)) {
+    if (path.isAbsolute(reference)) {
+      errors.push(`absolute markdown reference \`${reference}\` in ${relativeFile}`);
+      continue;
+    }
+    const resolved = path.resolve(skillRoot, reference);
+    const packageRootWithSep = `${path.resolve(packageRoot)}${path.sep}`;
+    if (!resolved.startsWith(packageRootWithSep) && resolved !== path.resolve(packageRoot)) {
+      errors.push(`markdown reference escapes package root: \`${reference}\` in ${relativeFile}`);
+      continue;
+    }
+    const fileStat = await stat(resolved).catch(() => null);
+    if (!fileStat?.isFile()) {
+      errors.push(`missing markdown reference \`${reference}\` in ${relativeFile}`);
+    }
+  }
+  return errors;
+}
+
 /**
  * @param {string} filePath
  * @param {string} root
@@ -114,6 +157,9 @@ export async function validateSkills({ root = process.cwd() } = {}) {
       const files = await walkFiles(skillPath);
       for (const file of files) {
         skillErrors.push(...await scanSkillFile(file, root));
+        if (file.endsWith(".md")) {
+          skillErrors.push(...await validateMarkdownReferences(file, skillPath, root));
+        }
       }
     } catch {
       skillErrors.push("SKILL.md missing");

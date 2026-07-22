@@ -11,7 +11,7 @@ Human-guided design continues to use the installed Superpowers brainstorming wor
 
 ## Principal author tier
 
-Delegated specification work routes to a principal-tier architect (Fable/GPT-5.6 class) per `references/model-routing.md`. The architect drafts artifacts; a separate qualified reviewer validates them.
+Delegated specification work routes to a principal-tier architect (Fable/GPT-5.6 class) per `../../references/model-routing.md`. The architect drafts artifacts; a separate qualified reviewer validates them.
 
 ## Envelope discipline
 
