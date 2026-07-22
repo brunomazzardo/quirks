@@ -1,4 +1,5 @@
 import { sha256 } from "../../src/core/hash.js";
+import { validateSchema } from "../../src/schema/validate.js";
 import {
   assertMutationIdentity,
   MAX_PROTOCOL_BYTES,
@@ -246,6 +247,18 @@ export class FakeTaskSource implements TaskSource {
     }
     if (this.tasks.has(proposed.id)) {
       return failure("propose", "SOURCE_CONFLICT", `Task ${proposed.id} already exists`);
+    }
+
+    // Match the real JSON adapter's applyPropose: the whole envelope including
+    // the raw candidate must satisfy json-task-file-v1 before it is stored.
+    try {
+      validateSchema("json-task-file-v1", {
+        schemaVersion: 1,
+        tasks: [...this.tasks.values(), proposed],
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Proposed task violates json-task-file-v1";
+      return failure("propose", "SCHEMA_INVALID", message);
     }
 
     const stored: StoredTask = { ...baseTask(), ...(proposed as Partial<StoredTask>), id: proposed.id };

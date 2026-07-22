@@ -10,6 +10,101 @@ test("fake source satisfies the provider-neutral contract", async () => {
   await assertTaskSourceContract(() => new FakeTaskSource());
 });
 
+test("fake propose validates candidates against json-task-file-v1 like the real adapter", async () => {
+  const source = new FakeTaskSource();
+  const candidate = {
+    id: "QK-BAD",
+    title: "",
+    kind: "implementation",
+    priority: "P2",
+    status: "proposed",
+    dependsOn: [],
+    workflow: { family: "superpowers", phase: "execute", designGate: { required: false } },
+    execution: {
+      effort: "standard",
+      risk: [],
+      capabilities: ["repository-write"],
+      parallelismKeys: [],
+      humanGates: [],
+      completionBoundary: "accepted-commit",
+    },
+    sourceRefs: [],
+    deliverables: [],
+    acceptanceCriteria: ["Passes"],
+    verification: ["pnpm test"],
+    provenance: { schemaVersion: 1, iterations: [] },
+    coordination: null,
+    statusDetail: null,
+  };
+  // A candidate that violates the per-task schema is rejected at the shared
+  // protocol layer for the fake exactly as for the real adapter.
+  await assert.rejects(
+    () => source.execute({
+      schemaVersion: 1,
+      operation: "propose",
+      taskId: "QK-BAD",
+      expectedNativeRevision: `sha256:${"0".repeat(64)}`,
+      idempotencyKey: "C-1:QK-BAD:propose:evt-1",
+      input: { task: candidate },
+    }),
+    (error: unknown) => error instanceof QuirksError && error.code === "SCHEMA_INVALID",
+  );
+
+  const valid = await source.execute({
+    schemaVersion: 1,
+    operation: "propose",
+    taskId: "QK-GOOD",
+    expectedNativeRevision: `sha256:${"0".repeat(64)}`,
+    idempotencyKey: "C-1:QK-GOOD:propose:evt-1",
+    input: { task: { ...candidate, id: "QK-GOOD", title: "Valid candidate" } },
+  });
+  assert.equal(valid.ok, true);
+});
+
+test("fake propose enforces envelope-level json-task-file-v1 rules like the real adapter", async () => {
+  const source = new FakeTaskSource();
+  // Fill the envelope to the schema's 1024-task cap (QK-1 pre-exists).
+  for (let index = 2; index <= 1024; index += 1) {
+    source.upsertTask(`QK-${index}`);
+  }
+  const overflow = await source.execute({
+    schemaVersion: 1,
+    operation: "propose",
+    taskId: "QK-1025",
+    expectedNativeRevision: `sha256:${"0".repeat(64)}`,
+    idempotencyKey: "C-1:QK-1025:propose:evt-1",
+    input: {
+      task: {
+        id: "QK-1025",
+        title: "One task past the envelope cap",
+        kind: "implementation",
+        priority: "P2",
+        status: "proposed",
+        dependsOn: [],
+        workflow: { family: "superpowers", phase: "execute", designGate: { required: false } },
+        execution: {
+          effort: "standard",
+          risk: [],
+          capabilities: ["repository-write"],
+          parallelismKeys: [],
+          humanGates: [],
+          completionBoundary: "accepted-commit",
+        },
+        sourceRefs: [],
+        deliverables: [],
+        acceptanceCriteria: ["Passes"],
+        verification: ["pnpm test"],
+        provenance: { schemaVersion: 1, iterations: [] },
+        coordination: null,
+        statusDetail: null,
+      },
+    },
+  });
+  assert.equal(overflow.ok, false);
+  if (overflow.ok) return;
+  assert.equal(overflow.error.code, "SCHEMA_INVALID");
+});
+
 test("mutation identity is campaign/task/operation/event scoped", async () => {
   const source = new FakeTaskSource();
   const response = await source.execute({
