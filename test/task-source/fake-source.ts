@@ -35,6 +35,7 @@ type StoredTask = {
 
 const SUPPORTED_OPERATIONS: readonly TaskSourceOperation[] = [
   "capabilities",
+  "validate",
   "list",
   "show",
   "claim",
@@ -215,8 +216,47 @@ export class FakeTaskSource implements TaskSource {
       case "attach-provenance":
         return this.applyMutation(request, () => undefined);
       case "propose":
-        return this.applyMutation(request, () => undefined);
+        return this.applyPropose(request);
     }
+  }
+
+  private applyPropose(request: Extract<MutationRequest, { operation: "propose" }>): TaskSourceResponse {
+    const requestHash = mutationRequestHash(request);
+    const cached = this.idempotency.get(request.idempotencyKey);
+    if (cached) {
+      if (cached.requestHash !== requestHash) {
+        return failure("propose", "SOURCE_CONFLICT", "Idempotency key reused with different request");
+      }
+      return cached.response;
+    }
+
+    const candidate = request.input.task;
+    if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
+      return failure("propose", "SCHEMA_INVALID", "Proposed task must be an object");
+    }
+    const proposed = candidate as Partial<StoredTask> & { id?: unknown; status?: unknown };
+    if (typeof proposed.id !== "string" || proposed.id !== request.taskId) {
+      return failure("propose", "SOURCE_CONFLICT", "Proposed task id must match request taskId");
+    }
+    if (proposed.status !== "proposed" && proposed.status !== "ready") {
+      return failure("propose", "SOURCE_CONFLICT", "Proposed task must start proposed or ready");
+    }
+    if (this.tasks.has(proposed.id)) {
+      return failure("propose", "SOURCE_CONFLICT", `Task ${proposed.id} already exists`);
+    }
+
+    const stored: StoredTask = { ...baseTask(), ...(proposed as Partial<StoredTask>), id: proposed.id };
+    this.tasks.set(stored.id, stored);
+    const data = normalizedTask(stored);
+    const response = {
+      schemaVersion: 1,
+      operation: "propose",
+      ok: true,
+      nativeRevision: data.nativeRevision,
+      data,
+    } satisfies TaskSourceResponse;
+    this.idempotency.set(request.idempotencyKey, { requestHash, response });
+    return response;
   }
 
   private applyMutation(
