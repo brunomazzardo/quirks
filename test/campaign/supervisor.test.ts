@@ -25,6 +25,7 @@ interface TestContextOptions {
   source?: FakeTaskSource;
   runner?: RunnerPort;
   worktree?: FakeWorktreePort;
+  now?: () => string;
 }
 
 async function testContext(options: TestContextOptions = {}): Promise<CampaignSupervisorContext> {
@@ -67,6 +68,7 @@ async function testContext(options: TestContextOptions = {}): Promise<CampaignSu
     worktree: options.worktree ?? new FakeWorktreePort(),
     lockPath: path.join(lockDir, "repository.lock"),
     repositoryRoot,
+    ...(options.now ? { now: options.now } : {}),
   };
 }
 
@@ -370,6 +372,52 @@ test("runToCompletion dispatches waves concurrently within envelope maxConcurren
   assert.equal(waveStarted.length, 2);
   assert.equal(waveStarted[0]?.evidence["taskIds"], "QK-A,QK-B");
   assert.equal(waveStarted[1]?.evidence["taskIds"], "QK-C");
+  await supervisor.stop();
+});
+
+function steppingClock(startMs: number, stepMs: number): () => string {
+  let current = startMs;
+  return () => {
+    current += stepMs;
+    return new Date(current).toISOString();
+  };
+}
+
+test("runToCompletion stops on exhausted wall-clock budget without further dispatch", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor([]) });
+  source.upsertTask("QK-B", { status: "ready", dependsOn: ["QK-A"], execution: executionFor([]) });
+  const runner = new FakeRunnerPort();
+  const context = await testContext({
+    taskIds: ["QK-A", "QK-B"],
+    taskRevisions: {
+      "QK-A": source.taskRevision("QK-A"),
+      "QK-B": source.taskRevision("QK-B"),
+    },
+    budgets: { maxTasks: 2, maxConcurrency: 1, maxWallClockMs: 60_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A", "QK-B"]),
+    source,
+    runner,
+    now: steppingClock(Date.parse("2026-07-22T00:00:00.000Z"), 120_000),
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "stopped");
+  assert.deepEqual(outcome.breaker, { action: "stop", reason: "BUDGET_EXCEEDED" });
+  assert.equal(runner.dispatches.every((dispatch) => dispatch.taskId === "QK-A"), true);
+  assert.equal(runner.dispatches.some((dispatch) => dispatch.taskId === "QK-B"), false);
+
+  const state = await context.store.readState();
+  assert.equal(state.status, "paused");
+  assert.equal(state.pausedReason, "BUDGET_EXCEEDED");
+
+  const events = await context.store.readEvents();
+  const paused = events.find((event) => event.type === "campaign.paused");
+  assert.ok(paused, "expected campaign.paused event");
+  assert.equal(paused.reason, "BUDGET_EXCEEDED");
+  assert.equal(paused.evidence["breakerAction"], "stop");
   await supervisor.stop();
 });
 
