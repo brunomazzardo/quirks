@@ -9,20 +9,19 @@ Quirks is a project-agnostic local control plane for planning, dispatching, obse
 - Specs, plans, commits, PRs, and reports are referenced by path/commit/URL. Do not copy their full bodies into task JSON.
 - Real external execution must be bound to an approved campaign envelope, configured runner profile, budget, worktree, and independent review.
 
-## Active dogfood release repair
+## Current state (2026-07-22, post QK-DGF-002)
 
-The current repair is `QK-DGF-002` on branch `codex/qk-dgf-002`. On a machine with an existing repair worktree, locate it with `git worktree list` and continue there rather than restarting from `main`.
+The dogfood release repair `QK-DGF-002` is complete and merged to `main` (merge `a16a108`); all seven repair slices completed through `quirks-tasks` CLI mutations. The handoff `docs/handoffs/2026-07-22-qk-dgf-002.md` is superseded and kept only as history. `.superpowers/sdd/progress.md` describes the earlier foundation plan, not current work.
 
-Before continuing it, read:
+Honest remaining gaps — do not claim a release until these clear:
 
-1. `docs/handoffs/2026-07-22-qk-dgf-002.md`
-2. `docs/superpowers/plans/2026-07-22-quirks-dogfood-release-repair.md`
-3. `.superpowers/sdd/progress.md`
-4. `references/dogfood.md`
-
-Do not trust the old Wave 7 release summary as proof: the real host/runner, marketplace, and bounded-campaign gates were stubbed or blocked. Finish the seven repair slices and reconcile task truth before making a release claim.
+- Real host×runner smoke matrix best recorded run is 4/9 cells passed (`docs/smoke/2026-host-matrix.md`); ledger tasks `QK-HOST-004A/B/C` stay `blocked`.
+- The bounded real campaign is harness-only, operator-blocked at the Codex reviewer (`docs/smoke/bounded-campaign-report.md`); `QK-HOST-005A/B` and `QK-RELEASE-REV` stay `blocked`.
+- The QK-DGF-002 merge was accepted without the independent Step-6 release review; see `docs/superpowers/reviews/2026-07-22-qk-dgf-002-acceptance.md`.
 
 Until the transition criteria in `references/dogfood.md` pass, use the documented Superpowers bootstrap for parent orchestration. Quirks CLIs remain the only mechanical task/campaign authority.
+
+Active workstreams are planned in `docs/superpowers/plans/2026-07-22-post-repair-workstreams.md`.
 
 ## Required development discipline
 
@@ -32,7 +31,7 @@ Until the transition criteria in `references/dogfood.md` pass, use the documente
 - Run `pnpm check` and `git diff --check` before accepting code. Run relevant Playwright and real smoke gates at their owning layer.
 - Never substitute fake adapters, skipped tests, stubs, or documents for an authorized real release gate.
 - Do not expose credentials or raw provider output in logs/artifacts. No production/destructive action, force push, or campaign expansion without explicit authority.
-- Do not push `QK-DGF-002` before the plan's final exact reviewed push gate.
+- Do not push to any remote before the owning plan's reviewed push gate.
 
 ## Local control UI guidance
 
