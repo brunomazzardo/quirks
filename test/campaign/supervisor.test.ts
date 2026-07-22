@@ -478,6 +478,37 @@ test("runToCompletion records accepted provenance only for reviewer-approved att
   await supervisor.stop();
 });
 
+test("a paused lane does not starve dependency-satisfied tasks on healthy lanes", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  source.upsertTask("QK-B", { status: "ready", execution: executionFor(["lane-b"]) });
+  source.upsertTask("QK-C", { status: "ready", dependsOn: ["QK-B"], execution: executionFor(["lane-b"]) });
+  const runner = new FakeRunnerPort();
+  runner.queueResult("cmp-supervisor:QK-A:implementer:1", failureResult("cmp-supervisor:QK-A:implementer:1"));
+  runner.queueResult("cmp-supervisor:QK-A:implementer:2", failureResult("cmp-supervisor:QK-A:implementer:2"));
+  const context = await testContext({
+    taskIds: ["QK-A", "QK-B", "QK-C"],
+    taskRevisions: Object.fromEntries(["QK-A", "QK-B", "QK-C"].map((taskId) => [taskId, source.taskRevision(taskId)])),
+    budgets: { maxTasks: 5, maxConcurrency: 2, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A", "QK-B", "QK-C"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "paused");
+  assert.deepEqual(outcome.pausedLanes, ["lane-a"]);
+  assert.equal(runner.dispatches.some((dispatch) => dispatch.taskId === "QK-C" && dispatch.role === "implementer"), true);
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-C" && job.role === "implementer"), true);
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-B" && job.role === "implementer"), true);
+  const state = await context.store.readState();
+  assert.equal(state.activeLanes?.includes("lane-b"), true);
+  assert.equal(state.activeLanes?.includes("lane-a"), false);
+  await supervisor.stop();
+});
+
 function steppingClock(startMs: number, stepMs: number): () => string {
   let current = startMs;
   return () => {
