@@ -353,11 +353,10 @@ async function invokeHostCell(input: {
     QUIRKS_SMOKE_EFFORT: input.runnerProfile.effort,
   };
 
-  const hostArgv = buildHostArgv(input.host, input.hostExecutable, input.briefPath);
-  const usesSmokeHost = path.basename(input.hostExecutable) === "smoke-host.mjs";
-  if (usesSmokeHost) {
-    hostArgv.splice(1, hostArgv.length - 1);
-  }
+  const usesOrchestratorShim = path.basename(input.hostExecutable) === "smoke-host.mjs";
+  const hostArgv = usesOrchestratorShim
+    ? [input.hostExecutable]
+    : buildHostArgv(input.host, input.hostExecutable, input.briefPath);
 
   const { exitCode, timedOut } = await spawnHostProcess({
     argv: hostArgv,

@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 import { access, constants } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { persistEvidence, projectMatrixMarkdown } from "../dist/src/smoke/evidence.js";
 import {
   installSmokeHostExecutable,
@@ -16,7 +14,6 @@ import {
 } from "../dist/src/smoke/host-runner.js";
 import { SMOKE_APPROVAL_ENV, SMOKE_MATRIX } from "../dist/src/smoke/types.js";
 
-const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function parseArgs(argv) {
@@ -69,15 +66,6 @@ async function resolveExecutable(name) {
   return undefined;
 }
 
-async function probeVersion(executable) {
-  try {
-    const { stdout } = await execFileAsync(executable, ["--version"], { timeout: 15_000 });
-    return stdout.trim().split("\n")[0].slice(0, 64);
-  } catch {
-    return "unknown";
-  }
-}
-
 async function main() {
   if (process.env.QUIRKS_SMOKE_APPROVED !== SMOKE_APPROVAL_ENV) {
     throw new Error(`Set QUIRKS_SMOKE_APPROVED=${SMOKE_APPROVAL_ENV}`);
@@ -92,33 +80,22 @@ async function main() {
   const claude = await resolveExecutable("claude");
   const codex = await resolveExecutable("codex");
   const cursor = await resolveExecutable("cursor-agent");
-  if (!claude || !codex || !cursor) {
-    throw new Error("Missing one or more runner executables on PATH");
-  }
 
-  const smokeHost = await installSmokeHostExecutable(configDir);
   await writeSmokeHostsConfig(configDir, {
-    claude: smokeHost,
-    codex: smokeHost,
-    cursor: smokeHost,
+    ...(claude ? { claude } : {}),
+    ...(codex ? { codex } : {}),
+    ...(cursor ? { cursor } : {}),
   });
 
-  const hostVersions = {
-    claude: await probeVersion(claude),
-    codex: await probeVersion(codex),
-    cursor: await probeVersion(cursor),
-  };
-  const runnerVersions = {
-    claude: await probeVersion(claude),
-    codex: await probeVersion(codex),
-    cursor: await probeVersion(cursor),
-  };
+  const orchestratorFallback = await installSmokeHostExecutable(configDir);
 
   const records = [];
   for (const cell of cells) {
     const cellFixtureRoot = await prepareSmokeFixtureRoot();
-    await writeSmokeProfilesConfig(configDir, { claude, codex, cursor }, cell.runner);
-    const { evidence: rawEvidence } = await runHostRunnerCell({
+    if (claude && codex && cursor) {
+      await writeSmokeProfilesConfig(configDir, { claude, codex, cursor }, cell.runner);
+    }
+    const { evidence } = await runHostRunnerCell({
       host: cell.host,
       runner: cell.runner,
       fixtureRoot: cellFixtureRoot,
@@ -126,23 +103,14 @@ async function main() {
       approved: true,
       evidenceDir: options.evidenceDir,
       campaignCli: path.join(repoRoot, "dist/src/cli/quirks-campaign.js"),
-      hostExecutables: {
-        claude: smokeHost,
-        codex: smokeHost,
-        cursor: smokeHost,
-      },
+      orchestratorExecutable: orchestratorFallback,
     });
-    const evidence = {
-      ...rawEvidence,
-      hostVersion: hostVersions[cell.host],
-      runnerVersion: runnerVersions[cell.runner],
-      deviations: rawEvidence.deviations.includes("host-orchestrator-fallback")
-        ? rawEvidence.deviations
-        : [...rawEvidence.deviations, "host-orchestrator-shim"],
-    };
     await persistEvidence(evidence, options.evidenceDir);
     records.push(evidence);
-    process.stdout.write(`${cell.host}/${cell.runner}: ${evidence.outcome}\n`);
+    const deviationSuffix = evidence.deviations.length > 0
+      ? ` (${evidence.deviations.join(", ")})`
+      : "";
+    process.stdout.write(`${cell.host}/${cell.runner}: ${evidence.outcome}${deviationSuffix}\n`);
   }
 
   const markdown = projectMatrixMarkdown(records);

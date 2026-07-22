@@ -148,10 +148,10 @@ function redactProfileId(profileId: string): string {
 }
 
 function formatOutcome(outcome: SmokeOutcome, deviations: readonly string[]): string {
-  if (outcome === "blocked" && deviations.length > 0) {
-    return `blocked:${deviations[0]}`;
+  if (deviations.length === 0) {
+    return outcome;
   }
-  return outcome;
+  return `${outcome}:${deviations.join(",")}`;
 }
 
 export function projectMatrixMarkdown(records: readonly HostRunnerEvidence[]): string {

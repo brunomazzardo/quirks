@@ -80,6 +80,28 @@ test("matrix markdown projection is deterministic", () => {
   assert.match(left, /claude/);
 });
 
+test("matrix markdown surfaces deviations on passed cells", () => {
+  const markdown = projectMatrixMarkdown([
+    {
+      schemaVersion: 1,
+      date: "2026-07-22",
+      os: "darwin",
+      host: "claude",
+      hostVersion: "1.0.0",
+      runner: "codex",
+      runnerVersion: "1.0.0",
+      model: "smoke-codex",
+      effort: "standard",
+      profileId: "smoke-implementer-codex",
+      outcome: "passed",
+      sessionAvailable: true,
+      artifactDigest: "a".repeat(64),
+      deviations: ["host-orchestrator-fallback"],
+    },
+  ]);
+  assert.match(markdown, /passed:host-orchestrator-fallback/);
+});
+
 test("approved smoke executes a supplied host/runner cell", async () => {
   const { configDir, fixtureRoot, executables } = await createHarnessConfig();
   await writeSmokeProfilesConfig(configDir, executables, "claude");

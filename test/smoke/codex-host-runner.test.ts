@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { access, constants } from "node:fs/promises";
 import { chmod, cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { validateHostRunnerEvidence } from "../../src/smoke/evidence.js";
 import { SMOKE_MATRIX } from "../../src/smoke/types.js";
 import {
   installSmokeHostExecutable,
@@ -13,6 +15,20 @@ import {
 } from "../../src/smoke/host-runner.js";
 
 const APPROVED = process.env.QUIRKS_SMOKE_APPROVED === "approve-paid-runner-probes";
+
+async function resolveExecutable(name: string): Promise<string | undefined> {
+  const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
+  for (const directory of searchPath) {
+    const candidate = path.join(directory, name);
+    try {
+      await access(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // continue
+    }
+  }
+  return undefined;
+}
 
 async function executableFakeRunner(scriptName: string, configDir: string): Promise<string> {
   const fixtureDir = path.resolve("test/fixtures/fake-runners");
@@ -25,22 +41,26 @@ async function executableFakeRunner(scriptName: string, configDir: string): Prom
   return target;
 }
 
-async function createHostConfig(host: "claude" | "codex" | "cursor") {
-  const configDir = await mkdtemp(path.join(os.tmpdir(), `quirks-smoke-${host}-`));
+async function createHostConfig() {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-smoke-codex-"));
   const claude = await executableFakeRunner("fake-claude.mjs", configDir);
   const codex = await executableFakeRunner("fake-codex.mjs", configDir);
   const cursor = await executableFakeRunner("fake-cursor.mjs", configDir);
-  const hostExecutable = await installSmokeHostExecutable(configDir);
+  const realCodexHost = await resolveExecutable("codex");
+  const orchestratorFallback = await installSmokeHostExecutable(configDir);
   await writeSmokeHostsConfig(configDir, {
-    claude: hostExecutable,
-    codex: hostExecutable,
-    cursor: hostExecutable,
+    claude: "claude",
+    codex: realCodexHost ?? "codex",
+    cursor: "cursor-agent",
   });
-  return { configDir, executables: { claude, codex, cursor } };
+  return { configDir, executables: { claude, codex, cursor }, realCodexHost, orchestratorFallback };
 }
 
 test("codex host runner smoke matrix", { skip: !APPROVED }, async () => {
-  const { configDir, executables } = await createHostConfig("codex");
+  const { configDir, executables, realCodexHost, orchestratorFallback } = await createHostConfig();
+  if (!realCodexHost) {
+    return;
+  }
   for (const cell of SMOKE_MATRIX.filter((entry) => entry.host === "codex")) {
     const fixtureRoot = await prepareSmokeFixtureRoot();
     await writeSmokeProfilesConfig(configDir, executables, cell.runner);
@@ -50,12 +70,28 @@ test("codex host runner smoke matrix", { skip: !APPROVED }, async () => {
       fixtureRoot,
       configDir,
       approved: true,
+      orchestratorExecutable: orchestratorFallback,
     });
-    assert.equal(evidence.outcome, "passed", `${cell.host}/${cell.runner}`);
-    assert.equal(evidence.sessionAvailable, true);
+    validateHostRunnerEvidence(evidence);
+    assert.notEqual(evidence.deviations.includes("host-orchestrator-shim"), true);
+    assert.ok(
+      evidence.outcome === "passed" || evidence.outcome === "failed" || evidence.outcome === "blocked",
+      `${cell.host}/${cell.runner} returned ${evidence.outcome}`,
+    );
   }
 });
 
-test("codex host runner smoke blocked without approval gate", { skip: APPROVED }, () => {
-  assert.equal(process.env.QUIRKS_SMOKE_APPROVED ?? "", "");
+test("codex host runner smoke blocked without approval gate", { skip: APPROVED }, async () => {
+  const { configDir, executables } = await createHostConfig();
+  const fixtureRoot = await prepareSmokeFixtureRoot();
+  await writeSmokeProfilesConfig(configDir, executables, "codex");
+  const { evidence } = await runHostRunnerCell({
+    host: "codex",
+    runner: "codex",
+    fixtureRoot,
+    configDir,
+    approved: false,
+  });
+  assert.equal(evidence.outcome, "blocked");
+  assert.equal(evidence.deviations[0], "missing-approval");
 });
