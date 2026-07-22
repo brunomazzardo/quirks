@@ -82,6 +82,7 @@ test("portable external fixture shares campaign boundaries with JSON driver", as
     worktree: new FakeWorktreePort(),
     lockPath: path.join(stateDir, "repository.lock"),
     repositoryRoot: canonicalRoot,
+    workflowSkills: project.config.workflowPolicy.skills,
   });
   await supervisor.startApproved();
   const status = await supervisor.status();

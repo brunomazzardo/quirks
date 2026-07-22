@@ -39,10 +39,11 @@ export interface CampaignSupervisorContext {
   profileIndex?: ReadonlyMap<string, RunnerProfile>;
   /**
    * Configured workflow skills frozen into `envelope.hashes.instructions` at
-   * preflight. prepareRun reassembles the hash and rejects drift before any
-   * claim or dispatch.
+   * preflight. Required: prepareRun reassembles the hash and rejects drift
+   * before any claim or dispatch, and refuses to run when the skills are
+   * absent — the freeze check is never silently skipped.
    */
-  workflowSkills?: Readonly<Record<string, string>>;
+  workflowSkills: Readonly<Record<string, string>>;
   now?: () => string;
 }
 
@@ -373,14 +374,20 @@ export class CampaignSupervisor {
       throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_REQUIRED");
     }
 
-    if (this.context.workflowSkills !== undefined) {
-      const reassembled = computeInstructionsHash(this.context.workflowSkills);
-      if (reassembled !== envelope.hashes.instructions) {
-        throw new QuirksError(
-          "PROTOCOL_VIOLATION",
-          "INSTRUCTIONS_DRIFT: prompt instructions changed after approval; re-run preflight",
-        );
-      }
+    if (this.context.workflowSkills === undefined) {
+      // Fail closed for JS callers that bypass the compile-time requirement:
+      // dispatch without the configured skills would skip the freeze check.
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        "INSTRUCTIONS_UNVERIFIED: configured workflow skills are required to verify the frozen prompt instructions",
+      );
+    }
+    const reassembled = computeInstructionsHash(this.context.workflowSkills);
+    if (reassembled !== envelope.hashes.instructions) {
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        "INSTRUCTIONS_DRIFT: prompt instructions changed after approval; re-run preflight",
+      );
     }
 
     this.lockHandle = await RepositoryLock.acquire(this.context.lockPath, {
@@ -488,7 +495,7 @@ export class CampaignSupervisor {
     });
     const planOutline = await resolveTaskPlanOutline(this.context.repositoryRoot, taskDetail);
     const briefProfiles = [...(this.context.profileIndex?.values() ?? [])];
-    const briefSkills = this.context.workflowSkills ?? {};
+    const briefSkills = this.context.workflowSkills;
     const campaignProjection = {
       campaignId: envelope.campaignId,
       state: "running" as const,

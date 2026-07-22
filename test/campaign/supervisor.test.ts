@@ -71,15 +71,15 @@ async function testContext(options: TestContextOptions = {}): Promise<CampaignSu
     taskIds: [...taskIds],
     taskRevisions,
     ...(options.budgets ? { budgets: options.budgets } : {}),
-    ...(options.workflowSkills && !options.staleInstructionsHash
-      ? {
+    ...(options.staleInstructionsHash
+      ? {}
+      : {
           hashes: {
             config: "sha256:cfg",
             workflowPolicy: "sha256:wf",
-            instructions: computeInstructionsHash(options.workflowSkills),
+            instructions: computeInstructionsHash(options.workflowSkills ?? {}),
           },
-        }
-      : {}),
+        }),
     routing: options.routing ?? {
       "QK-1": {
         primary: { profileId: "cursor-standard", tier: "standard", effort: "standard" },
@@ -104,7 +104,7 @@ async function testContext(options: TestContextOptions = {}): Promise<CampaignSu
     worktree: options.worktree ?? new FakeWorktreePort(),
     lockPath: path.join(lockDir, "repository.lock"),
     repositoryRoot,
-    ...(options.workflowSkills ? { workflowSkills: options.workflowSkills } : {}),
+    workflowSkills: options.workflowSkills ?? {},
     ...(options.profiles
       ? { profileIndex: new Map(options.profiles.map((profile) => [profile.profileId, profile])) }
       : {}),
@@ -932,4 +932,35 @@ test("rejects instructions drift between the envelope and configured workflow sk
   const supervisor = await CampaignSupervisor.open(context);
   await recordApproval(context);
   await assert.rejects(() => supervisor.startApproved(), /INSTRUCTIONS_DRIFT/);
+});
+
+test("refuses dispatch when workflow skills are absent instead of skipping the freeze check", async () => {
+  const context = await testContext();
+  // Simulate a JS caller that bypasses the compile-time requirement.
+  delete (context as { workflowSkills?: unknown }).workflowSkills;
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /INSTRUCTIONS_UNVERIFIED/);
+  const status = await supervisor.status();
+  assert.deepEqual(status.claimedTaskIds, [], "no task may be claimed with unverified instructions");
+  assert.deepEqual(status.dispatchedJobs, [], "no brief may be dispatched with unverified instructions");
+});
+
+test("TASK_REVISION_DRIFT: a stale approved revision refuses dispatch before any claim", async () => {
+  const source = new FakeTaskSource();
+  const runner = new FakeRunnerPort();
+  const context = await testContext({
+    source,
+    runner,
+    taskRevisions: { "QK-1": `sha256:${"5".repeat(64)}` },
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /TASK_REVISION_DRIFT/);
+
+  const status = await supervisor.status();
+  assert.deepEqual(status.claimedTaskIds, [], "drift must refuse before any claim mutation");
+  assert.deepEqual(runner.dispatches, [], "drift must refuse before any dispatch");
+  const shown = await source.execute({ schemaVersion: 1, operation: "show", taskId: "QK-1", input: {} });
+  assert.equal(shown.ok && (shown.data as { status: string }).status, "ready", "task stays unclaimed at the source");
 });

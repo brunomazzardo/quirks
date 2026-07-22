@@ -14,6 +14,7 @@ import { SyncOutbox } from "../../src/sync/outbox.js";
 import { validateSkills } from "../../scripts/validate-skills.mjs";
 import { FakeTaskSource } from "../task-source/fake-source.js";
 import { campaignEnvelope } from "../campaign/support.js";
+import { computeInstructionsHash } from "../../src/campaign/task-brief.js";
 import { FakeRunnerPort } from "../campaign/support/fake-runner-port.js";
 
 async function supervisorWithGitWorktrees(): Promise<{
@@ -49,6 +50,11 @@ async function supervisorWithGitWorktrees(): Promise<{
     repositoryId: "sha256:wave3-repo",
     taskIds: ["QK-1"],
     taskRevisions: { "QK-1": source.taskRevision("QK-1") },
+    hashes: {
+      config: "sha256:cfg",
+      workflowPolicy: "sha256:wf",
+      instructions: computeInstructionsHash({}),
+    },
     git: {
       baseCommit: head,
       campaignBranch: "quirks/cmp-wave3/integration",
@@ -94,6 +100,7 @@ async function supervisorWithGitWorktrees(): Promise<{
     worktree: manager,
     lockPath: path.join(lockDir, "repository.lock"),
     repositoryRoot,
+    workflowSkills: {},
   });
 
   return { supervisor, store, manager, stateDir, lockPath: path.join(lockDir, "repository.lock") };
