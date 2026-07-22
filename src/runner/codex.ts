@@ -79,8 +79,9 @@ export const CODEX_PROMPT_MAX_BYTES = 100 * 1024;
 export const CODEX_CONTINUE_PROMPT =
   "Continue from the current thread state. Re-read the brief at <briefPath>, pick the next highest-value step, and write the result envelope to the declared result path before exiting.";
 
-export function codexResultPath(artifactDir: string): string {
-  return path.join(artifactDir, "codex-result.json");
+export function codexResultPath(artifactDir: string, jobId: string): string {
+  const safeJobId = jobId.replace(/[^A-Za-z0-9._-]/g, "-");
+  return path.join(artifactDir, `codex-result-${safeJobId}.json`);
 }
 
 export function codexResultSchemaPath(): string {

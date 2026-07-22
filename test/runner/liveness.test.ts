@@ -295,7 +295,7 @@ test("resumeJob builds the codex resume argv with the declared result contract",
   assert.equal(capturedArgv?.[1], "exec");
   assert.equal(capturedArgv?.includes("--output-schema"), true);
   const outputIndex = capturedArgv?.indexOf("-o") ?? -1;
-  assert.equal(capturedArgv?.[outputIndex + 1], "/tmp/artifacts/job-1/codex-result.json");
+  assert.equal(capturedArgv?.[outputIndex + 1], "/tmp/artifacts/job-1/codex-result-job-1.json");
   const resumeIndex = capturedArgv?.indexOf("resume") ?? -1;
   assert.equal(capturedArgv?.[resumeIndex + 1], "codex-session-abc");
   assert.equal(capturedArgv?.[resumeIndex + 2], "--");

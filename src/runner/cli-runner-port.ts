@@ -71,7 +71,7 @@ export function buildRunnerArgv(
         model: profile.model,
         workspace: input.worktreePath,
         promptText: codexPromptText(input.briefPath, briefContents),
-        resultPath: codexResultPath(artifactDir),
+        resultPath: codexResultPath(artifactDir, input.jobId),
         artifactDir,
         schemaPath: codexResultSchemaPath(),
         capabilities: profile.capabilities,
@@ -118,12 +118,12 @@ export class CliRunnerPort implements RunnerPort {
   }
 }
 
-export function artifactPathsForRunner(profile: RunnerProfile, artifactDir: string): readonly string[] {
+export function artifactPathsForRunner(profile: RunnerProfile, artifactDir: string, jobId: string): readonly string[] {
   switch (profile.runnerType) {
     case "claude":
       return claudeArtifactPaths(artifactDir);
     case "codex":
-      return [codexResultPath(artifactDir)];
+      return [codexResultPath(artifactDir, jobId)];
     case "cursor":
       return cursorArtifactPaths(artifactDir);
     default: {

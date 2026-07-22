@@ -144,7 +144,7 @@ export async function probeLiveness(jobId: string, deps: ProbeLivenessDeps): Pro
 function buildResumeArgv(
   profile: RunnerProfile,
   sessionHandle: string,
-  posture: { workspace: string; briefPath: string; artifactDir: string },
+  posture: { workspace: string; briefPath: string; artifactDir: string; jobId: string },
 ): readonly string[] {
   if (!sessionHandle) {
     throw new QuirksError("PROTOCOL_VIOLATION", "Cannot resume job without a recorded session handle");
@@ -164,7 +164,7 @@ function buildResumeArgv(
         executable: profile.executable,
         sessionHandle,
         briefPath: posture.briefPath,
-        resultPath: codexResultPath(posture.artifactDir),
+        resultPath: codexResultPath(posture.artifactDir, posture.jobId),
         schemaPath: codexResultSchemaPath(),
         capabilities: profile.capabilities,
         effort: profile.effort,
@@ -196,6 +196,7 @@ export async function resumeJob(jobId: string, deps: ResumeJobDeps): Promise<Run
     workspace: deps.workspace,
     briefPath: deps.briefPath,
     artifactDir: deps.artifactDir,
+    jobId,
   });
 
   await deps.journal.append({

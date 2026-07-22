@@ -40,7 +40,7 @@ Resume carries `--output-schema` too (deliberate amendment to the plan's resume 
 | `--output-schema` | `schemas/codex-result.schema.json` (resolved via `codexResultSchemaPath()`) | JSON Schema constraining the model's final response to the Quirks result envelope. |
 | `--color` | `never` | Disables ANSI color so stdout stays mechanically parseable. |
 | `--json` | flag | Emits JSONL events on stdout; the thread/session id is captured from these events. |
-| `-o, --output-last-message` | `<artifactDir>/codex-result.json` (`codexResultPath()`) | Codex writes the final agent message (the schema-constrained envelope) to the declared result path. Required on resume too — without it the dispatcher classifies `missing_result_path`. |
+| `-o, --output-last-message` | `<artifactDir>/codex-result-<jobId>.json` (`codexResultPath()`) | Codex writes the final agent message (the schema-constrained envelope) to the declared result path. Job-unique so concurrent jobs sharing a briefs directory never clobber each other. Required on resume too — without it the dispatcher classifies `missing_result_path`. |
 | `--` | separator | Terminates flag parsing before the prompt positional so briefs starting with `-` (YAML frontmatter, markdown lists) are never parsed as flags. |
 | `[PROMPT]` positional | brief contents, continue prompt, or pointer instruction | Must always be present: `codex exec` with no prompt positional reads stdin, which Quirks spawns as `ignore`. |
 

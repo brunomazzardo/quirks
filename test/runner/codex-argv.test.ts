@@ -8,6 +8,7 @@ import {
   buildCodexArgv,
   buildCodexResumeArgv,
   codexPromptText,
+  codexResultPath,
   codexResultSchemaPath,
   parseCodexResult,
   type BuildCodexArgvInput,
@@ -92,6 +93,47 @@ test("buildCodexArgv terminates flag parsing before a prompt that starts with da
 
 test("codexPromptText inlines brief contents under the size cap", () => {
   assert.equal(codexPromptText("/tmp/brief.md", "small brief"), "small brief");
+});
+
+test("codexResultPath is unique per job so concurrent jobs never clobber each other", () => {
+  const first = codexResultPath("/tmp/artifacts", "job-1");
+  const second = codexResultPath("/tmp/artifacts", "job-2");
+
+  assert.notEqual(first, second);
+  assert.match(first, /job-1/);
+  assert.match(second, /job-2/);
+});
+
+test("codex dispatch argv declares a job-unique result path per dispatched job", () => {
+  const profile: RunnerProfile = {
+    schemaVersion: 1,
+    profileId: "codex-standard",
+    runnerType: "codex",
+    executable: "/usr/bin/codex",
+    accountAlias: "default",
+    quotaPoolId: "pool",
+    tier: "standard",
+    model: "test-model",
+    effort: "standard",
+    capabilities: ["repository-read"],
+    wallClockMs: 5_000,
+    redactionRules: [],
+  };
+  const dispatchInput = (jobId: string) => ({
+    jobId,
+    taskId: "QK-1",
+    role: "implementer" as const,
+    route: { profileId: "codex-standard", runnerType: "codex" as const, tier: "standard" as const, effort: "standard" as const, quotaPoolId: "pool" },
+    briefPath: "/tmp/artifacts/briefs/brief.md",
+    worktreePath: "/tmp/worktree",
+  });
+
+  const first = flagValue(buildRunnerArgv(profile, dispatchInput("job-1"), "/tmp/artifacts/briefs", "# brief\n"), "-o");
+  const second = flagValue(buildRunnerArgv(profile, dispatchInput("job-2"), "/tmp/artifacts/briefs", "# brief\n"), "-o");
+
+  assert.notEqual(first, second);
+  assert.match(first ?? "", /job-1/);
+  assert.match(second ?? "", /job-2/);
 });
 
 test("codex dispatch argv references an existing result envelope schema", () => {
