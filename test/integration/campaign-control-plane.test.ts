@@ -297,6 +297,92 @@ test("approval replay is rejected after durable consumption", async () => {
   }
 });
 
+function dagTask(id: string, dependsOn: readonly string[]): Record<string, unknown> {
+  return {
+    id,
+    title: `DAG task ${id}`,
+    kind: "implementation",
+    priority: "P1",
+    status: "ready",
+    dependsOn: [...dependsOn],
+    workflow: { family: "superpowers", phase: "execute", designGate: { required: false } },
+    execution: {
+      effort: "standard",
+      risk: [],
+      capabilities: ["repository-write"],
+      parallelismKeys: [`lane-${id}`],
+      humanGates: [],
+      completionBoundary: "accepted-commit",
+    },
+    sourceRefs: [],
+    deliverables: ["implementation"],
+    acceptanceCriteria: [`${id} lands`],
+    verification: ["pnpm test"],
+    provenance: { schemaVersion: 1, iterations: [] },
+  };
+}
+
+test("preflight, approval, and start complete a three-task DAG unattended with provenance", async () => {
+  const { root, stateDir } = await freshCampaignRepo();
+  const dagIds = ["QK-301", "QK-302", "QK-303"];
+  await writeFile(
+    path.join(root, ".quirks/tasks.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      tasks: [dagTask("QK-301", []), dagTask("QK-302", ["QK-301"]), dagTask("QK-303", ["QK-301"])],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  await execFileAsync("git", ["-C", root, "add", ".quirks/tasks.json"]);
+  await execFileAsync("git", ["-C", root, "commit", "-m", "install dag fixture"]);
+
+  const preflight = await runPreflight({
+    repositoryRoot: root,
+    selectedTaskIds: ["QK-302", "QK-303"],
+    externalRoutingEnabled: false,
+    maxConcurrency: 2,
+  });
+  assert.deepEqual(preflight.envelope.taskIds, dagIds);
+  assert.equal(preflight.blockers.length, 0);
+  assert.equal(preflight.envelope.budgets.maxConcurrency, 2);
+
+  const context = await openSupervisorContext(root, stateDir, preflight.envelope);
+  try {
+    await recordHeadlessApproval(context);
+    const supervisor = await CampaignSupervisor.open(context);
+    const outcome = await supervisor.runToCompletion();
+
+    assert.equal(outcome.status, "completed");
+    assert.deepEqual(outcome.pausedLanes, []);
+    const completedImplementers = outcome.completedJobs.filter((job) => job.role === "implementer");
+    assert.deepEqual(completedImplementers.map((job) => job.taskId).toSorted(), dagIds);
+
+    const events = await context.store.readEvents();
+    const waveStarted = events.filter((event) => event.type === "wave.started");
+    assert.equal(waveStarted.length, 2);
+    assert.equal(waveStarted[0]?.evidence["taskIds"], "QK-301");
+    assert.equal(waveStarted[1]?.evidence["taskIds"], "QK-302,QK-303");
+
+    const envelope = await context.store.readEnvelope();
+    for (const taskId of dagIds) {
+      const show = await context.source.execute({ schemaVersion: 1, operation: "show", taskId, input: {} });
+      assert.equal(show.ok, true);
+      const provenance = (show as { data: { provenance: { iterations: Array<Record<string, unknown>> } } })
+        .data.provenance;
+      const iteration = provenance.iterations.find((entry) => entry["campaignId"] === envelope.campaignId);
+      assert.ok(iteration, `expected provenance iteration for ${taskId}`);
+      assert.equal(iteration["outcome"], "completed");
+      assert.equal(iteration["envelopeDigest"], envelope.digest);
+    }
+
+    const state = await context.store.readState();
+    assert.equal(state.status, "running");
+    await supervisor.stop();
+  } finally {
+    await context.dispose();
+  }
+});
+
 async function campaignCliIsPlaceholder(): Promise<boolean> {
   const { root, stateDir, configDir } = await freshCampaignRepo();
   try {
