@@ -1,10 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import type { Readable } from "node:stream";
-import { parseClaudeResult } from "./claude.js";
+import { parseClaudeResult, claudeArtifactPaths } from "./claude.js";
 import { parseCodexResult } from "./codex.js";
-import { parseCursorResult } from "./cursor.js";
+import { parseCursorResult, cursorArtifactPaths } from "./cursor.js";
 import { normalizeJobResult } from "./job-result.js";
 import type { RunnerJobFailure, RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
 
@@ -66,10 +65,6 @@ function extractFlagValue(argv: readonly string[], flag: string): string | undef
     }
   }
   return undefined;
-}
-
-function claudeArtifactPaths(artifactDir: string): readonly string[] {
-  return [path.join(artifactDir, "result.json")];
 }
 
 function codexDeclaredResultPath(argv: readonly string[]): string | undefined {
@@ -149,7 +144,7 @@ function parseRunnerOutput(input: {
       };
     }
     case "cursor": {
-      const parsed = parseCursorResult(input.stdout, claudeArtifactPaths(input.artifactDir));
+      const parsed = parseCursorResult(input.stdout, cursorArtifactPaths(input.artifactDir));
       return {
         status: parsed.status,
         sessionHandle: parsed.sessionHandle ?? sessionFallback,

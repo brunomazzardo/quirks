@@ -1,6 +1,10 @@
+import { access } from "node:fs/promises";
+import { constants } from "node:fs";
 import { QuirksError } from "../core/errors.js";
 import { sha256 } from "../core/hash.js";
 import { loadProjectContext } from "../project/config.js";
+import { loadRunnerProfiles } from "../runner/profiles.js";
+import type { RunnerProfile } from "../runner/types.js";
 import { createTaskSource } from "../task-source/factory.js";
 import { disposeTaskSource, type TaskSource } from "../task-source/task-source.js";
 import type { TaskSourceResponse } from "../task-source/types.js";
@@ -9,7 +13,7 @@ import { syncBoundary, type SyncBoundaryResult } from "../sync/boundaries.js";
 import type { OutboxPort, SyncIntent, SyncState } from "../sync/types.js";
 import { finalizeEnvelope } from "./envelope.js";
 import { inspectGit } from "./git-inspect.js";
-import { requiredTierForRole } from "./routing.js";
+import { requiredTierForRole, resolveRoute, type RoutableProfile } from "./routing.js";
 import type { CampaignEnvelope, CampaignRoute, JudgmentTier } from "./types.js";
 
 type NormalizedTask = {
@@ -37,6 +41,7 @@ export interface RunPreflightInput {
   externalRoutingEnabled: boolean;
   campaignId?: string;
   mode?: "inspection" | "unattended";
+  configDir?: string;
 }
 
 export interface PreflightProposal {
@@ -125,6 +130,106 @@ function placeholderRoute(task: NormalizedTask): { primary: CampaignRoute; fallb
   };
 }
 
+async function isProfileHealthy(profile: RunnerProfile): Promise<boolean> {
+  try {
+    await access(profile.executable, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function toRoutableProfiles(profiles: readonly RunnerProfile[]): Promise<RoutableProfile[]> {
+  const routable: RoutableProfile[] = [];
+  for (const profile of profiles) {
+    routable.push({
+      profileId: profile.profileId,
+      runnerType: profile.runnerType,
+      tier: profile.tier,
+      effort: profile.effort,
+      quotaPoolId: profile.quotaPoolId,
+      healthy: await isProfileHealthy(profile),
+      remainingAllocation: profile.wallClockMs,
+    });
+  }
+  return routable;
+}
+
+function routeFromResolved(
+  implementer: ReturnType<typeof resolveRoute>,
+  reviewer: ReturnType<typeof resolveRoute>,
+): { primary: CampaignRoute; fallbacks: CampaignRoute[] } {
+  return {
+    primary: {
+      profileId: implementer.profileId,
+      tier: implementer.tier,
+      effort: implementer.effort,
+    },
+    fallbacks: [{
+      profileId: reviewer.profileId,
+      tier: reviewer.tier,
+      effort: reviewer.effort,
+    }],
+  };
+}
+
+function resolveExternalRouting(
+  tasks: readonly NormalizedTask[],
+  routableProfiles: readonly RoutableProfile[],
+  blockers: string[],
+): Record<string, { primary: CampaignRoute; fallbacks: CampaignRoute[] }> {
+  const routing: Record<string, { primary: CampaignRoute; fallbacks: CampaignRoute[] }> = {};
+  for (const task of tasks) {
+    if (task.status === "completed") {
+      routing[task.id] = placeholderRoute(task);
+      continue;
+    }
+    const taskShape = { id: task.id, effort: task.execution.effort, risk: task.execution.risk };
+    try {
+      const implementer = resolveRoute(taskShape, routableProfiles, { role: "implementer" });
+      const reviewer = resolveRoute(taskShape, routableProfiles, {
+        role: "reviewer",
+        implementerRunnerType: implementer.runnerType,
+      });
+      routing[task.id] = routeFromResolved(implementer, reviewer);
+    } catch (error) {
+      if (error instanceof QuirksError && error.message === "NO_COMPATIBLE_ROUTE") {
+        blockers.push(`No compatible runner profile for task ${task.id}`);
+        routing[task.id] = placeholderRoute(task);
+        continue;
+      }
+      throw error;
+    }
+  }
+  return routing;
+}
+
+async function resolveRouting(
+  input: RunPreflightInput,
+  tasks: readonly NormalizedTask[],
+  blockers: string[],
+): Promise<Record<string, { primary: CampaignRoute; fallbacks: CampaignRoute[] }>> {
+  if (!input.externalRoutingEnabled) {
+    return Object.fromEntries(tasks.map((task) => [task.id, placeholderRoute(task)]));
+  }
+
+  try {
+    const profiles = await loadRunnerProfiles(input.configDir ? { configDir: input.configDir } : {});
+    const routableProfiles = await toRoutableProfiles(profiles);
+    const unhealthy = routableProfiles.filter((profile) => !profile.healthy);
+    for (const profile of unhealthy) {
+      blockers.push(`Runner profile ${profile.profileId} is unhealthy or not executable`);
+    }
+    return resolveExternalRouting(tasks, routableProfiles, blockers);
+  } catch (error) {
+    if (error instanceof QuirksError && error.message.includes("Missing user configuration file profiles.json")) {
+      blockers.push(error.message);
+      return Object.fromEntries(tasks.map((task) => [task.id, placeholderRoute(task)]));
+    }
+    throw error;
+  }
+}
+
 function preflightBlockers(tasks: readonly NormalizedTask[]): string[] {
   const blockers: string[] = [];
   for (const task of tasks) {
@@ -155,7 +260,7 @@ export async function runPreflight(input: RunPreflightInput): Promise<PreflightR
     const git = await inspectGit(context.root, { mode });
     const blockers = preflightBlockers(tasks);
     if (syncHealth.pendingIntents.length > 0) blockers.push("Pending sync intents must be reconciled before campaign approval");
-    const routing = Object.fromEntries(tasks.map((task) => [task.id, placeholderRoute(task)]));
+    const routing = await resolveRouting(input, tasks, blockers);
     const envelope = finalizeEnvelope({
       schemaVersion: 1,
       campaignId,
@@ -164,7 +269,7 @@ export async function runPreflight(input: RunPreflightInput): Promise<PreflightR
       taskIds: tasks.map((task) => task.id),
       taskRevisions: Object.fromEntries(tasks.map((task) => [task.id, task.nativeRevision])),
       designModes: Object.fromEntries(tasks.map((task) => [task.id, designMode(task)])),
-      git: { baseCommit: git.baseCommit, campaignBranch: `quirks/${campaignId}`, targetBranch: git.branch ?? "main", push: { enabled: false } },
+      git: { baseCommit: git.baseCommit, campaignBranch: `quirks/${campaignId}/integration`, targetBranch: git.branch ?? "main", push: { enabled: false } },
       authority: ["repository", "task-source", "operator", "git"],
       routing,
       budgets: { maxTasks: Math.max(1, tasks.length), maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },

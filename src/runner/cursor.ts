@@ -1,6 +1,11 @@
 import type { RunnerJobStatus } from "./types.js";
+import path from "node:path";
 
 const FORCE_CAPABILITY = "repository-write";
+
+export function cursorArtifactPaths(artifactDir: string): readonly string[] {
+  return [path.join(artifactDir, "cursor-result.json")];
+}
 
 export interface CursorArgvInput {
   readonly executable: string;
