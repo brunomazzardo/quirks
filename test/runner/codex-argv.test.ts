@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CODEX_CONTINUE_PROMPT,
   CODEX_PROMPT_MAX_BYTES,
   buildCodexArgv,
   buildCodexResumeArgv,
@@ -74,14 +75,44 @@ test("codexPromptText points at the brief path for oversized or unreadable brief
   assert.match(codexPromptText("/tmp/brief.md", undefined), /\/tmp\/brief\.md/);
 });
 
-test("buildCodexResumeArgv uses codex exec resume with the session id", () => {
+test("buildCodexResumeArgv keeps the result contract and continue prompt", () => {
   const argv = buildCodexResumeArgv({
     executable: "/usr/bin/codex",
     sessionHandle: "codex-session-123",
-    workspace: "/tmp/worktree",
+    briefPath: "artifacts/job-1/brief.md",
+    resultPath: "artifacts/job-1/result.json",
+    capabilities: ["repository-read", "repository-write"],
+    effort: "standard",
   });
 
-  assert.deepEqual(argv, ["/usr/bin/codex", "exec", "-C", "/tmp/worktree", "resume", "codex-session-123"]);
+  assert.deepEqual(argv.slice(0, 2), ["/usr/bin/codex", "exec"]);
+  assert.equal(flagValue(argv, "-s"), "workspace-write");
+  assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=standard");
+  assert.equal(flagValue(argv, "--color"), "never");
+  assert.equal(argv.includes("--json"), true);
+  assert.equal(flagValue(argv, "-o"), "artifacts/job-1/result.json");
+
+  const resumeIndex = argv.indexOf("resume");
+  assert.notEqual(resumeIndex, -1);
+  assert.equal(argv.indexOf("-o") < resumeIndex, true);
+  assert.equal(argv[resumeIndex + 1], "codex-session-123");
+  assert.equal(argv[resumeIndex + 2], CODEX_CONTINUE_PROMPT.replace("<briefPath>", "artifacts/job-1/brief.md"));
+  assert.equal(argv.length, resumeIndex + 3);
+});
+
+test("buildCodexResumeArgv maps read-only sandbox and honors an explicit continue prompt", () => {
+  const argv = buildCodexResumeArgv({
+    executable: "/usr/bin/codex",
+    sessionHandle: "codex-session-123",
+    briefPath: "artifacts/job-1/brief.md",
+    resultPath: "artifacts/job-1/result.json",
+    capabilities: ["repository-read"],
+    effort: "mechanical",
+    continuePrompt: "Wrap up now.",
+  });
+
+  assert.equal(flagValue(argv, "-s"), "read-only");
+  assert.equal(argv.at(-1), "Wrap up now.");
 });
 
 test("parseCodexResult requires declared artifact evidence and ignores transcript prose", () => {

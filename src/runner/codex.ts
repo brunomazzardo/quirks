@@ -16,7 +16,11 @@ export interface BuildCodexArgvInput {
 export interface BuildCodexResumeArgvInput {
   executable: string;
   sessionHandle: string;
-  workspace: string;
+  briefPath: string;
+  resultPath: string;
+  capabilities: readonly string[];
+  effort: string;
+  continuePrompt?: string;
 }
 
 export type CodexResultStatus =
@@ -58,6 +62,9 @@ const CODEX_STATUSES = new Set<CodexResultStatus>([
 export type CodexSandboxMode = "read-only" | "workspace-write";
 
 export const CODEX_PROMPT_MAX_BYTES = 100 * 1024;
+
+export const CODEX_CONTINUE_PROMPT =
+  "Continue from the current thread state. Re-read the brief at <briefPath>, pick the next highest-value step, and write the result envelope to the declared result path before exiting.";
 
 export function codexResultPath(artifactDir: string): string {
   return path.join(artifactDir, "codex-result.json");
@@ -110,10 +117,18 @@ export function buildCodexResumeArgv(input: BuildCodexResumeArgvInput): readonly
   return [
     input.executable,
     "exec",
-    "-C",
-    input.workspace,
+    "-s",
+    codexSandboxMode(input.capabilities),
+    "-c",
+    `model_reasoning_effort=${input.effort}`,
+    "--color",
+    "never",
+    "--json",
+    "-o",
+    input.resultPath,
     "resume",
     input.sessionHandle,
+    input.continuePrompt ?? CODEX_CONTINUE_PROMPT.replace("<briefPath>", input.briefPath),
   ];
 }
 
