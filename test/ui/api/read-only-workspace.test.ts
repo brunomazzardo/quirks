@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+import { loadProjectContext } from "../../../src/project/config.js";
 import { InMemoryApprovalTokenStore } from "../../../src/ui/approval/token-store.js";
 import { InMemoryViewerSessionStore } from "../../../src/ui/auth/viewer-session-store.js";
 import { createLoopbackAuthority } from "../../../src/ui/authority.js";
@@ -23,15 +24,26 @@ async function createFixtureProject(): Promise<string> {
   return root;
 }
 
-async function seedHistoricalCampaign(stateDir: string, campaignId: string): Promise<void> {
-  const campaignDir = path.join(stateDir, "repositories", "repo-fixture", "campaigns", campaignId);
+async function seedCampaign(
+  stateDir: string,
+  repositoryId: string,
+  campaignId: string,
+  overrides?: { status?: string },
+): Promise<void> {
+  const campaignDir = path.join(
+    stateDir,
+    "repositories",
+    repositoryId.replaceAll(":", "-"),
+    "campaigns",
+    campaignId,
+  );
   await mkdir(campaignDir, { recursive: true });
   await writeFile(
     path.join(campaignDir, "campaign.json"),
     JSON.stringify({
       schemaVersion: 1,
       campaignId,
-      repositoryId: "sha256:repo-1",
+      repositoryId,
       createdAt: "2026-07-20T09:00:00.000Z",
       taskIds: ["QK-1"],
     }),
@@ -41,7 +53,7 @@ async function seedHistoricalCampaign(stateDir: string, campaignId: string): Pro
     JSON.stringify({
       schemaVersion: 1,
       campaignId,
-      status: "complete",
+      status: overrides?.status ?? "complete",
       digest: "sha256:abc",
       updatedAt: "2026-07-20T15:00:00.000Z",
     }),
@@ -51,22 +63,26 @@ async function seedHistoricalCampaign(stateDir: string, campaignId: string): Pro
 async function createReadOnlyServer() {
   const repositoryRoot = await createFixtureProject();
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-read-only-state-"));
-  await seedHistoricalCampaign(stateDir, "C-hist");
+  const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
+  const repositoryId = context.repositoryId;
+  await seedCampaign(stateDir, repositoryId, "C-hist");
+  await seedCampaign(stateDir, "sha256:other-repo", "C-foreign");
+  await seedCampaign(stateDir, repositoryId, "C-corrupt", { status: "definitely_not_a_status" });
   const authority = await createLoopbackAuthority();
   const viewerSession = new InMemoryViewerSessionStore();
   const approval = new FakeApprovalWritePort(new InMemoryApprovalTokenStore());
   const ports = createStandaloneWorkspacePorts({ repositoryRoot, stateDir });
   const server = await createUiServer({
     authority,
-    repositoryId: "sha256:repo-1",
+    repositoryId,
     viewerSession,
     approval,
     readOnly: true,
     getCampaign: () => undefined,
     ...ports,
   });
-  const viewer = await viewerSession.issue({ repositoryId: "sha256:repo-1", now: new Date().toISOString() });
-  return { authority, server, viewerToken: viewer.viewerToken };
+  const viewer = await viewerSession.issue({ repositoryId, now: new Date().toISOString() });
+  return { authority, server, repositoryId, viewerToken: viewer.viewerToken };
 }
 
 function readHeaders(authority: { hostHeader: string; origin: string }, token: string) {
@@ -125,7 +141,7 @@ test("read-only workspace still requires viewer auth for approval POST", async (
 });
 
 test("read-only workspace serves every GET read-model route", async () => {
-  const { authority, server, viewerToken } = await createReadOnlyServer();
+  const { authority, server, repositoryId, viewerToken } = await createReadOnlyServer();
   try {
     const headers = readHeaders(authority, viewerToken);
 
@@ -142,7 +158,7 @@ test("read-only workspace serves every GET read-model route", async () => {
     assert.deepEqual(campaignsBody.items, [
       {
         campaignId: "C-hist",
-        repositoryId: "sha256:repo-1",
+        repositoryId,
         state: "complete",
         taskCount: 1,
         startedAt: "2026-07-20T09:00:00.000Z",
@@ -162,16 +178,6 @@ test("read-only workspace serves every GET read-model route", async () => {
     assert.deepEqual(detailBody.tasks, [{ taskId: "QK-1", title: "Contract task", status: "ready" }]);
     assert.deepEqual(detailBody.waves, []);
 
-    const progress = await fetch(
-      `${authority.baseUrl}/api/v1/tasks/QK-1/plan-progress?campaignId=C-hist`,
-      { headers },
-    );
-    assert.equal(progress.status, 200);
-    const progressBody = (await progress.json()) as { taskId: string; campaignId: string; source: string };
-    assert.equal(progressBody.taskId, "QK-1");
-    assert.equal(progressBody.campaignId, "C-hist");
-    assert.equal(progressBody.source, "legacy-best-effort");
-
     const history = await fetch(`${authority.baseUrl}/api/v1/tasks/QK-1/history`, { headers });
     assert.equal(history.status, 200);
     const historyBody = (await history.json()) as { schemaVersion: number; taskId: string; iterations: unknown[] };
@@ -181,10 +187,76 @@ test("read-only workspace serves every GET read-model route", async () => {
   }
 });
 
+test("standalone plan progress reports unavailable instead of fabricating a plan", async () => {
+  const { authority, server, viewerToken } = await createReadOnlyServer();
+  try {
+    const headers = readHeaders(authority, viewerToken);
+    const progress = await fetch(
+      `${authority.baseUrl}/api/v1/tasks/QK-1/plan-progress?campaignId=C-hist`,
+      { headers },
+    );
+    assert.equal(progress.status, 404);
+    assert.deepEqual(await progress.json(), { schemaVersion: 1, result: "invalid" });
+  } finally {
+    await server.close();
+  }
+});
+
+test("standalone campaigns are scoped to the workspace repository", async () => {
+  const { authority, server, repositoryId, viewerToken } = await createReadOnlyServer();
+  try {
+    const headers = readHeaders(authority, viewerToken);
+
+    const list = await fetch(`${authority.baseUrl}/api/v1/campaigns`, { headers });
+    assert.equal(list.status, 200);
+    const listBody = (await list.json()) as { items: Array<{ campaignId: string; repositoryId: string }> };
+    assert.deepEqual(
+      listBody.items.map((item) => item.campaignId),
+      ["C-hist"],
+    );
+    assert.ok(listBody.items.every((item) => item.repositoryId === repositoryId));
+
+    const foreignQuery = await fetch(
+      `${authority.baseUrl}/api/v1/campaigns?repositoryId=${encodeURIComponent("sha256:other-repo")}`,
+      { headers },
+    );
+    assert.equal(foreignQuery.status, 200);
+    assert.deepEqual(((await foreignQuery.json()) as { items: unknown[] }).items, []);
+
+    const foreignDetail = await fetch(`${authority.baseUrl}/api/v1/campaigns/C-foreign`, { headers });
+    assert.equal(foreignDetail.status, 404);
+
+    const foreignProgress = await fetch(
+      `${authority.baseUrl}/api/v1/tasks/QK-1/plan-progress?campaignId=C-foreign`,
+      { headers },
+    );
+    assert.equal(foreignProgress.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
+test("standalone campaigns list skips invalid campaign records", async () => {
+  const { authority, server, viewerToken } = await createReadOnlyServer();
+  try {
+    const headers = readHeaders(authority, viewerToken);
+    const list = await fetch(`${authority.baseUrl}/api/v1/campaigns`, { headers });
+    assert.equal(list.status, 200);
+    const listBody = (await list.json()) as { items: Array<{ campaignId: string }> };
+    assert.ok(!listBody.items.some((item) => item.campaignId === "C-corrupt"));
+
+    const corruptDetail = await fetch(`${authority.baseUrl}/api/v1/campaigns/C-corrupt`, { headers });
+    assert.equal(corruptDetail.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
 test("standalone openWorkspace wires read-only projections end to end", async () => {
   const repositoryRoot = await createFixtureProject();
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-read-only-open-"));
-  await seedHistoricalCampaign(stateDir, "C-hist");
+  const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
+  await seedCampaign(stateDir, context.repositoryId, "C-hist");
   const result = await openWorkspace({
     repositoryRoot,
     stateDir,

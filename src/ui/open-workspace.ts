@@ -8,6 +8,7 @@ import { loadProjectContext } from "../project/config.js";
 import type { ProjectContext } from "../project/types.js";
 import { buildTaskHistory } from "../provenance/read-model.js";
 import type { TaskProvenance } from "../provenance/types.js";
+import { validateSchema } from "../schema/validate.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { SyncOutbox } from "../sync/outbox.js";
 import { createTaskSource } from "../task-source/factory.js";
@@ -19,7 +20,6 @@ import { InMemoryViewerSessionStore } from "./auth/viewer-session-store.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
 import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem, UiCampaignTask } from "./ports/campaign-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
-import { buildPlanProgressProjection } from "./read-models/plan-progress.js";
 import { loadClientBundle } from "./shell.js";
 import { createUiServer } from "./server.js";
 import { type CampaignRecord, type UiRouterOptions } from "./router.js";
@@ -186,57 +186,6 @@ async function readStoredCampaign(campaignDir: string, campaignId: string): Prom
   }
 }
 
-async function listStoredCampaigns(stateDir: string): Promise<StoredCampaignFiles[]> {
-  const reposRoot = path.join(stateDir, "repositories");
-  let repoDirs: string[];
-  try {
-    repoDirs = await readdir(reposRoot);
-  } catch {
-    return [];
-  }
-  const stored: StoredCampaignFiles[] = [];
-  for (const repoDir of repoDirs) {
-    const campaignsRoot = path.join(reposRoot, repoDir, "campaigns");
-    let campaignDirs: string[];
-    try {
-      campaignDirs = await readdir(campaignsRoot);
-    } catch {
-      continue;
-    }
-    for (const campaignId of campaignDirs) {
-      const record = await readStoredCampaign(path.join(campaignsRoot, campaignId), campaignId);
-      if (record) stored.push(record);
-    }
-  }
-  return stored;
-}
-
-async function withTaskSource<T>(context: ProjectContext, callback: (source: TaskSource) => Promise<T>): Promise<T> {
-  const source = await createTaskSource(context);
-  try {
-    return await callback(source);
-  } finally {
-    await disposeTaskSource(source);
-  }
-}
-
-async function resolveLedgerTask(
-  getProjectContext: () => Promise<ProjectContext>,
-  taskId: string,
-): Promise<{ title: string; status: string; provenance: TaskProvenance } | undefined> {
-  const context = await getProjectContext();
-  return withTaskSource(context, async (source) => {
-    const response = await source.execute({ schemaVersion: 1, operation: "show", taskId, input: {} });
-    if (!response.ok) return undefined;
-    const task = response.data as { title?: string; status?: string; provenance?: TaskProvenance };
-    return {
-      title: typeof task.title === "string" ? task.title : taskId,
-      status: typeof task.status === "string" ? task.status : "unknown",
-      provenance: task.provenance ?? { schemaVersion: 1, iterations: [] },
-    };
-  });
-}
-
 function toSummary(record: StoredCampaignFiles): UiCampaignSummaryItem {
   return {
     campaignId: record.campaign.campaignId,
@@ -260,33 +209,102 @@ async function readCampaignSyncCounters(campaignDir: string): Promise<{ pending:
   }
 }
 
+const warnedInvalidCampaignDirs = new Set<string>();
+
+function isValidStoredCampaign(record: StoredCampaignFiles): boolean {
+  try {
+    validateSchema("ui-campaign-summary-v1", { schemaVersion: 1, items: [toSummary(record)] });
+    return true;
+  } catch {
+    if (!warnedInvalidCampaignDirs.has(record.campaignDir)) {
+      warnedInvalidCampaignDirs.add(record.campaignDir);
+      process.emitWarning(`Skipping invalid campaign record at ${record.campaignDir}`);
+    }
+    return false;
+  }
+}
+
+// Lists only campaigns that belong to the workspace's own repository. The bound
+// repository id is enforced server-side so a viewer session can never enumerate
+// another repository's campaigns, and records that fail projection validation
+// are skipped instead of failing the whole listing.
+async function listRepositoryCampaigns(stateDir: string, repositoryId: string): Promise<StoredCampaignFiles[]> {
+  const campaignsRoot = path.join(stateDir, "repositories", repositoryId.replaceAll(":", "-"), "campaigns");
+  let campaignDirs: string[];
+  try {
+    campaignDirs = await readdir(campaignsRoot);
+  } catch {
+    return [];
+  }
+  const stored: StoredCampaignFiles[] = [];
+  for (const campaignId of campaignDirs) {
+    const record = await readStoredCampaign(path.join(campaignsRoot, campaignId), campaignId);
+    if (!record) continue;
+    if (record.campaign.repositoryId !== repositoryId) continue;
+    if (!isValidStoredCampaign(record)) continue;
+    stored.push(record);
+  }
+  return stored;
+}
+
+async function withTaskSource<T>(context: ProjectContext, callback: (source: TaskSource) => Promise<T>): Promise<T> {
+  const source = await createTaskSource(context);
+  try {
+    return await callback(source);
+  } finally {
+    await disposeTaskSource(source);
+  }
+}
+
+async function showLedgerTask(
+  source: TaskSource,
+  taskId: string,
+): Promise<{ title: string; status: string; provenance: TaskProvenance } | undefined> {
+  const response = await source.execute({ schemaVersion: 1, operation: "show", taskId, input: {} });
+  if (!response.ok) return undefined;
+  const task = response.data as { title?: string; status?: string; provenance?: TaskProvenance };
+  return {
+    title: typeof task.title === "string" ? task.title : taskId,
+    status: typeof task.status === "string" ? task.status : "unknown",
+    provenance: task.provenance ?? { schemaVersion: 1, iterations: [] },
+  };
+}
+
 function createStoredCampaignReadPort(
   stateDir: string,
   getProjectContext: () => Promise<ProjectContext>,
-  getNow: () => string,
 ): CampaignReadPort {
-  const findCampaign = async (campaignId: string): Promise<StoredCampaignFiles> => {
-    const stored = await listStoredCampaigns(stateDir);
-    const record = stored.find((entry) => entry.campaign.campaignId === campaignId);
+  const boundCampaigns = async (): Promise<{ context: ProjectContext; records: StoredCampaignFiles[] }> => {
+    const context = await getProjectContext();
+    return { context, records: await listRepositoryCampaigns(stateDir, context.repositoryId) };
+  };
+  const findCampaign = async (
+    campaignId: string,
+  ): Promise<{ context: ProjectContext; record: StoredCampaignFiles }> => {
+    const { context, records } = await boundCampaigns();
+    const record = records.find((entry) => entry.campaign.campaignId === campaignId);
     if (!record) throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${campaignId} was not found`);
-    return record;
+    return { context, record };
   };
   return {
     listSummaries: async (input) => {
-      const stored = await listStoredCampaigns(stateDir);
-      return stored
+      const { context, records } = await boundCampaigns();
+      if (input.repositoryId !== undefined && input.repositoryId !== context.repositoryId) return [];
+      return records
         .map(toSummary)
-        .filter((item) => !input.repositoryId || item.repositoryId === input.repositoryId)
         .toSorted((left, right) => left.campaignId.localeCompare(right.campaignId));
     },
     getDetail: async (campaignId) => {
-      const record = await findCampaign(campaignId);
+      const { context, record } = await findCampaign(campaignId);
       const taskIds = record.campaign.taskIds ?? [];
-      const tasks: UiCampaignTask[] = [];
-      for (const taskId of taskIds) {
-        const resolved = await resolveLedgerTask(getProjectContext, taskId);
-        tasks.push({ taskId, title: resolved?.title ?? taskId, status: resolved?.status ?? "unknown" });
-      }
+      const tasks = await withTaskSource(context, async (source) => {
+        const resolved: UiCampaignTask[] = [];
+        for (const taskId of taskIds) {
+          const shown = await showLedgerTask(source, taskId);
+          resolved.push({ taskId, title: shown?.title ?? taskId, status: shown?.status ?? "unknown" });
+        }
+        return resolved;
+      });
       const detail: UiCampaignDetail = {
         ...toSummary(record),
         tasks,
@@ -301,7 +319,13 @@ function createStoredCampaignReadPort(
     },
     getPlanProgress: async ({ taskId, campaignId }) => {
       await findCampaign(campaignId);
-      return buildPlanProgressProjection({ campaignId, taskId, refreshedAt: getNow() });
+      // Plan progress is derived only from a controller journal. The standalone
+      // workspace does not replay historical progress journals yet, so report
+      // the projection as unavailable instead of fabricating plan data.
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        `No recorded plan progress for task ${taskId} in campaign ${campaignId}`,
+      );
     },
   };
 }
@@ -312,7 +336,8 @@ function createLedgerTaskHistorySource(
 ): TaskHistorySource {
   return {
     getHistory: async (taskId) => {
-      const resolved = await resolveLedgerTask(getProjectContext, taskId);
+      const context = await getProjectContext();
+      const resolved = await withTaskSource(context, (source) => showLedgerTask(source, taskId));
       if (!resolved) throw new QuirksError("PROTOCOL_VIOLATION", `Unknown task ${taskId}`);
       return buildTaskHistory({
         repositoryRoot,
@@ -332,13 +357,11 @@ export type StandaloneWorkspacePorts = {
 export function createStandaloneWorkspacePorts(options: {
   repositoryRoot: string;
   stateDir: string;
-  now?: () => string;
 }): StandaloneWorkspacePorts {
-  const getNow = options.now ?? (() => new Date().toISOString());
   const getProjectContext = () => loadProjectContext(options.repositoryRoot, { mode: "inspection" });
   return {
     getProjectContext,
-    campaignRead: createStoredCampaignReadPort(options.stateDir, getProjectContext, getNow),
+    campaignRead: createStoredCampaignReadPort(options.stateDir, getProjectContext),
     taskHistory: createLedgerTaskHistorySource(options.repositoryRoot, getProjectContext),
   };
 }
@@ -363,11 +386,7 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
     const repositoryRoot = input.repositoryRoot ?? process.cwd();
     const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
     repositoryId = context.repositoryId;
-    standalonePorts = createStandaloneWorkspacePorts({
-      repositoryRoot,
-      stateDir,
-      ...(input.deps?.now ? { now: input.deps.now } : {}),
-    });
+    standalonePorts = createStandaloneWorkspacePorts({ repositoryRoot, stateDir });
   } else {
     campaign = await ports.resolveCampaign(input.campaignId);
     if (!campaign) {
