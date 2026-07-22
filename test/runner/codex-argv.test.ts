@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
+import { readFileSync, statSync } from "node:fs";
 import test from "node:test";
+import { buildRunnerArgv } from "../../src/runner/cli-runner-port.js";
 import {
   CODEX_CONTINUE_PROMPT,
   CODEX_PROMPT_MAX_BYTES,
   buildCodexArgv,
   buildCodexResumeArgv,
   codexPromptText,
+  codexResultSchemaPath,
   parseCodexResult,
   type BuildCodexArgvInput,
 } from "../../src/runner/codex.js";
+import type { RunnerProfile } from "../../src/runner/types.js";
 
 const freshInput: BuildCodexArgvInput = {
   executable: "/usr/bin/codex",
@@ -65,6 +69,67 @@ test("buildCodexArgv passes the prompt text as the final positional, not the bri
 
 test("codexPromptText inlines brief contents under the size cap", () => {
   assert.equal(codexPromptText("/tmp/brief.md", "small brief"), "small brief");
+});
+
+test("codex dispatch argv references an existing result envelope schema", () => {
+  const profile: RunnerProfile = {
+    schemaVersion: 1,
+    profileId: "codex-standard",
+    runnerType: "codex",
+    executable: "/usr/bin/codex",
+    accountAlias: "default",
+    quotaPoolId: "pool",
+    tier: "standard",
+    model: "test-model",
+    effort: "standard",
+    capabilities: ["repository-read"],
+    wallClockMs: 5_000,
+    redactionRules: [],
+  };
+  const argv = buildRunnerArgv(
+    profile,
+    {
+      jobId: "job-1",
+      taskId: "QK-1",
+      role: "implementer",
+      route: { profileId: "codex-standard", runnerType: "codex", tier: "standard", effort: "standard", quotaPoolId: "pool" },
+      briefPath: "/tmp/artifacts/job-1/brief.md",
+      worktreePath: "/tmp/worktree",
+    },
+    "/tmp/artifacts/job-1",
+    "# brief\n",
+  );
+
+  const schemaPath = flagValue(argv, "--output-schema");
+  assert.equal(schemaPath, codexResultSchemaPath());
+  assert.equal(statSync(schemaPath ?? "").isFile(), true);
+
+  const schema = JSON.parse(readFileSync(schemaPath ?? "", "utf8")) as {
+    required?: string[];
+    additionalProperties?: boolean;
+    properties?: Record<string, { enum?: string[] }>;
+  };
+  assert.deepEqual(Object.keys(schema.properties ?? {}).toSorted(), [
+    "artifactPaths",
+    "failure",
+    "sessionHandle",
+    "status",
+  ]);
+  assert.deepEqual([...(schema.required ?? [])].toSorted(), [
+    "artifactPaths",
+    "failure",
+    "sessionHandle",
+    "status",
+  ]);
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual([...(schema.properties?.["status"]?.enum ?? [])].toSorted(), [
+    "cancelled",
+    "failure",
+    "permission_denied",
+    "success",
+    "timeout",
+    "usage_limit",
+  ]);
 });
 
 test("codexPromptText points at the brief path for oversized or unreadable briefs", () => {
