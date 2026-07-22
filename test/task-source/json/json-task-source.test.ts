@@ -167,7 +167,9 @@ test("JSON mutation failures are atomic for evidence and terminal transitions", 
 test("JSON proposals reject injected active and terminal state", async () => {
   const root = await freshFixture();
   const source = await JsonTaskSource.open(root);
+  const tasksPath = tasksFile(root);
   for (const status of ["claimed", "in_review", "blocked", "completed", "cancelled"] as const) {
+    const before = await fileDigest(tasksPath);
     const response = await mutate(source, {
       schemaVersion: 1,
       operation: "propose",
@@ -179,6 +181,7 @@ test("JSON proposals reject injected active and terminal state", async () => {
     assert.equal(response.ok, false);
     if (response.ok) assert.fail(`accepted ${status} proposal`);
     assert.equal(response.error.code, "SOURCE_CONFLICT");
+    assert.equal(await fileDigest(tasksPath), before);
   }
 });
 
@@ -204,12 +207,14 @@ test("JSON completion binds configured evidence to completed provenance", async 
   });
   assert.equal(review.ok, true);
   shown = await showTask(source);
+  const inventedBefore = await fileDigest(tasksFile(root));
   const invented = await mutate(source, {
     schemaVersion: 1, operation: "complete", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
     idempotencyKey: "C-1:QK-1:complete:invented", input: { evidenceRefs: ["commit:invented", "review:invented", "verification:invented"] },
   });
   assert.equal(invented.ok, false);
   if (invented.ok) assert.fail("invented evidence completed task");
+  assert.equal(await fileDigest(tasksFile(root)), inventedBefore);
 
   const sourceWithEvidence = await JsonTaskSource.open(await freshFixture());
   let correlated = await showTask(sourceWithEvidence);
@@ -238,8 +243,10 @@ test("JSON completion binds configured evidence to completed provenance", async 
 test("JSON completion requires review status and matching completed provenance", async () => {
   const root = await freshFixture();
   const source = await JsonTaskSource.open(root);
+  const tasksPath = tasksFile(root);
   let shown = await showTask(source);
 
+  const beforeCompleteBeforeReview = await fileDigest(tasksPath);
   const completeBeforeReview = await mutate(source, {
     schemaVersion: 1,
     operation: "complete",
@@ -251,6 +258,7 @@ test("JSON completion requires review status and matching completed provenance",
   assert.equal(completeBeforeReview.ok, false);
   if (completeBeforeReview.ok) assert.fail("expected review-status conflict");
   assert.equal(completeBeforeReview.error.code, "SOURCE_CONFLICT");
+  assert.equal(await fileDigest(tasksPath), beforeCompleteBeforeReview);
 
   const claim = await mutate(source, {
     schemaVersion: 1,
@@ -273,6 +281,7 @@ test("JSON completion requires review status and matching completed provenance",
   assert.equal(review.ok, true);
   shown = await showTask(source);
 
+  const beforeCompleteWithoutProvenance = await fileDigest(tasksPath);
   const completeWithoutProvenance = await mutate(source, {
     schemaVersion: 1,
     operation: "complete",
@@ -284,6 +293,7 @@ test("JSON completion requires review status and matching completed provenance",
   assert.equal(completeWithoutProvenance.ok, false);
   if (completeWithoutProvenance.ok) assert.fail("expected provenance conflict");
   assert.equal(completeWithoutProvenance.error.code, "SOURCE_CONFLICT");
+  assert.equal(await fileDigest(tasksPath), beforeCompleteWithoutProvenance);
 });
 
 test("JSON driver applies semantic mutations and preserves atomic writes", async () => {
@@ -388,6 +398,7 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
   shown = await showTask(source);
   assert.equal((shown.data as { status: string }).status, "in_review");
 
+  const beforeFailed = await fileDigest(tasksPath);
   const completeWithIncompleteEvidence = await mutate(source, {
     schemaVersion: 1,
     operation: "complete",
@@ -399,10 +410,11 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
   assert.equal(completeWithIncompleteEvidence.ok, false);
   if (completeWithIncompleteEvidence.ok) assert.fail("expected completion conflict");
   assert.equal(completeWithIncompleteEvidence.error.code, "SOURCE_CONFLICT");
-  const beforeComplete = await fileDigest(tasksPath);
+  assert.equal(await fileDigest(tasksPath), beforeFailed);
   shown = await showTask(source);
   assert.equal((shown.data as { status: string }).status, "in_review");
 
+  const beforeSuccessful = await fileDigest(tasksPath);
   const complete = await mutate(source, {
     schemaVersion: 1,
     operation: "complete",
@@ -415,7 +427,7 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
   shown = await showTask(source);
   assert.equal((shown.data as { status: string }).status, "completed");
   assert.equal((shown.data as { coordination: unknown }).coordination, null);
-  assert.notEqual(await fileDigest(tasksPath), beforeComplete);
+  assert.notEqual(await fileDigest(tasksPath), beforeSuccessful);
 
   const propose = await mutate(source, {
     schemaVersion: 1,
@@ -447,6 +459,103 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
   assert.equal(verifyCampaign.ok, true);
   if (!verifyCampaign.ok) return;
   assert.ok((verifyCampaign.data as { commands: unknown[] }).commands.length >= 2);
+});
+
+test("JSON terminal tasks cannot regress through review or block", async () => {
+  const root = await freshFixture();
+  const source = await JsonTaskSource.open(root);
+  const tasksPath = tasksFile(root);
+  let shown = await showTask(source);
+
+  const claim = await mutate(source, {
+    schemaVersion: 1, operation: "claim", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-terminal:QK-1:claim", input: { campaignId: "C-terminal", owner: "test", claimedAt: "2026-07-21T00:00:00.000Z" },
+  });
+  assert.equal(claim.ok, true);
+  shown = await showTask(source);
+  const attach = await mutate(source, {
+    schemaVersion: 1, operation: "attach-provenance", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-terminal:QK-1:attach", input: { iteration: { ...correlatedIteration, id: "terminal" } },
+  });
+  assert.equal(attach.ok, true);
+  shown = await showTask(source);
+  const review = await mutate(source, {
+    schemaVersion: 1, operation: "submit-review", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-terminal:QK-1:review", input: { evidenceRefs: ["review:docs/review.md"] },
+  });
+  assert.equal(review.ok, true);
+  shown = await showTask(source);
+  const complete = await mutate(source, {
+    schemaVersion: 1, operation: "complete", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-terminal:QK-1:complete", input: { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/review.md", "verification:pnpm test"] },
+  });
+  assert.equal(complete.ok, true);
+  shown = await showTask(source);
+  assert.equal((shown.data as { status: string }).status, "completed");
+  const completedDigest = await fileDigest(tasksPath);
+
+  const reviewAfterComplete = await mutate(source, {
+    schemaVersion: 1, operation: "submit-review", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-terminal:QK-1:review-after-complete", input: { evidenceRefs: ["review:docs/review.md"] },
+  });
+  assert.equal(reviewAfterComplete.ok, false);
+  if (reviewAfterComplete.ok) assert.fail("completed task re-entered review");
+  assert.equal(reviewAfterComplete.error.code, "SOURCE_CONFLICT");
+  assert.equal(await fileDigest(tasksPath), completedDigest);
+  assert.equal(((await showTask(source)).data as { status: string }).status, "completed");
+
+  const blockAfterComplete = await mutate(source, {
+    schemaVersion: 1, operation: "block", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-terminal:QK-1:block-after-complete", input: { reason: "late blocker", unblockCondition: "none" },
+  });
+  assert.equal(blockAfterComplete.ok, false);
+  if (blockAfterComplete.ok) assert.fail("completed task was blocked");
+  assert.equal(blockAfterComplete.error.code, "SOURCE_CONFLICT");
+  assert.equal(await fileDigest(tasksPath), completedDigest);
+  assert.equal(((await showTask(source)).data as { status: string }).status, "completed");
+
+  const cancelledRoot = await freshFixture();
+  const cancelledTasksPath = tasksFile(cancelledRoot);
+  const cancelledEnvelope = JSON.parse(await readFile(cancelledTasksPath, "utf8")) as {
+    tasks: Array<{ id: string; status: string; coordination: unknown }>;
+  };
+  const cancelledTask = cancelledEnvelope.tasks.find((task) => task.id === "QK-1");
+  if (!cancelledTask) assert.fail("missing fixture task");
+  cancelledTask.status = "cancelled";
+  cancelledTask.coordination = null;
+  await writeFile(cancelledTasksPath, `${JSON.stringify(cancelledEnvelope, null, 2)}\n`);
+
+  const cancelledSource = await JsonTaskSource.open(cancelledRoot);
+  const cancelledShown = await showTask(cancelledSource);
+  assert.equal((cancelledShown.data as { status: string }).status, "cancelled");
+  const cancelledDigest = await fileDigest(cancelledTasksPath);
+  const blockAfterCancel = await mutate(cancelledSource, {
+    schemaVersion: 1, operation: "block", taskId: "QK-1", expectedNativeRevision: cancelledShown.nativeRevision!,
+    idempotencyKey: "C-terminal:QK-1:block-after-cancel", input: { reason: "late blocker", unblockCondition: "none" },
+  });
+  assert.equal(blockAfterCancel.ok, false);
+  if (blockAfterCancel.ok) assert.fail("cancelled task was blocked");
+  assert.equal(blockAfterCancel.error.code, "SOURCE_CONFLICT");
+  assert.equal(await fileDigest(cancelledTasksPath), cancelledDigest);
+  assert.equal(((await showTask(cancelledSource)).data as { status: string }).status, "cancelled");
+});
+
+test("JSON block succeeds for a nonterminal task", async () => {
+  const root = await freshFixture();
+  const source = await JsonTaskSource.open(root);
+  const shown = await showTask(source);
+
+  const blocked = await mutate(source, {
+    schemaVersion: 1, operation: "block", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-block:QK-1:ready", input: { reason: "waiting on dependency", unblockCondition: "dependency is available" },
+  });
+  assert.equal(blocked.ok, true);
+  const after = await showTask(source);
+  assert.equal((after.data as { status: string }).status, "blocked");
+  assert.deepEqual((after.data as { statusDetail: unknown }).statusDetail, {
+    reason: "waiting on dependency",
+    unblockCondition: "dependency is available",
+  });
 });
 
 test("JSON driver rejects task files that escape the repository via symlink", async () => {
