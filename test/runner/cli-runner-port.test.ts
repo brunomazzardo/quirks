@@ -85,6 +85,40 @@ test("CliRunnerPort dispatches codex through declared result artifact path", asy
   assert.equal(result.artifactPaths.length > 0, true);
 });
 
+test("CliRunnerPort passes the brief contents through to the codex prompt positional", async () => {
+  const executable = await executableFakeRunner("fake-codex.mjs");
+  const profiles = new Map([["codex", profile("codex", "codex", executable)]]);
+  const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-codex-brief-"));
+  const briefPath = path.join(artifactRoot, "brief.md");
+  const briefContents = "---\ntitle: codex brief\n---\nDo the codex thing.\n";
+  await writeFile(briefPath, briefContents, "utf8");
+  const worktreePath = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-codex-worktree-"));
+
+  const port = new CliRunnerPort(profiles);
+  const result = await port.dispatch({
+    jobId: "job-codex-brief",
+    taskId: "QK-1",
+    role: "implementer",
+    route: {
+      profileId: "codex",
+      runnerType: "codex",
+      tier: "standard",
+      effort: "standard",
+      quotaPoolId: "pool",
+    },
+    briefPath,
+    worktreePath,
+  });
+
+  assert.equal(result.status, "success");
+  const captured = JSON.parse(
+    await readFile(path.join(artifactRoot, "codex-argv.json"), "utf8"),
+  ) as string[];
+  const promptIndex = captured.indexOf(briefContents);
+  assert.notEqual(promptIndex, -1);
+  assert.equal(captured[promptIndex - 1], "--");
+});
+
 test("CliRunnerPort dispatches cursor through structured output mode", async () => {
   const result = await dispatchFixture("cursor", "fake-cursor.mjs");
   assert.equal(result.status, "success");

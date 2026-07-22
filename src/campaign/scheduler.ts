@@ -20,6 +20,7 @@ export interface ExecutionWave {
 export interface ExecutionPlan {
   waves: readonly ExecutionWave[];
   lanes: readonly ExecutionLane[];
+  tasks: readonly ExecutionTask[];
   maxConcurrency: number;
 }
 
@@ -50,24 +51,31 @@ export function buildExecutionPlan(
     }
   }
   const lanes = [...laneMap.entries()].map(([key, taskOrder]) => ({ key, taskOrder }));
-  return { waves, lanes, maxConcurrency: Math.max(1, Math.min(budgets.maxConcurrency, tasks.length)) };
+  return {
+    waves,
+    lanes,
+    tasks: tasks.map((task) => ({ ...task, dependsOn: [...task.dependsOn], parallelismKeys: [...task.parallelismKeys] })),
+    maxConcurrency: Math.max(1, Math.min(budgets.maxConcurrency, tasks.length)),
+  };
 }
 
+// Selection is dependency-driven rather than wave-driven: any task whose
+// dependencies are all completed may run, so a paused or failing lane cannot
+// starve dependency-satisfied tasks on other lanes in later waves.
 export function selectRunnableTasks(
   plan: ExecutionPlan,
   completed: ReadonlySet<string>,
   activeLanes: ReadonlySet<string>,
   activeTasks: ReadonlySet<string> = new Set(),
 ): readonly string[] {
-  const currentWave = plan.waves.find((wave) => wave.taskIds.some((id) => !completed.has(id)));
-  if (!currentWave) return [];
-  const runnable = currentWave.taskIds.filter((id) => {
-    if (completed.has(id) || activeTasks.has(id)) return false;
-    const lanesForTask = plan.lanes.filter((lane) => lane.taskOrder.includes(id));
-    const isLaneHead = lanesForTask.every((lane) => lane.taskOrder.find((entry) => !completed.has(entry)) === id);
+  const runnable = plan.tasks.filter((task) => {
+    if (completed.has(task.id) || activeTasks.has(task.id)) return false;
+    if (!task.dependsOn.every((dependencyId) => completed.has(dependencyId))) return false;
+    const lanesForTask = plan.lanes.filter((lane) => lane.taskOrder.includes(task.id));
+    const isLaneHead = lanesForTask.every((lane) => lane.taskOrder.find((entry) => !completed.has(entry)) === task.id);
     if (!isLaneHead) return false;
     return lanesForTask.every((lane) => !activeLanes.has(lane.key));
-  });
+  }).map((task) => task.id);
   const budget = Math.max(0, plan.maxConcurrency - activeTasks.size);
   return [...runnable].toSorted((a, b) => a.localeCompare(b)).slice(0, budget);
 }

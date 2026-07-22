@@ -3,13 +3,26 @@ import { lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { installCodexHost } from "../../hosts/codex/install.mjs";
+import { defaultCodexPluginsDir, installCodexHost } from "../../hosts/codex/install.mjs";
 import { uninstallCodexHost } from "../../hosts/codex/uninstall.mjs";
 import { discoverCodexSkills } from "../../hosts/codex/discover.mjs";
 import { installManagedLink } from "../../hosts/shared/link-install.mjs";
 import { loadCanonicalSkillIds } from "../../hosts/shared/marketplace-install.mjs";
 
 const repoRoot = path.resolve(".");
+
+test("default codex install root resolves to ~/.codex/skills honoring the env override", () => {
+  const original = process.env.QUIRKS_CODEX_PLUGINS_DIR;
+  delete process.env.QUIRKS_CODEX_PLUGINS_DIR;
+  try {
+    assert.equal(defaultCodexPluginsDir(), path.join(os.homedir(), ".codex", "skills"));
+    process.env.QUIRKS_CODEX_PLUGINS_DIR = "/tmp/custom-codex-root";
+    assert.equal(defaultCodexPluginsDir(), "/tmp/custom-codex-root");
+  } finally {
+    if (original === undefined) delete process.env.QUIRKS_CODEX_PLUGINS_DIR;
+    else process.env.QUIRKS_CODEX_PLUGINS_DIR = original;
+  }
+});
 
 test("codex install creates plugin symlink without copying skills", async () => {
   const sandbox = await mkdtemp(path.join(os.tmpdir(), "quirks-codex-install-"));

@@ -30,6 +30,7 @@ interface ParsedDispatch {
   sessionHandle: string;
   artifactPaths: readonly string[];
   failure?: RunnerJobFailure;
+  notes?: readonly string[];
 }
 
 function collectBoundedStream(
@@ -203,9 +204,16 @@ async function parseRunnerOutputAsync(input: {
     sessionHandle: parsed.sessionHandle ?? sessionFallback,
     artifactPaths: parsed.artifactPaths,
     ...(parsed.failure !== undefined
-      ? { failure: { code: "runner_error", message: parsed.failure } }
+      ? { failure: { code: codexFailureCode(parsed.status), message: parsed.failure } }
       : {}),
+    ...(parsed.notes.length > 0 ? { notes: parsed.notes } : {}),
   };
+}
+
+function codexFailureCode(status: RunnerJobStatus): string {
+  if (status === "usage_limit") return "usage_limit";
+  if (status === "cancelled") return "interrupted";
+  return "runner_error";
 }
 
 export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<RunnerJobResult> {
@@ -306,6 +314,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       sessionHandle: parsed.sessionHandle,
       artifactPaths: parsed.artifactPaths,
       ...(parsed.failure !== undefined ? { failure: parsed.failure } : {}),
+      ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
     });
   } catch (error) {
     if (timedOut) {

@@ -23,7 +23,7 @@ export const HOSTS = /** @type {const} */ (["claude", "codex", "cursor"]);
 export function defaultHostRoots() {
   return {
     claude: process.env.QUIRKS_PLUGINS_DIR ?? path.join(os.homedir(), ".claude", "plugins"),
-    codex: process.env.QUIRKS_CODEX_PLUGINS_DIR ?? path.join(os.homedir(), ".codex", "plugins"),
+    codex: process.env.QUIRKS_CODEX_PLUGINS_DIR ?? path.join(os.homedir(), ".codex", "skills"),
     cursor: process.env.QUIRKS_CURSOR_SKILLS_DIR ?? path.join(os.homedir(), ".cursor", "skills"),
   };
 }

@@ -83,6 +83,7 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
         repositoryRoot,
         selectedTaskIds: parsed.taskIds,
         externalRoutingEnabled: parsed.externalRouting,
+        ...(parsed.maxConcurrency !== undefined ? { maxConcurrency: parsed.maxConcurrency } : {}),
         ...(parsed.configPath ? {} : {}),
       });
       if (result.blockers.length === 0) {
@@ -121,7 +122,19 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
       const ctx = await supervisorContext(store, repositoryRoot);
       try {
         const supervisor = await CampaignSupervisor.open(ctx);
-        await supervisor.startApproved();
+        if (parsed.singleWave) {
+          await supervisor.startApproved();
+          const status = await supervisor.status();
+          await supervisor.stop();
+          return {
+            ok: true,
+            campaignId: parsed.campaignId,
+            claimedTaskIds: status.claimedTaskIds,
+            dispatchedJobs: status.dispatchedJobs,
+            localCoordinationOnly: true,
+          };
+        }
+        const outcome = await supervisor.runToCompletion();
         const status = await supervisor.status();
         await supervisor.stop();
         return {
@@ -129,6 +142,7 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
           campaignId: parsed.campaignId,
           claimedTaskIds: status.claimedTaskIds,
           dispatchedJobs: status.dispatchedJobs,
+          outcome,
           localCoordinationOnly: true,
         };
       } finally {

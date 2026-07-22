@@ -24,9 +24,9 @@ node scripts/package-plugin.mjs
 node hosts/codex/install.mjs
 ```
 
-Default destination: `~/.codex/plugins/quirks`.
+Default destination: `~/.codex/skills/quirks` (the codex CLI skill discovery location).
 
-Set `QUIRKS_CODEX_PLUGINS_DIR` to override the plugins directory in tests and sandboxes.
+Set `QUIRKS_CODEX_PLUGINS_DIR` to override the install directory in tests and sandboxes.
 
 The installer links the canonical plugin root into the reviewed plugin directory and never copies `skills/` into target repositories. It refuses to overwrite non-link destinations and prints one bounded JSON result when invoked directly.
 

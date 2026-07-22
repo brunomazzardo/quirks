@@ -39,6 +39,63 @@ test("records session handles and heartbeats for recovery", async () => {
   assert.equal(sessions[0]?.terminalStatus, undefined);
 });
 
+test("concurrent registrations both survive in sessions.json", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-sessions-"));
+  const store = await openMinimalStore(stateDir);
+  const registry = await SessionRegistry.open(store);
+  await Promise.all([
+    registry.register({
+      jobId: "job-implementer",
+      role: "implementer",
+      profileId: "cursor-standard",
+      sessionHandle: "thread-1",
+      pid: process.pid,
+      artifactPaths: [],
+    }),
+    registry.register({
+      jobId: "job-reviewer",
+      role: "reviewer",
+      profileId: "claude-standard",
+      sessionHandle: "thread-2",
+      pid: process.pid,
+      artifactPaths: [],
+    }),
+  ]);
+  const persisted = await store.readSessionsDocument();
+  assert.deepEqual(
+    persisted.sessions.map((session) => session.jobId).toSorted(),
+    ["job-implementer", "job-reviewer"],
+  );
+});
+
+test("concurrent register and update serialize without losing either write", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-sessions-"));
+  const store = await openMinimalStore(stateDir);
+  const registry = await SessionRegistry.open(store);
+  await registry.register({
+    jobId: "job-1",
+    role: "implementer",
+    profileId: "cursor-standard",
+    sessionHandle: "thread-1",
+    pid: process.pid,
+    artifactPaths: [],
+  });
+  await Promise.all([
+    registry.update({ jobId: "job-1", terminalStatus: "success" }),
+    registry.register({
+      jobId: "job-2",
+      role: "reviewer",
+      profileId: "claude-standard",
+      sessionHandle: "thread-2",
+      pid: process.pid,
+      artifactPaths: [],
+    }),
+  ]);
+  const persisted = await store.readSessionsDocument();
+  assert.deepEqual(persisted.sessions.map((session) => session.jobId).toSorted(), ["job-1", "job-2"]);
+  assert.equal(persisted.sessions.find((session) => session.jobId === "job-1")?.terminalStatus, "success");
+});
+
 test("update refreshes lastHeartbeatAt on heartbeat", async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-sessions-"));
   const store = await openMinimalStore(stateDir);

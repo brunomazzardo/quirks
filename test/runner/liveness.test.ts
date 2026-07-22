@@ -251,6 +251,57 @@ test("resumeJob dispatches a runner-native resume and records the session update
   assert.deepEqual(sessions[0]?.artifactPaths, ["artifacts/job-1/result.json"]);
 });
 
+test("resumeJob builds the codex resume argv with the declared result contract", async () => {
+  const store = await openMinimalStore();
+  const registry = await SessionRegistry.open(store);
+  const journal = new EventJournal(path.join(store.campaignPath, "resume-journal.jsonl"));
+  const artifactPath = await makeArtifact(-10 * STALE_AFTER_MS);
+  await registerSession(registry, {
+    jobId: "job-1",
+    pid: 999_999,
+    sessionHandle: "codex-session-abc",
+    artifactPaths: [artifactPath],
+  });
+
+  const codexProfile: RunnerProfile = { ...fakeProfile, profileId: "fake-codex", runnerType: "codex" };
+  let capturedArgv: readonly string[] | undefined;
+  const result = await resumeJob("job-1", {
+    registry,
+    journal,
+    profile: codexProfile,
+    workspace: "/repo/workspace",
+    briefPath: "/repo/brief.md",
+    artifactDir: "/tmp/artifacts/job-1",
+    timeoutMs: 5_000,
+    dispatch: async (input) => {
+      capturedArgv = input.argv;
+      return {
+        schemaVersion: 1,
+        jobId: input.jobId,
+        runner: input.profile.profileId,
+        runnerType: input.profile.runnerType,
+        resolvedModel: input.profile.model,
+        effort: input.profile.effort,
+        status: "success",
+        sessionHandle: "codex-session-abc",
+        artifactPaths: ["/tmp/artifacts/job-1/codex-result.json"],
+        usage: {},
+        failure: undefined,
+      };
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(capturedArgv?.[1], "exec");
+  assert.equal(capturedArgv?.includes("--output-schema"), true);
+  const outputIndex = capturedArgv?.indexOf("-o") ?? -1;
+  assert.equal(capturedArgv?.[outputIndex + 1], "/tmp/artifacts/job-1/codex-result-job-1.json");
+  const resumeIndex = capturedArgv?.indexOf("resume") ?? -1;
+  assert.equal(capturedArgv?.[resumeIndex + 1], "codex-session-abc");
+  assert.equal(capturedArgv?.[resumeIndex + 2], "--");
+  assert.match(capturedArgv?.[resumeIndex + 3] ?? "", /\/repo\/brief\.md/);
+});
+
 test("rejects a second resume attempt for the same job", async () => {
   const store = await openMinimalStore();
   const registry = await SessionRegistry.open(store);

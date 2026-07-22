@@ -40,9 +40,26 @@ test("selectRunnableTasks withholds a task whose parallelism lane is already act
   assert.deepEqual(runnable, ["A"]);
 });
 
-test("selectRunnableTasks withholds later waves until earlier waves fully complete", () => {
+test("selectRunnableTasks admits dependency-satisfied tasks regardless of wave position", () => {
   const plan = buildExecutionPlan(tasks, { maxConcurrency: 3, maxTasks: 3 });
   const runnable = selectRunnableTasks(plan, new Set(["A"]), new Set());
+  assert.deepEqual(runnable, ["B", "C"]);
+});
+
+test("selectRunnableTasks withholds dependency-blocked tasks until dependencies complete", () => {
+  const plan = buildExecutionPlan(tasks, { maxConcurrency: 3, maxTasks: 3 });
+  const runnable = selectRunnableTasks(plan, new Set(), new Set());
+  assert.deepEqual(runnable.toSorted(), ["A", "C"]);
+});
+
+test("a paused lane does not starve dependency-satisfied tasks on other lanes", () => {
+  const crossWave: ExecutionTask[] = [
+    { id: "A", dependsOn: [], parallelismKeys: ["lane-a"], status: "ready" },
+    { id: "B", dependsOn: [], parallelismKeys: ["lane-b"], status: "ready" },
+    { id: "C", dependsOn: ["B"], parallelismKeys: ["lane-b"], status: "ready" },
+  ];
+  const plan = buildExecutionPlan(crossWave, { maxConcurrency: 2, maxTasks: 3 });
+  const runnable = selectRunnableTasks(plan, new Set(["B"]), new Set(["lane-a"]));
   assert.deepEqual(runnable, ["C"]);
 });
 

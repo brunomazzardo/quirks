@@ -84,6 +84,20 @@ test("parseCampaignArgs accepts documented command shapes", () => {
   assert.deepEqual(parseCampaignArgs(["start", "--campaign", "cmp-1", "--json"]), {
     command: "start",
     campaignId: "cmp-1",
+    singleWave: false,
+    json: true,
+  });
+  assert.deepEqual(parseCampaignArgs(["start", "--campaign", "cmp-1", "--single-wave"]), {
+    command: "start",
+    campaignId: "cmp-1",
+    singleWave: true,
+    json: false,
+  });
+  assert.deepEqual(parseCampaignArgs(["preflight", "--task", "QK-1", "--max-concurrency", "3", "--json"]), {
+    command: "preflight",
+    taskIds: ["QK-1"],
+    externalRouting: false,
+    maxConcurrency: 3,
     json: true,
   });
   assert.deepEqual(parseCampaignArgs(["cancel", "--campaign", "cmp-1", "--scope", "job-1"]), {
@@ -99,6 +113,16 @@ test("parseCampaignArgs rejects unknown commands and missing flags", () => {
   assert.throws(() => parseCampaignArgs(["explode"]), CampaignCliParseError);
   assert.throws(() => parseCampaignArgs(["preflight"]), CampaignCliParseError);
   assert.throws(() => parseCampaignArgs(["approve", "--campaign", "cmp-1"]), CampaignCliParseError);
+  assert.throws(() => parseCampaignArgs(["preflight", "--task", "QK-1", "--max-concurrency", "0"]), CampaignCliParseError);
+  assert.throws(() => parseCampaignArgs(["preflight", "--task", "QK-1", "--max-concurrency", "three"]), CampaignCliParseError);
+  assert.throws(
+    () => parseCampaignArgs(["preflight", "--task", "QK-1", "--max-concurrency", "2", "--max-concurrency", "2"]),
+    CampaignCliParseError,
+  );
+  assert.throws(
+    () => parseCampaignArgs(["start", "--campaign", "cmp-1", "--single-wave", "--single-wave"]),
+    CampaignCliParseError,
+  );
 });
 
 async function freshAcceptanceRepo(): Promise<{ root: string; stateDir: string }> {
@@ -164,10 +188,12 @@ test("runCampaignCommand preflight approve start status flow uses real runtime w
     const start = (await runCampaignCommand({
       command: "start",
       campaignId: cleanAfterDesign.campaignId,
+      singleWave: false,
       json: true,
-    })) as { ok: boolean; dispatchedJobs: unknown[] };
+    })) as { ok: boolean; dispatchedJobs: unknown[]; outcome?: { status: string } };
     assert.equal(start.ok, true);
     assert.ok(start.dispatchedJobs.length >= 1);
+    assert.equal(start.outcome?.status, "completed");
 
     const status = (await runCampaignCommand({
       command: "status",
@@ -175,6 +201,57 @@ test("runCampaignCommand preflight approve start status flow uses real runtime w
       json: true,
     })) as { localCoordinationOnly: boolean; status: string };
     assert.equal(status.localCoordinationOnly, true);
+    assert.equal(status.status, "running");
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
+test("runCampaignCommand start --single-wave preserves the single-dispatch behavior", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const preflight = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string } };
+    assert.equal(preflight.ok, true);
+
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: preflight.campaignId,
+      digest: preflight.envelope.digest,
+      json: true,
+    });
+
+    const start = (await runCampaignCommand({
+      command: "start",
+      campaignId: preflight.campaignId,
+      singleWave: true,
+      json: true,
+    })) as { ok: boolean; dispatchedJobs: unknown[]; outcome?: unknown };
+    assert.equal(start.ok, true);
+    assert.ok(start.dispatchedJobs.length >= 1);
+    assert.equal(start.outcome, undefined);
+
+    const status = (await runCampaignCommand({
+      command: "status",
+      campaignId: preflight.campaignId,
+      json: true,
+    })) as { status: string };
     assert.equal(status.status, "running");
   } finally {
     process.chdir(previousCwd);
