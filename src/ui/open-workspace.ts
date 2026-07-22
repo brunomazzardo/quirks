@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { CampaignStatus } from "../campaign/types.js";
 import { QuirksError } from "../core/errors.js";
+import { loadProjectContext } from "../project/config.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { InMemoryApprovalTokenStore } from "./approval/token-store.js";
 import { createLoopbackAuthority } from "./authority.js";
@@ -57,7 +58,8 @@ export type OpenWorkspaceDeps = {
 };
 
 export type OpenWorkspaceInput = {
-  campaignId: string;
+  campaignId?: string;
+  repositoryRoot?: string;
   ports?: "fake" | "production" | WorkspacePorts;
   fakeCampaigns?: Record<string, ResolvedCampaign>;
   stateDir?: string;
@@ -69,12 +71,14 @@ export type OpenWorkspaceResult = {
   ok: true;
   authority: string;
   repositoryId: string;
-  campaignId: string;
+  campaignId?: string;
+  readOnly: boolean;
   viewerIdleExpiresAt: string;
   viewerAbsoluteExpiresAt: string;
   approvalExpiresAt?: string;
   launchUrl: string;
   requiresInteractiveRerun: boolean;
+  close?: () => Promise<void>;
 };
 
 function defaultStateDir(): string {
@@ -168,16 +172,26 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
   await mkdir(path.join(stateDir, "repositories"), { recursive: true });
 
   const ports = await resolvePorts(input, stateDir);
-  const campaign = await ports.resolveCampaign(input.campaignId);
-  if (!campaign) {
-    throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${input.campaignId} was not found`);
+  const readOnly = input.campaignId === undefined;
+  let repositoryId: string;
+  let campaign: ResolvedCampaign | undefined;
+  if (input.campaignId === undefined) {
+    const repositoryRoot = input.repositoryRoot ?? process.cwd();
+    const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
+    repositoryId = context.repositoryId;
+  } else {
+    campaign = await ports.resolveCampaign(input.campaignId);
+    if (!campaign) {
+      throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${input.campaignId} was not found`);
+    }
+    repositoryId = campaign.repositoryId;
   }
 
   const getNow = input.deps?.now ?? (() => new Date().toISOString());
-  const viewer = await ports.viewerSession.issue({ repositoryId: campaign.repositoryId, now: getNow() });
+  const viewer = await ports.viewerSession.issue({ repositoryId, now: getNow() });
   let approvalExpiresAt: string | undefined;
   let approvalToken: string | undefined;
-  if (campaign.status === "awaiting_approval") {
+  if (input.campaignId !== undefined && campaign && campaign.status === "awaiting_approval") {
     const issued = await ports.approval.issueToken({
       campaignId: input.campaignId,
       envelopeDigest: campaign.envelopeDigest,
@@ -189,12 +203,14 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
 
   const authority = await createLoopbackAuthority();
   const clientScript = await loadClientBundle();
-  const campaigns = new Map<string, CampaignRecord>([
-    [input.campaignId, { repositoryId: campaign.repositoryId, envelopeDigest: campaign.envelopeDigest }],
-  ]);
+  const campaigns = new Map<string, CampaignRecord>(
+    input.campaignId !== undefined && campaign
+      ? [[input.campaignId, { repositoryId: campaign.repositoryId, envelopeDigest: campaign.envelopeDigest }]]
+      : [],
+  );
   const routerOptions: UiRouterOptions = {
     authority,
-    repositoryId: campaign.repositoryId,
+    repositoryId,
     viewerSession: ports.viewerSession,
     approval: ports.approval,
     getCampaign: (campaignId) => campaigns.get(campaignId),
@@ -205,7 +221,7 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
 
   const launchUrl = buildLaunchUrl(
     authority.baseUrl,
-    shellRouteFor(campaign.status, input.campaignId),
+    input.campaignId !== undefined && campaign ? shellRouteFor(campaign.status, input.campaignId) : "/",
     viewer.viewerToken,
     approvalToken,
   );
@@ -217,19 +233,27 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
     await openBrowser(launchUrl);
   }
 
-  if (input.keepAlive === false) {
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
     await server.close();
+  };
+  if (input.keepAlive === false) {
+    await close();
   }
 
   return {
     ok: true,
     authority: authority.baseUrl,
-    repositoryId: campaign.repositoryId,
-    campaignId: input.campaignId,
+    repositoryId,
+    ...(input.campaignId !== undefined ? { campaignId: input.campaignId } : {}),
+    readOnly,
     viewerIdleExpiresAt: viewer.idleExpiresAt,
     viewerAbsoluteExpiresAt: viewer.absoluteExpiresAt,
     ...(approvalExpiresAt ? { approvalExpiresAt } : {}),
     launchUrl,
     requiresInteractiveRerun,
+    close,
   };
 }

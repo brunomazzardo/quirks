@@ -10,7 +10,7 @@ import { domainErrorCode, exitCodeForError, writeHuman, writeJson } from "./outp
 export { CliParseError, CampaignCliParseError, parseCampaignArgs };
 
 export type ParsedUiOpenArgs = {
-  campaignId: string;
+  campaignId?: string;
   json: boolean;
 };
 
@@ -43,16 +43,16 @@ export function parseUiOpenArgs(argv: readonly string[]): ParsedUiOpenArgs {
     throw new CliParseError(`Unexpected argument ${token}`);
   }
 
-  if (!campaignId) throw new CliParseError("ui open requires --campaign <id>");
-  return { campaignId, json };
+  return { ...(campaignId !== undefined ? { campaignId } : {}), json };
 }
 
-function publicOpenPayload(result: Awaited<ReturnType<typeof openWorkspace>>) {
+export function publicOpenPayload(result: Awaited<ReturnType<typeof openWorkspace>>) {
   return {
     ok: result.ok,
     authority: result.authority,
     repositoryId: result.repositoryId,
-    campaignId: result.campaignId,
+    ...(result.campaignId !== undefined ? { campaignId: result.campaignId } : {}),
+    readOnly: result.readOnly,
     viewerIdleExpiresAt: result.viewerIdleExpiresAt,
     viewerAbsoluteExpiresAt: result.viewerAbsoluteExpiresAt,
     ...(result.approvalExpiresAt ? { approvalExpiresAt: result.approvalExpiresAt } : {}),
@@ -61,7 +61,7 @@ function publicOpenPayload(result: Awaited<ReturnType<typeof openWorkspace>>) {
 
 async function runUiOpen(parsed: ParsedUiOpenArgs): Promise<number> {
   const result = await openWorkspace({
-    campaignId: parsed.campaignId,
+    ...(parsed.campaignId !== undefined ? { campaignId: parsed.campaignId } : {}),
     ports: "production",
     deps: {
       json: parsed.json,
@@ -76,7 +76,8 @@ async function runUiOpen(parsed: ParsedUiOpenArgs): Promise<number> {
     writeHuman(process.stdout, [
       `authority: ${payload.authority}`,
       `repositoryId: ${payload.repositoryId}`,
-      `campaignId: ${payload.campaignId}`,
+      ...(payload.campaignId !== undefined ? [`campaignId: ${payload.campaignId}`] : []),
+      ...(payload.readOnly ? ["readOnly: true"] : []),
       `viewerIdleExpiresAt: ${payload.viewerIdleExpiresAt}`,
       `viewerAbsoluteExpiresAt: ${payload.viewerAbsoluteExpiresAt}`,
       ...(payload.approvalExpiresAt ? [`approvalExpiresAt: ${payload.approvalExpiresAt}`] : []),
