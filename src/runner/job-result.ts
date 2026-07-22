@@ -11,6 +11,7 @@ export interface NormalizeJobResultInput {
   artifactPaths: readonly string[];
   usage?: RunnerJobResult["usage"];
   failure?: RunnerJobFailure | undefined;
+  notes?: readonly string[];
 }
 
 export function normalizeJobResult(input: NormalizeJobResultInput): RunnerJobResult {
@@ -26,5 +27,6 @@ export function normalizeJobResult(input: NormalizeJobResultInput): RunnerJobRes
     artifactPaths: [...input.artifactPaths],
     usage: { ...input.usage },
     failure: input.failure,
+    ...(input.notes !== undefined && input.notes.length > 0 ? { notes: [...input.notes] } : {}),
   };
 }

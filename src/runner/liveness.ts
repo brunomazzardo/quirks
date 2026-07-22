@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { buildClaudeResumeArgv } from "./claude.js";
-import { buildCodexResumeArgv } from "./codex.js";
+import { buildCodexResumeArgv, codexResultPath, codexResultSchemaPath } from "./codex.js";
 import { buildCursorResumeArgv } from "./cursor.js";
 import { dispatchRunnerJob, type DispatchRunnerJobInput } from "./dispatcher.js";
 import type { SessionRecord, SessionRegistry } from "./sessions.js";
@@ -144,7 +144,7 @@ export async function probeLiveness(jobId: string, deps: ProbeLivenessDeps): Pro
 function buildResumeArgv(
   profile: RunnerProfile,
   sessionHandle: string,
-  posture: { workspace: string; briefPath: string },
+  posture: { workspace: string; briefPath: string; artifactDir: string; jobId: string },
 ): readonly string[] {
   if (!sessionHandle) {
     throw new QuirksError("PROTOCOL_VIOLATION", "Cannot resume job without a recorded session handle");
@@ -163,7 +163,11 @@ function buildResumeArgv(
       return buildCodexResumeArgv({
         executable: profile.executable,
         sessionHandle,
-        workspace: posture.workspace,
+        briefPath: posture.briefPath,
+        resultPath: codexResultPath(posture.artifactDir, posture.jobId),
+        schemaPath: codexResultSchemaPath(),
+        capabilities: profile.capabilities,
+        effort: profile.effort,
       });
     case "cursor":
       return buildCursorResumeArgv(sessionHandle, {
@@ -191,6 +195,8 @@ export async function resumeJob(jobId: string, deps: ResumeJobDeps): Promise<Run
   const argv = buildResumeArgv(deps.profile, session.sessionHandle, {
     workspace: deps.workspace,
     briefPath: deps.briefPath,
+    artifactDir: deps.artifactDir,
+    jobId,
   });
 
   await deps.journal.append({

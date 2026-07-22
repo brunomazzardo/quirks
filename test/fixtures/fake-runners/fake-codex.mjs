@@ -22,6 +22,11 @@ async function main() {
   const { mode, sessionId, resultPath } = parseRunnerArgs(process.argv);
   const outDir = process.env.QUIRKS_FAKE_RUNNER_OUTDIR;
 
+  if (outDir) {
+    await mkdir(outDir, { recursive: true });
+    await writeFile(path.join(outDir, "codex-argv.json"), `${JSON.stringify(process.argv.slice(2))}\n`, "utf8");
+  }
+
   switch (mode) {
     case "success": {
       const artifactPath = await writeArtifact(outDir);
@@ -101,6 +106,16 @@ async function main() {
         });
       });
       return;
+    case "session-mismatch": {
+      process.stdout.write(`${JSON.stringify({ type: "thread.started", thread_id: "jsonl-session-999" })}\n`);
+      const artifactPath = await writeArtifact(outDir);
+      await writeCodexResult(resultPath, {
+        status: "success",
+        sessionHandle: "envelope-session-000",
+        artifactPaths: artifactPath ? [artifactPath] : [resultPath],
+      });
+      return;
+    }
     case "non-resumable": {
       await writeCodexResult(resultPath, {
         status: "failure",

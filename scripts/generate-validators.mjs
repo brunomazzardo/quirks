@@ -10,7 +10,9 @@ const require = createRequire(import.meta.url);
 const root = new URL("../", import.meta.url);
 const schemaDir = new URL("schemas/", root);
 const outputDir = new URL("src/schema/generated/", root);
-const files = (await readdir(schemaDir)).filter((name) => name.endsWith(".schema.json")).toSorted();
+// Only versioned schemas join the generated validators; unversioned schemas
+// (e.g. codex-result.schema.json) are consumed by external CLIs, not by Quirks.
+const files = (await readdir(schemaDir)).filter((name) => /-v\d+\.schema\.json$/.test(name)).toSorted();
 const ajv = new Ajv2020({ allErrors: true, strict: true, code: { esm: true, source: true } });
 addFormats(ajv);
 ajv.addKeyword({

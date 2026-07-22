@@ -85,7 +85,7 @@ test("marketplace install verification", { skip: !APPROVED }, async () => {
   assert.equal(pkg.ok, true);
   const installed = await installAllHosts({ sourceRoot: repoRoot, roots: {
     claude: process.env.QUIRKS_PLUGINS_DIR ?? path.join(os.homedir(), ".claude", "plugins"),
-    codex: process.env.QUIRKS_CODEX_PLUGINS_DIR ?? path.join(os.homedir(), ".codex", "plugins"),
+    codex: process.env.QUIRKS_CODEX_PLUGINS_DIR ?? path.join(os.homedir(), ".codex", "skills"),
     cursor: process.env.QUIRKS_CURSOR_SKILLS_DIR ?? path.join(os.homedir(), ".cursor", "skills"),
   } });
   for (const entry of installed) {
@@ -95,7 +95,7 @@ test("marketplace install verification", { skip: !APPROVED }, async () => {
     const hostRoot = host === "cursor"
       ? process.env.QUIRKS_CURSOR_SKILLS_DIR ?? path.join(os.homedir(), ".cursor", "skills")
       : host === "codex"
-        ? process.env.QUIRKS_CODEX_PLUGINS_DIR ?? path.join(os.homedir(), ".codex", "plugins")
+        ? process.env.QUIRKS_CODEX_PLUGINS_DIR ?? path.join(os.homedir(), ".codex", "skills")
         : process.env.QUIRKS_PLUGINS_DIR ?? path.join(os.homedir(), ".claude", "plugins");
     assert.deepEqual(await discoverInstalledSkillIds(host, hostRoot), CANONICAL_SKILLS);
   }
