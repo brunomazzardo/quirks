@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
 import type { UiCampaignCommit, UiCampaignDetail, UiCampaignPullRequest, UiCampaignRunner, UiCampaignTask, UiCampaignVerification, UiPlanProgressV1 } from "../../ports/campaign-read.js";
-import { PlanProgressLedger } from "../components/plan-progress-ledger.js";
+import { PlanProgressLedger, PlanProgressUnavailable } from "../components/plan-progress-ledger.js";
 import { classifyUrl } from "../../security/url-policy.js";
 import { DataTable } from "../components/data-table.js";
 import { StatusBadge, type StatusTone } from "../components/status-badge.js";
@@ -81,9 +81,15 @@ export interface CampaignDetailViewProps {
   detail: UiCampaignDetail;
   planProgress?: UiPlanProgressV1;
   planProgressPending?: boolean;
+  planProgressUnavailable?: boolean;
 }
 
-export function CampaignDetailView({ detail, planProgress, planProgressPending }: CampaignDetailViewProps) {
+export function CampaignDetailView({
+  detail,
+  planProgress,
+  planProgressPending,
+  planProgressUnavailable,
+}: CampaignDetailViewProps) {
   return (
     <section aria-labelledby="campaign-detail-heading">
       <h1 id="campaign-detail-heading">Campaign {detail.campaignId}</h1>
@@ -108,6 +114,7 @@ export function CampaignDetailView({ detail, planProgress, planProgressPending }
 
       {planProgressPending ? <p role="status">Loading plan progress…</p> : null}
       {planProgress ? <PlanProgressLedger projection={planProgress} /> : null}
+      {!planProgress && !planProgressPending && planProgressUnavailable ? <PlanProgressUnavailable /> : null}
 
       <h2>Waves</h2>
       {detail.waves.length === 0 ? (

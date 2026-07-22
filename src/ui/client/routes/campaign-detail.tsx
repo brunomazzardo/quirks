@@ -21,6 +21,7 @@ function CampaignDetailContent({ apiClient, campaignId }: { apiClient: ApiClient
       detail={query.data}
       {...(progressQuery.data ? { planProgress: progressQuery.data } : {})}
       planProgressPending={progressQuery.isPending}
+      planProgressUnavailable={progressQuery.isError}
     />
   );
 }

@@ -4,11 +4,21 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { CampaignStatus } from "../campaign/types.js";
 import { QuirksError } from "../core/errors.js";
+import { loadProjectContext } from "../project/config.js";
+import type { ProjectContext } from "../project/types.js";
+import { buildTaskHistory } from "../provenance/read-model.js";
+import type { TaskProvenance } from "../provenance/types.js";
+import { validateSchema } from "../schema/validate.js";
 import { resolveAppPaths } from "../state/app-paths.js";
+import { SyncOutbox } from "../sync/outbox.js";
+import { createTaskSource } from "../task-source/factory.js";
+import { disposeTaskSource, type TaskSource } from "../task-source/task-source.js";
+import type { TaskHistorySource } from "./api/task-history.js";
 import { InMemoryApprovalTokenStore } from "./approval/token-store.js";
 import { createLoopbackAuthority } from "./authority.js";
 import { InMemoryViewerSessionStore } from "./auth/viewer-session-store.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
+import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem, UiCampaignTask } from "./ports/campaign-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
 import { loadClientBundle } from "./shell.js";
 import { createUiServer } from "./server.js";
@@ -57,7 +67,8 @@ export type OpenWorkspaceDeps = {
 };
 
 export type OpenWorkspaceInput = {
-  campaignId: string;
+  campaignId?: string;
+  repositoryRoot?: string;
   ports?: "fake" | "production" | WorkspacePorts;
   fakeCampaigns?: Record<string, ResolvedCampaign>;
   stateDir?: string;
@@ -69,12 +80,14 @@ export type OpenWorkspaceResult = {
   ok: true;
   authority: string;
   repositoryId: string;
-  campaignId: string;
+  campaignId?: string;
+  readOnly: boolean;
   viewerIdleExpiresAt: string;
   viewerAbsoluteExpiresAt: string;
   approvalExpiresAt?: string;
   launchUrl: string;
   requiresInteractiveRerun: boolean;
+  close?: () => Promise<void>;
 };
 
 function defaultStateDir(): string {
@@ -156,6 +169,203 @@ async function resolvePorts(input: OpenWorkspaceInput, stateDir: string): Promis
   });
 }
 
+type StoredCampaignFiles = {
+  campaign: { campaignId: string; repositoryId: string; createdAt?: string; taskIds?: string[] };
+  state: { status: CampaignStatus; updatedAt?: string; spend?: Record<string, number> };
+  campaignDir: string;
+};
+
+async function readStoredCampaign(campaignDir: string, campaignId: string): Promise<StoredCampaignFiles | undefined> {
+  try {
+    const campaign = JSON.parse(await readFile(path.join(campaignDir, "campaign.json"), "utf8")) as StoredCampaignFiles["campaign"];
+    const state = JSON.parse(await readFile(path.join(campaignDir, "state.json"), "utf8")) as StoredCampaignFiles["state"];
+    if (campaign.campaignId !== campaignId) return undefined;
+    return { campaign, state, campaignDir };
+  } catch {
+    return undefined;
+  }
+}
+
+function toSummary(record: StoredCampaignFiles): UiCampaignSummaryItem {
+  return {
+    campaignId: record.campaign.campaignId,
+    repositoryId: record.campaign.repositoryId,
+    state: record.state.status,
+    taskCount: record.campaign.taskIds?.length ?? 0,
+    ...(record.campaign.createdAt ? { startedAt: record.campaign.createdAt } : {}),
+    ...(record.state.spend ? { spend: record.state.spend } : {}),
+  };
+}
+
+async function readCampaignSyncCounters(campaignDir: string): Promise<{ pending: number; conflicts: number }> {
+  try {
+    const intents = await SyncOutbox.open(path.join(campaignDir, "sync-outbox.jsonl")).listAll();
+    return {
+      pending: intents.filter((intent) => intent.state === "pending").length,
+      conflicts: intents.filter((intent) => intent.state === "conflict").length,
+    };
+  } catch {
+    return { pending: 0, conflicts: 0 };
+  }
+}
+
+const warnedInvalidCampaignDirs = new Set<string>();
+
+function isValidStoredCampaign(record: StoredCampaignFiles): boolean {
+  try {
+    validateSchema("ui-campaign-summary-v1", { schemaVersion: 1, items: [toSummary(record)] });
+    return true;
+  } catch {
+    if (!warnedInvalidCampaignDirs.has(record.campaignDir)) {
+      warnedInvalidCampaignDirs.add(record.campaignDir);
+      process.emitWarning(`Skipping invalid campaign record at ${record.campaignDir}`);
+    }
+    return false;
+  }
+}
+
+// Lists only campaigns that belong to the workspace's own repository. The bound
+// repository id is enforced server-side so a viewer session can never enumerate
+// another repository's campaigns, and records that fail projection validation
+// are skipped instead of failing the whole listing.
+async function listRepositoryCampaigns(stateDir: string, repositoryId: string): Promise<StoredCampaignFiles[]> {
+  const campaignsRoot = path.join(stateDir, "repositories", repositoryId.replaceAll(":", "-"), "campaigns");
+  let campaignDirs: string[];
+  try {
+    campaignDirs = await readdir(campaignsRoot);
+  } catch {
+    return [];
+  }
+  const stored: StoredCampaignFiles[] = [];
+  for (const campaignId of campaignDirs) {
+    const record = await readStoredCampaign(path.join(campaignsRoot, campaignId), campaignId);
+    if (!record) continue;
+    if (record.campaign.repositoryId !== repositoryId) continue;
+    if (!isValidStoredCampaign(record)) continue;
+    stored.push(record);
+  }
+  return stored;
+}
+
+async function withTaskSource<T>(context: ProjectContext, callback: (source: TaskSource) => Promise<T>): Promise<T> {
+  const source = await createTaskSource(context);
+  try {
+    return await callback(source);
+  } finally {
+    await disposeTaskSource(source);
+  }
+}
+
+async function showLedgerTask(
+  source: TaskSource,
+  taskId: string,
+): Promise<{ title: string; status: string; provenance: TaskProvenance } | undefined> {
+  const response = await source.execute({ schemaVersion: 1, operation: "show", taskId, input: {} });
+  if (!response.ok) return undefined;
+  const task = response.data as { title?: string; status?: string; provenance?: TaskProvenance };
+  return {
+    title: typeof task.title === "string" ? task.title : taskId,
+    status: typeof task.status === "string" ? task.status : "unknown",
+    provenance: task.provenance ?? { schemaVersion: 1, iterations: [] },
+  };
+}
+
+function createStoredCampaignReadPort(
+  stateDir: string,
+  getProjectContext: () => Promise<ProjectContext>,
+): CampaignReadPort {
+  const boundCampaigns = async (): Promise<{ context: ProjectContext; records: StoredCampaignFiles[] }> => {
+    const context = await getProjectContext();
+    return { context, records: await listRepositoryCampaigns(stateDir, context.repositoryId) };
+  };
+  const findCampaign = async (
+    campaignId: string,
+  ): Promise<{ context: ProjectContext; record: StoredCampaignFiles }> => {
+    const { context, records } = await boundCampaigns();
+    const record = records.find((entry) => entry.campaign.campaignId === campaignId);
+    if (!record) throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${campaignId} was not found`);
+    return { context, record };
+  };
+  return {
+    listSummaries: async (input) => {
+      const { context, records } = await boundCampaigns();
+      if (input.repositoryId !== undefined && input.repositoryId !== context.repositoryId) return [];
+      return records
+        .map(toSummary)
+        .toSorted((left, right) => left.campaignId.localeCompare(right.campaignId));
+    },
+    getDetail: async (campaignId) => {
+      const { context, record } = await findCampaign(campaignId);
+      const taskIds = record.campaign.taskIds ?? [];
+      const tasks = await withTaskSource(context, async (source) => {
+        const resolved: UiCampaignTask[] = [];
+        for (const taskId of taskIds) {
+          const shown = await showLedgerTask(source, taskId);
+          resolved.push({ taskId, title: shown?.title ?? taskId, status: shown?.status ?? "unknown" });
+        }
+        return resolved;
+      });
+      const detail: UiCampaignDetail = {
+        ...toSummary(record),
+        tasks,
+        waves: [],
+        runners: [],
+        commits: [],
+        pullRequests: [],
+        verification: [],
+        sync: await readCampaignSyncCounters(record.campaignDir),
+      };
+      return detail;
+    },
+    getPlanProgress: async ({ taskId, campaignId }) => {
+      await findCampaign(campaignId);
+      // Plan progress is derived only from a controller journal. The standalone
+      // workspace does not replay historical progress journals yet, so report
+      // the projection as unavailable instead of fabricating plan data.
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        `No recorded plan progress for task ${taskId} in campaign ${campaignId}`,
+      );
+    },
+  };
+}
+
+function createLedgerTaskHistorySource(
+  repositoryRoot: string,
+  getProjectContext: () => Promise<ProjectContext>,
+): TaskHistorySource {
+  return {
+    getHistory: async (taskId) => {
+      const context = await getProjectContext();
+      const resolved = await withTaskSource(context, (source) => showLedgerTask(source, taskId));
+      if (!resolved) throw new QuirksError("PROTOCOL_VIOLATION", `Unknown task ${taskId}`);
+      return buildTaskHistory({
+        repositoryRoot,
+        taskId,
+        sourceProvenance: resolved.provenance,
+      });
+    },
+  };
+}
+
+export type StandaloneWorkspacePorts = {
+  getProjectContext: () => Promise<ProjectContext>;
+  campaignRead: CampaignReadPort;
+  taskHistory: TaskHistorySource;
+};
+
+export function createStandaloneWorkspacePorts(options: {
+  repositoryRoot: string;
+  stateDir: string;
+}): StandaloneWorkspacePorts {
+  const getProjectContext = () => loadProjectContext(options.repositoryRoot, { mode: "inspection" });
+  return {
+    getProjectContext,
+    campaignRead: createStoredCampaignReadPort(options.stateDir, getProjectContext),
+    taskHistory: createLedgerTaskHistorySource(options.repositoryRoot, getProjectContext),
+  };
+}
+
 async function defaultOpenBrowser(url: string): Promise<void> {
   if (process.platform === "darwin") await execFileAsync("open", [url]);
   else if (process.platform === "linux") await execFileAsync("xdg-open", [url]);
@@ -168,16 +378,28 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
   await mkdir(path.join(stateDir, "repositories"), { recursive: true });
 
   const ports = await resolvePorts(input, stateDir);
-  const campaign = await ports.resolveCampaign(input.campaignId);
-  if (!campaign) {
-    throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${input.campaignId} was not found`);
+  const readOnly = input.campaignId === undefined;
+  let repositoryId: string;
+  let campaign: ResolvedCampaign | undefined;
+  let standalonePorts: StandaloneWorkspacePorts | undefined;
+  if (input.campaignId === undefined) {
+    const repositoryRoot = input.repositoryRoot ?? process.cwd();
+    const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
+    repositoryId = context.repositoryId;
+    standalonePorts = createStandaloneWorkspacePorts({ repositoryRoot, stateDir });
+  } else {
+    campaign = await ports.resolveCampaign(input.campaignId);
+    if (!campaign) {
+      throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${input.campaignId} was not found`);
+    }
+    repositoryId = campaign.repositoryId;
   }
 
   const getNow = input.deps?.now ?? (() => new Date().toISOString());
-  const viewer = await ports.viewerSession.issue({ repositoryId: campaign.repositoryId, now: getNow() });
+  const viewer = await ports.viewerSession.issue({ repositoryId, now: getNow() });
   let approvalExpiresAt: string | undefined;
   let approvalToken: string | undefined;
-  if (campaign.status === "awaiting_approval") {
+  if (input.campaignId !== undefined && campaign && campaign.status === "awaiting_approval") {
     const issued = await ports.approval.issueToken({
       campaignId: input.campaignId,
       envelopeDigest: campaign.envelopeDigest,
@@ -189,23 +411,27 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
 
   const authority = await createLoopbackAuthority();
   const clientScript = await loadClientBundle();
-  const campaigns = new Map<string, CampaignRecord>([
-    [input.campaignId, { repositoryId: campaign.repositoryId, envelopeDigest: campaign.envelopeDigest }],
-  ]);
+  const campaigns = new Map<string, CampaignRecord>(
+    input.campaignId !== undefined && campaign
+      ? [[input.campaignId, { repositoryId: campaign.repositoryId, envelopeDigest: campaign.envelopeDigest }]]
+      : [],
+  );
   const routerOptions: UiRouterOptions = {
     authority,
-    repositoryId: campaign.repositoryId,
+    repositoryId,
     viewerSession: ports.viewerSession,
     approval: ports.approval,
     getCampaign: (campaignId) => campaigns.get(campaignId),
     now: getNow,
     clientScript,
+    ...(readOnly ? { readOnly: true } : {}),
+    ...standalonePorts,
   };
   const server = await createUiServer(routerOptions);
 
   const launchUrl = buildLaunchUrl(
     authority.baseUrl,
-    shellRouteFor(campaign.status, input.campaignId),
+    input.campaignId !== undefined && campaign ? shellRouteFor(campaign.status, input.campaignId) : "/",
     viewer.viewerToken,
     approvalToken,
   );
@@ -217,19 +443,27 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
     await openBrowser(launchUrl);
   }
 
-  if (input.keepAlive === false) {
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
     await server.close();
+  };
+  if (input.keepAlive === false) {
+    await close();
   }
 
   return {
     ok: true,
     authority: authority.baseUrl,
-    repositoryId: campaign.repositoryId,
-    campaignId: input.campaignId,
+    repositoryId,
+    ...(input.campaignId !== undefined ? { campaignId: input.campaignId } : {}),
+    readOnly,
     viewerIdleExpiresAt: viewer.idleExpiresAt,
     viewerAbsoluteExpiresAt: viewer.absoluteExpiresAt,
     ...(approvalExpiresAt ? { approvalExpiresAt } : {}),
     launchUrl,
     requiresInteractiveRerun,
+    close,
   };
 }

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
-import { CliParseError, parseUiOpenArgs } from "../../src/cli/quirks-campaign.js";
+import { CliParseError, parseUiOpenArgs, publicOpenPayload } from "../../src/cli/quirks-campaign.js";
 import { createFakeWorkspacePorts, openWorkspace } from "../../src/ui/open-workspace.js";
 
 test("parseUiOpenArgs accepts ui open --campaign", () => {
@@ -8,10 +11,37 @@ test("parseUiOpenArgs accepts ui open --campaign", () => {
   assert.deepEqual(parseUiOpenArgs(["open", "--campaign", "C-1", "--json"]), { campaignId: "C-1", json: true });
 });
 
-test("parseUiOpenArgs rejects missing campaign and unknown flags", () => {
-  assert.throws(() => parseUiOpenArgs(["open"]), CliParseError);
+test("parseUiOpenArgs accepts ui open without --campaign as standalone", () => {
+  assert.deepEqual(parseUiOpenArgs(["open"]), { json: false });
+  assert.deepEqual(parseUiOpenArgs(["open", "--json"]), { json: true });
+});
+
+test("parseUiOpenArgs rejects missing values and unknown flags", () => {
   assert.throws(() => parseUiOpenArgs(["open", "--campaign"]), CliParseError);
   assert.throws(() => parseUiOpenArgs(["open", "--campaign", "C-1", "--unknown"]), CliParseError);
+});
+
+test("openWorkspace without a campaign opens a read-only workspace", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-ui-standalone-"));
+  const result = await openWorkspace({
+    repositoryRoot: path.resolve("test/fixtures/json-project"),
+    stateDir,
+    keepAlive: false,
+    deps: { json: true, isTty: false },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.readOnly, true);
+  assert.equal(result.campaignId, undefined);
+  assert.equal(result.approvalExpiresAt, undefined);
+  assert.match(result.authority, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.match(result.launchUrl, /#viewToken=/);
+  assert.doesNotMatch(result.launchUrl, /approvalToken=/);
+
+  const payload = publicOpenPayload(result);
+  assert.equal(payload.readOnly, true);
+  assert.equal(payload.authority, result.authority);
+  assert.ok(!("campaignId" in payload));
+  assert.doesNotMatch(JSON.stringify(payload), /viewToken|approvalToken|qkview_|qkapprove_|#/);
 });
 
 test("openWorkspace json payload omits secrets and launch material", async () => {
@@ -36,6 +66,7 @@ test("openWorkspace json payload omits secrets and launch material", async () =>
   assert.equal(opened.length, 0);
   assert.match(result.authority, /^http:\/\/127\.0\.0\.1:\d+$/);
   assert.ok(result.approvalExpiresAt);
+  assert.equal(result.readOnly, false);
 });
 
 test("openWorkspace issues approval token only for awaiting_approval campaigns", async () => {
