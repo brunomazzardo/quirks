@@ -1,63 +1,19 @@
-import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { consumeApprovalToken, createApprovalChallenge, hasDurableApproval } from "../campaign/approval.js";
-import type { RunnerPort, WorktreePort } from "../campaign/ports.js";
 import { recoverCampaignOrThrow } from "../campaign/recovery.js";
 import { runPreflight } from "../campaign/preflight.js";
+import { createCampaignRuntime, lockPathFor } from "../campaign/runtime-context.js";
 import { CampaignSupervisor } from "../campaign/supervisor.js";
 import { CampaignStore } from "../campaign/store.js";
 import type { CampaignEnvelope, CampaignSnapshot } from "../campaign/types.js";
 import { QuirksError } from "../core/errors.js";
 import { loadProjectContext } from "../project/config.js";
-import { normalizeJobResult } from "../runner/job-result.js";
-import type { RunnerJobResult } from "../runner/types.js";
 import { reattachWatchdog, stopWatchdog } from "../runner/watchdog.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { SyncOutbox } from "../sync/outbox.js";
 import { createTaskSource } from "../task-source/factory.js";
 import { disposeTaskSource } from "../task-source/task-source.js";
 import type { ParsedCampaignArgs } from "./campaign-args.js";
-
-class LocalWorktreePort implements WorktreePort {
-  constructor(private readonly artifactsPath: string) {}
-
-  async prepareTaskWorktree(taskId: string, baseCommit: string): Promise<{ path: string; branch: string }> {
-    const worktreePath = path.join(this.artifactsPath, "worktrees", taskId);
-    await mkdir(worktreePath, { recursive: true });
-    return { path: worktreePath, branch: `quirks/task/${taskId}@${baseCommit.slice(0, 8)}` };
-  }
-
-  async listModifiedFiles(_worktreePath: string): Promise<readonly string[]> {
-    return [];
-  }
-
-  async readCommit(_worktreePath: string): Promise<string | undefined> {
-    return undefined;
-  }
-}
-
-class FakeCliRunnerPort implements RunnerPort {
-  async dispatch(input: {
-    jobId: string;
-    taskId: string;
-    role: "supervisor" | "implementer" | "reviewer";
-    route: { profileId: string; runnerType: "claude" | "codex" | "cursor"; tier: string; effort: string; quotaPoolId: string };
-    briefPath: string;
-    worktreePath: string;
-  }): Promise<RunnerJobResult> {
-    return normalizeJobResult({
-      jobId: input.jobId,
-      profileId: input.route.profileId,
-      runnerType: input.route.runnerType,
-      resolvedModel: "test-model",
-      effort: input.route.effort,
-      status: "success",
-      sessionHandle: `fake-${input.jobId}`,
-      artifactPaths: [],
-      failure: undefined,
-    });
-  }
-}
+import { consumeApprovalToken, createApprovalChallenge, hasDurableApproval } from "../campaign/approval.js";
 
 function stateDirFor(repositoryId: string): string {
   return process.env.QUIRKS_STATE_DIR ?? resolveAppPaths(repositoryId).root;
@@ -87,10 +43,18 @@ async function supervisorContext(store: CampaignStore, repositoryRoot: string) {
   const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
   const source = await createTaskSource(context);
   const outbox = SyncOutbox.open(store.syncOutboxFile);
-  const runner = process.env.QUIRKS_USE_FAKE_RUNNER === "1" ? new FakeCliRunnerPort() : new FakeCliRunnerPort();
-  const worktree = new LocalWorktreePort(store.artifactsPath);
-  const lockPath = path.join(resolveAppPaths(envelope.repositoryId).repository, "repository.lock");
-  return { store, source, outbox, runner, worktree, lockPath, repositoryRoot, envelope };
+  const runtime = await createCampaignRuntime(envelope, repositoryRoot, { mode: "real" });
+  return {
+    store,
+    source,
+    outbox,
+    runner: runtime.runner,
+    worktree: runtime.worktree,
+    profileIndex: runtime.profiles,
+    lockPath: lockPathFor(envelope.repositoryId),
+    repositoryRoot,
+    envelope,
+  };
 }
 
 async function persistPreflightStore(envelope: CampaignEnvelope): Promise<CampaignStore> {

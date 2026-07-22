@@ -5,14 +5,15 @@ import { QuirksError } from "../core/errors.js";
 import { assertRepositoryRelativePath } from "../core/repository-path.js";
 import { loadProjectContext } from "../project/config.js";
 import { createTaskSource } from "../task-source/factory.js";
+import { validateSchema } from "../schema/validate.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { SyncOutbox } from "../sync/outbox.js";
-import { reconcilePending } from "../sync/reconciler.js";
+import { reconcileMutation, reconcilePending } from "../sync/reconciler.js";
 import { disposeTaskSource, type TaskSource } from "../task-source/task-source.js";
-import type { TaskSourceCapabilities, TaskSourceResponse } from "../task-source/types.js";
-import { CliParseError, parseArgs } from "./args.js";
+import type { MutationRequest, TaskSourceCapabilities, TaskSourceResponse } from "../task-source/types.js";
+import { CliParseError, isMutationCommand, parseArgs } from "./args.js";
+import { readMutationRequest } from "./mutation-request.js";
 import {
-  domainErrorCode,
   exitCodeForError,
   formatFreshness,
   localCoordinationLine,
@@ -48,7 +49,7 @@ async function readCapabilities(source: TaskSource): Promise<TaskSourceCapabilit
   if (!response.ok || response.operation !== "capabilities") {
     throw new QuirksError("SOURCE_UNAVAILABLE", "Task source capabilities are unavailable");
   }
-  return response.data as TaskSourceCapabilities;
+  return validateSchema<TaskSourceCapabilities>("task-source-capabilities-v1", response.data);
 }
 
 function assertOkResponse<O extends TaskSourceResponse["operation"]>(
@@ -77,6 +78,28 @@ async function reconcileAll(outbox: SyncOutbox, source: TaskSource): Promise<voi
   for (const campaignId of campaignIds) {
     await reconcilePending({ campaignId, outbox, source });
   }
+}
+
+function campaignIdFromMutation(request: MutationRequest): string {
+  if ("campaignId" in request.input && typeof request.input.campaignId === "string") {
+    return request.input.campaignId;
+  }
+  const [campaignId] = request.idempotencyKey.split(":");
+  if (!campaignId) {
+    throw new QuirksError("PROTOCOL_VIOLATION", "Mutation idempotency key must include campaign identity");
+  }
+  return campaignId;
+}
+
+function compactMutationResult(intent: Awaited<ReturnType<typeof reconcileMutation>>) {
+  const acknowledgement = intent.acknowledgement;
+  const nativeRevision = acknowledgement?.ok ? acknowledgement.nativeRevision : undefined;
+  return {
+    state: intent.state,
+    operation: intent.operation,
+    taskId: intent.taskId,
+    ...(nativeRevision ? { nativeRevision } : {}),
+  };
 }
 
 function withSource<T extends Record<string, unknown>>(
@@ -111,6 +134,70 @@ async function run(): Promise<number> {
     const syncedAt = formatFreshness(new Date().toISOString());
     const counts = await syncCounts(outbox);
 
+    if (parsed.command === "propose" && parsed.taskFile !== undefined) {
+      assertOkResponse(await source.execute({ schemaVersion: 1, operation: "validate", input: {} }), "validate");
+      const response = assertOkResponse(await source.execute({
+        schemaVersion: 1,
+        operation: "propose",
+        taskId: parsed.taskId!,
+        expectedNativeRevision: NEW_TASK_REVISION,
+        idempotencyKey: parsed.idempotencyKey!,
+        input: { task: await readProposalTask(context.root, parsed.taskFile) },
+      }), "propose");
+      const task = withSource(driver, response.data as Record<string, unknown>);
+      const payload = { ok: true as const, driver, task, nativeRevision: response.nativeRevision };
+      if (json) {
+        writeJson(process.stdout, payload);
+      } else {
+        writeHuman(process.stdout, [
+          `driver: ${driver}`,
+          ...(localCoordinationLine(driver) ? [localCoordinationLine(driver)!] : []),
+          `${task.id}\t${task.status}\t${task.title}`,
+        ]);
+      }
+      return 0;
+    }
+
+    if (isMutationCommand(parsed.command)) {
+      if (!capabilities.operations.includes(parsed.command)) {
+        throw new QuirksError("PROTOCOL_VIOLATION", `Task source does not support ${parsed.command}`);
+      }
+      const request = await readMutationRequest(
+        context.root,
+        parsed.requestFile!,
+        parsed.command,
+        capabilities.maxRequestBytes,
+      );
+      const response = await reconcileMutation({
+        campaignId: campaignIdFromMutation(request),
+        outbox,
+        source,
+        request,
+      });
+      const after = await syncCounts(outbox);
+      const ok = response.state === "acknowledged";
+      const payload = {
+        ok,
+        driver,
+        operation: request.operation,
+        mutation: compactMutationResult(response),
+        pending: after.pending,
+        conflicts: after.conflicts,
+      };
+      if (json) {
+        writeJson(process.stdout, payload);
+      } else {
+        writeHuman(process.stdout, [
+          `driver: ${driver}`,
+          `operation: ${request.operation}`,
+          `pending: ${after.pending}`,
+          `conflicts: ${after.conflicts}`,
+          `ok: ${ok}`,
+        ]);
+      }
+      return ok ? 0 : 3;
+    }
+
     if (parsed.command === "validate") {
       assertOkResponse(await source.execute({ schemaVersion: 1, operation: "validate", input: {} }), "validate");
 
@@ -125,30 +212,6 @@ async function run(): Promise<number> {
           `conflicts: ${counts.conflicts}`,
           ...(localCoordinationLine(driver) ? [localCoordinationLine(driver)!] : []),
           "ok",
-        ]);
-      }
-      return 0;
-    }
-
-    if (parsed.command === "propose") {
-      assertOkResponse(await source.execute({ schemaVersion: 1, operation: "validate", input: {} }), "validate");
-      const response = assertOkResponse(await source.execute({
-        schemaVersion: 1,
-        operation: "propose",
-        taskId: parsed.taskId!,
-        expectedNativeRevision: NEW_TASK_REVISION,
-        idempotencyKey: parsed.idempotencyKey!,
-        input: { task: await readProposalTask(context.root, parsed.taskFile!) },
-      }), "propose");
-      const task = withSource(driver, response.data as Record<string, unknown>);
-      const payload = { ok: true as const, driver, task, nativeRevision: response.nativeRevision };
-      if (json) {
-        writeJson(process.stdout, payload);
-      } else {
-        writeHuman(process.stdout, [
-          `driver: ${driver}`,
-          ...(localCoordinationLine(driver) ? [localCoordinationLine(driver)!] : []),
-          `${task.id}\t${task.status}\t${task.title}`,
         ]);
       }
       return 0;
@@ -235,20 +298,12 @@ async function run(): Promise<number> {
     return 0;
   } catch (error) {
     if (error instanceof CliParseError) {
-      if (!json) process.stderr.write(`${error.message}\n`);
+      process.stderr.write(`${error.message}\n`);
       return 2;
     }
 
     const exitCode = exitCodeForError(error);
-    if (json) {
-      writeJson(process.stdout, {
-        ok: false,
-        error: domainErrorCode(error),
-        message: error instanceof Error ? error.message : "Unexpected failure",
-      });
-    } else {
-      process.stderr.write(`${error instanceof Error ? error.message : "Unexpected failure"}\n`);
-    }
+    process.stderr.write(`${error instanceof Error ? error.message : "Unexpected failure"}\n`);
     return exitCode;
   } finally {
     await disposeTaskSource(source);

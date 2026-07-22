@@ -33,7 +33,7 @@ Delegated mode replaces human checkpoints only with the exact campaign approval 
 
 ## Model routing
 
-Route delegated specification work to principal-tier architects per `references/model-routing.md`. Reviewers must meet independence and tier requirements from the approved envelope.
+Route delegated specification work to principal-tier architects per `../../references/model-routing.md`. Reviewers must meet independence and tier requirements from the approved envelope.
 
 ## Reference
 

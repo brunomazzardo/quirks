@@ -6,6 +6,7 @@ import { buildExecutionPlan, selectRunnableTasks } from "./scheduler.js";
 import type { RunnerPort, WorktreePort, GitWorktreePort } from "./ports.js";
 import type { CampaignStore } from "./store.js";
 import type { CampaignApproval, CampaignEnvelope } from "./types.js";
+import type { RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
 import { RepositoryLock } from "../state/repository-lock.js";
 import { SessionRegistry } from "../runner/sessions.js";
@@ -23,6 +24,7 @@ export interface CampaignSupervisorContext {
   worktree: WorktreePort;
   lockPath: string;
   repositoryRoot: string;
+  profileIndex?: ReadonlyMap<string, RunnerProfile>;
   now?: () => string;
 }
 
@@ -45,17 +47,66 @@ function isGitWorktreePort(worktree: WorktreePort): worktree is GitWorktreePort 
   return typeof (worktree as GitWorktreePort).prepareReviewWorktree === "function";
 }
 
-function routeForTask(envelope: CampaignEnvelope, taskId: string): ResolvedRoute {
+type NormalizedSupervisorTask = {
+  id: string;
+  status: string;
+  dependsOn: readonly string[];
+  parallelismKeys: readonly string[];
+  nativeRevision: string;
+};
+
+const NON_CLAIMABLE_STATUSES = new Set(["proposed", "blocked", "cancelled"]);
+
+function routeForTask(
+  envelope: CampaignEnvelope,
+  taskId: string,
+  role: "implementer" | "reviewer",
+  profileIndex?: ReadonlyMap<string, RunnerProfile>,
+): ResolvedRoute {
   const routing = envelope.routing[taskId];
   if (!routing) {
     throw new QuirksError("PROTOCOL_VIOLATION", `Missing routing for task ${taskId}`);
   }
+  const selected = role === "reviewer" && routing.fallbacks[0] ? routing.fallbacks[0] : routing.primary;
+  const profile = profileIndex?.get(selected.profileId);
   return {
-    profileId: routing.primary.profileId,
-    runnerType: "cursor",
-    tier: routing.primary.tier,
-    effort: routing.primary.effort,
-    quotaPoolId: "default",
+    profileId: selected.profileId,
+    runnerType: profile?.runnerType ?? "cursor",
+    tier: selected.tier,
+    effort: selected.effort,
+    quotaPoolId: profile?.quotaPoolId ?? "default",
+  };
+}
+
+async function loadNormalizedTask(
+  source: TaskSource,
+  taskId: string,
+  envelope: CampaignEnvelope,
+): Promise<NormalizedSupervisorTask> {
+  const show = await source.execute({
+    schemaVersion: 1,
+    operation: "show",
+    taskId,
+    input: {},
+  });
+  if (!show.ok || show.operation !== "show") {
+    throw new QuirksError("PROTOCOL_VIOLATION", `Cannot show task ${taskId}`);
+  }
+  const data = show.data as {
+    status: string;
+    dependsOn: readonly string[];
+    execution: { parallelismKeys?: readonly string[] };
+  };
+  const nativeRevision = show.nativeRevision ?? envelope.taskRevisions[taskId];
+  if (!nativeRevision) {
+    throw new QuirksError("PROTOCOL_VIOLATION", `Missing revision for task ${taskId}`);
+  }
+  return {
+    id: taskId,
+    status: data.status,
+    dependsOn: data.dependsOn,
+    parallelismKeys: data.execution.parallelismKeys ?? [],
+    nativeRevision,
   };
 }
 
@@ -95,21 +146,23 @@ export class CampaignSupervisor {
       throw new QuirksError("PROTOCOL_VIOLATION", boundary.blockedReason ?? "Sync boundary blocked claim");
     }
 
+    const taskMeta = new Map<string, NormalizedSupervisorTask>();
     for (const taskId of envelope.taskIds) {
-      const show = await this.context.source.execute({
-        schemaVersion: 1,
-        operation: "show",
-        taskId,
-        input: {},
-      });
-      if (!show.ok || show.operation !== "show") {
-        throw new QuirksError("PROTOCOL_VIOLATION", `Cannot show task ${taskId}`);
-      }
-      const nativeRevision = show.nativeRevision ?? envelope.taskRevisions[taskId];
-      if (!nativeRevision) {
-        throw new QuirksError("PROTOCOL_VIOLATION", `Missing revision for task ${taskId}`);
-      }
+      taskMeta.set(taskId, await loadNormalizedTask(this.context.source, taskId, envelope));
+    }
 
+    for (const task of taskMeta.values()) {
+      if (task.status === "completed") continue;
+      if (NON_CLAIMABLE_STATUSES.has(task.status)) {
+        throw new QuirksError("PROTOCOL_VIOLATION", `Task ${task.id} is ${task.status} and cannot be claimed`);
+      }
+      if (task.status !== "ready") {
+        throw new QuirksError("PROTOCOL_VIOLATION", `Task ${task.id} is not ready to claim`);
+      }
+    }
+
+    for (const task of taskMeta.values()) {
+      if (task.status !== "ready") continue;
       await reconcileMutation({
         campaignId: envelope.campaignId,
         outbox: this.context.outbox,
@@ -117,9 +170,9 @@ export class CampaignSupervisor {
         request: {
           schemaVersion: 1,
           operation: "claim",
-          taskId,
-          expectedNativeRevision: nativeRevision,
-          idempotencyKey: `${envelope.campaignId}:claim:${taskId}`,
+          taskId: task.id,
+          expectedNativeRevision: task.nativeRevision,
+          idempotencyKey: `${envelope.campaignId}:claim:${task.id}`,
           input: {
             campaignId: envelope.campaignId,
             owner: "supervisor",
@@ -127,22 +180,27 @@ export class CampaignSupervisor {
           },
         },
       });
-      this.claimed.add(taskId);
+      this.claimed.add(task.id);
     }
 
-    const tasks = envelope.taskIds.map((taskId) => ({
-      id: taskId,
-      dependsOn: [] as string[],
-      parallelismKeys: [`task:${taskId}`],
-      status: "claimed",
-    }));
+    const completedIds = new Set(
+      [...taskMeta.values()].filter((task) => task.status === "completed").map((task) => task.id),
+    );
+    const tasks = [...taskMeta.values()]
+      .filter((task) => task.status !== "completed")
+      .map((task) => ({
+        id: task.id,
+        dependsOn: task.dependsOn.filter((dependencyId) => !completedIds.has(dependencyId)),
+        parallelismKeys: task.parallelismKeys.length > 0 ? task.parallelismKeys : [`task:${task.id}`],
+        status: task.status,
+      }));
     const plan = buildExecutionPlan(tasks, envelope.budgets);
     const runnable = selectRunnableTasks(plan, new Set(), new Set());
 
     const sessions = await SessionRegistry.open(this.context.store);
     for (const taskId of runnable) {
       const worktree = await this.context.worktree.prepareTaskWorktree(taskId, envelope.git.baseCommit);
-      const route = routeForTask(envelope, taskId);
+      const route = routeForTask(envelope, taskId, "implementer", this.context.profileIndex);
       const jobId = `${envelope.campaignId}:${taskId}:implementer:1`;
       const briefPath = path.join(this.context.repositoryRoot, ".quirks", "briefs", `${taskId}.md`);
       await mkdir(path.dirname(briefPath), { recursive: true });
@@ -184,12 +242,13 @@ export class CampaignSupervisor {
       if (isGitWorktreePort(this.context.worktree)) {
         const candidateCommit = await this.context.worktree.readCommit(worktree.path) ?? envelope.git.baseCommit;
         const reviewWorktree = await this.context.worktree.prepareReviewWorktree(taskId, candidateCommit);
+        const reviewerRoute = routeForTask(envelope, taskId, "reviewer", this.context.profileIndex);
         const reviewJobId = `${envelope.campaignId}:${taskId}:reviewer:1`;
         const reviewResult = await this.context.runner.dispatch({
           jobId: reviewJobId,
           taskId,
           role: "reviewer",
-          route,
+          route: reviewerRoute,
           briefPath,
           worktreePath: reviewWorktree.path,
         });
@@ -197,7 +256,7 @@ export class CampaignSupervisor {
         await sessions.register({
           jobId: reviewJobId,
           role: "reviewer",
-          profileId: route.profileId,
+          profileId: reviewerRoute.profileId,
           sessionHandle: reviewResult.sessionHandle,
           pid: process.pid,
           artifactPaths: [...reviewResult.artifactPaths],
@@ -212,7 +271,7 @@ export class CampaignSupervisor {
           from: "running",
           to: "running",
           reason: "review_dispatched",
-          evidence: { jobId: reviewJobId, taskId, profileId: route.profileId },
+          evidence: { jobId: reviewJobId, taskId, profileId: reviewerRoute.profileId },
         });
 
         this.dispatched.push({ jobId: reviewJobId, taskId, role: "reviewer" });

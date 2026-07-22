@@ -25,7 +25,7 @@ Use this skill for "run these tasks," "continue the queue," or unattended overni
 
 ## Model routing
 
-Follow `references/model-routing.md` for principal supervision, high-tier review, and external routing across approved runner pools.
+Follow `../../references/model-routing.md` for principal supervision, high-tier review, and external routing across approved runner pools.
 
 ## Landing and provenance
 

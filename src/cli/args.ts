@@ -1,4 +1,15 @@
-export type Command = "validate" | "list" | "show" | "sync" | "propose";
+import { assertRepositoryRelativePath } from "../core/repository-path.js";
+
+export type MutationCommand =
+  | "propose"
+  | "claim"
+  | "submit-review"
+  | "attach-provenance"
+  | "complete"
+  | "block"
+  | "release";
+
+export type Command = "validate" | "list" | "show" | "sync" | MutationCommand;
 
 export class CliParseError extends Error {
   override readonly name = "CliParseError";
@@ -11,10 +22,37 @@ export interface ParsedArgs {
   taskId?: string;
   taskFile?: string;
   idempotencyKey?: string;
+  requestFile?: string;
   json: boolean;
 }
 
-const COMMANDS = new Set<Command>(["validate", "list", "show", "sync", "propose"]);
+const COMMANDS = new Set<Command>([
+  "validate",
+  "list",
+  "show",
+  "sync",
+  "propose",
+  "claim",
+  "submit-review",
+  "attach-provenance",
+  "complete",
+  "block",
+  "release",
+]);
+
+const MUTATION_COMMANDS = new Set<MutationCommand>([
+  "propose",
+  "claim",
+  "submit-review",
+  "attach-provenance",
+  "complete",
+  "block",
+  "release",
+]);
+
+export function isMutationCommand(command: Command): command is MutationCommand {
+  return MUTATION_COMMANDS.has(command as MutationCommand);
+}
 
 function takeValue(argv: readonly string[], index: number, flag: string): string {
   const value = argv[index + 1];
@@ -39,6 +77,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let taskId: string | undefined;
   let taskFile: string | undefined;
   let idempotencyKey: string | undefined;
+  let requestFile: string | undefined;
   let json = false;
   const positionals: string[] = [];
 
@@ -73,6 +112,16 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       index += 1;
       continue;
     }
+    if (token === "--request-file") {
+      if (requestFile !== undefined) throw new CliParseError("Duplicate flag --request-file");
+      try {
+        requestFile = assertRepositoryRelativePath(takeValue(argv, index, "--request-file"));
+      } catch {
+        throw new CliParseError("request file must be repository-relative");
+      }
+      index += 1;
+      continue;
+    }
     if (token.startsWith("--")) {
       throw new CliParseError(`Unknown option ${token}`);
     }
@@ -86,20 +135,47 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     throw new CliParseError("--status is only valid for list");
   }
 
-  if (command === "show" || command === "propose") {
+  if (requestFile !== undefined && !MUTATION_COMMANDS.has(command as MutationCommand)) {
+    throw new CliParseError("--request-file is only valid for mutation commands");
+  }
+
+  if ((taskFile !== undefined || idempotencyKey !== undefined) && command !== "propose") {
+    throw new CliParseError("--task-file and --idempotency-key are only valid for propose");
+  }
+
+  if (command === "propose") {
+    const semantic = taskFile !== undefined || idempotencyKey !== undefined || positionals.length > 0;
+    const mutation = requestFile !== undefined;
+    if (semantic && mutation) {
+      throw new CliParseError("propose accepts either --request-file or --task-file/--idempotency-key, not both");
+    }
+    if (mutation) {
+      if (positionals.length > 0) {
+        throw new CliParseError("Unexpected positional arguments");
+      }
+    } else {
+      if (positionals.length !== 1) {
+        throw new CliParseError("propose requires exactly one task id");
+      }
+      if (!taskFile || !idempotencyKey) {
+        throw new CliParseError("propose requires --task-file and --idempotency-key");
+      }
+      taskId = positionals[0];
+    }
+  } else if (MUTATION_COMMANDS.has(command as MutationCommand)) {
+    if (requestFile === undefined) {
+      throw new CliParseError(`${command} requires --request-file`);
+    }
+    if (positionals.length > 0) {
+      throw new CliParseError("Unexpected positional arguments");
+    }
+  } else if (command === "show") {
     if (positionals.length !== 1) {
-      throw new CliParseError(`${command} requires exactly one task id`);
+      throw new CliParseError("show requires exactly one task id");
     }
     taskId = positionals[0];
   } else if (positionals.length > 0) {
     throw new CliParseError("Unexpected positional arguments");
-  }
-
-  if (command === "propose" && (!taskFile || !idempotencyKey)) {
-    throw new CliParseError("propose requires --task-file and --idempotency-key");
-  }
-  if (command !== "propose" && (taskFile || idempotencyKey)) {
-    throw new CliParseError("--task-file and --idempotency-key are only valid for propose");
   }
 
   return {
@@ -109,6 +185,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     ...(taskId ? { taskId } : {}),
     ...(taskFile ? { taskFile } : {}),
     ...(idempotencyKey ? { idempotencyKey } : {}),
+    ...(requestFile ? { requestFile } : {}),
     json,
   };
 }

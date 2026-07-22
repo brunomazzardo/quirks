@@ -1,4 +1,4 @@
-import type { WorktreePort as CampaignWorktreePort } from "../../../src/campaign/ports.js";
+import type { GitWorktreePort as CampaignGitWorktreePort } from "../../../src/campaign/ports.js";
 
 export interface FakeWorktreeRecord {
   path: string;
@@ -7,7 +7,7 @@ export interface FakeWorktreeRecord {
   commit?: string;
 }
 
-export class FakeWorktreePort implements CampaignWorktreePort {
+export class FakeWorktreePort implements CampaignGitWorktreePort {
   readonly prepared: Array<{ taskId: string; baseCommit: string; record: FakeWorktreeRecord }> = [];
   private readonly records = new Map<string, FakeWorktreeRecord>();
 
@@ -40,5 +40,25 @@ export class FakeWorktreePort implements CampaignWorktreePort {
       if (record.path === worktreePath) return record.commit;
     }
     return undefined;
+  }
+
+  async ensureIntegrationBranch(input: {
+    repositoryRoot: string;
+    campaignId: string;
+    baseCommit: string;
+    campaignBranch: string;
+  }): Promise<{ branch: string; commit: string }> {
+    return { branch: input.campaignBranch, commit: input.baseCommit };
+  }
+
+  async prepareReviewWorktree(taskId: string, candidateCommit: string): Promise<{ path: string; branch: string }> {
+    const record: FakeWorktreeRecord = {
+      path: `/tmp/quirks-review/${taskId}`,
+      branch: `quirks/review/${taskId}`,
+      modifiedFiles: [],
+      commit: candidateCommit,
+    };
+    this.records.set(`${taskId}:review`, record);
+    return { path: record.path, branch: record.branch };
   }
 }

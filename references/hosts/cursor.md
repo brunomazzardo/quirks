@@ -8,13 +8,16 @@ Cursor exposes Quirks through a managed link under the user skills directory.
 node hosts/cursor/install.mjs
 ```
 
+Default destination: `~/.cursor/skills/quirks`.
+
 Set `QUIRKS_CURSOR_SKILLS_DIR` in sandboxes to override the destination skills directory.
 
 The installer:
 
 - links `quirks` to this repository root;
 - never copies skill files into target repositories;
-- refuses to overwrite non-link destinations.
+- refuses to overwrite non-link destinations;
+- prints one bounded JSON result when invoked directly.
 
 ## Uninstall
 

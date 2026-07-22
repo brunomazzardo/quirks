@@ -8,14 +8,17 @@ Quirks installs into Claude Code through a managed plugin symlink that exposes t
 node hosts/claude/install.mjs
 ```
 
-Set `QUIRKS_PLUGINS_DIR` to override the default plugins directory in tests and sandboxes.
+Default destination: `~/.claude/plugins/quirks`.
+
+Set `QUIRKS_PLUGINS_DIR` to override the plugins directory in tests and sandboxes.
 
 The installer:
 
 - resolves the repository root as the plugin source;
 - creates `plugins/quirks` as a symlink when the destination is absent;
 - refuses to overwrite a non-link destination;
-- is idempotent when the existing link already points at this repository.
+- is idempotent when the existing link already points at this repository;
+- prints one bounded JSON result when invoked directly.
 
 ## Uninstall
 

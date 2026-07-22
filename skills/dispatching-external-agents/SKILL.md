@@ -26,9 +26,9 @@ Never treat a host-native subagent, IDE task runner, or detached child process a
 
 ## Runner references
 
-- Claude: `references/claude.md` and shared `references/runners/claude.md`
-- Codex: `references/codex.md` and shared `references/runners/codex.md`
-- Cursor: `references/cursor.md` and shared `references/runners/cursor.md`
+- Claude: `references/claude.md` and shared `../../references/runners/claude.md`
+- Codex: `references/codex.md` and shared `../../references/runners/codex.md`
+- Cursor: `references/cursor.md` and shared `../../references/runners/cursor.md`
 
 ## Prohibited patterns
 

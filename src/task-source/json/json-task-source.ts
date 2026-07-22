@@ -272,7 +272,7 @@ export class JsonTaskSource implements TaskSource {
       }
 
       const updatedTask = structuredClone(task);
-      const guard = this.mutateTask(updatedTask, request);
+      const guard = this.mutateTask(updatedTask, request, envelope.tasks);
       if (guard) return guard;
 
       envelope.tasks[taskIndex] = updatedTask;
@@ -297,22 +297,25 @@ export class JsonTaskSource implements TaskSource {
   private mutateTask(
     task: NativeTask,
     request: MutationRequest,
+    tasks: readonly NativeTask[],
   ): Extract<TaskSourceResponse, { ok: false }> | undefined {
     switch (request.operation) {
       case "claim": {
-        const result = applyClaim(task, request);
+        const result = applyClaim(task, request, tasks);
         return result ?? undefined;
       }
       case "release": {
         const result = applyRelease(task, request);
         return result ?? undefined;
       }
-      case "block":
-        applyBlock(task, request);
-        return undefined;
-      case "submit-review":
-        applySubmitReview(task);
-        return undefined;
+      case "block": {
+        const result = applyBlock(task, request);
+        return result ?? undefined;
+      }
+      case "submit-review": {
+        const result = applySubmitReview(task);
+        return result ?? undefined;
+      }
       case "complete": {
         const result = applyComplete(task, request, this.context.effectiveWorkflowPolicy.evidenceMap);
         return result ?? undefined;

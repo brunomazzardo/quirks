@@ -9,17 +9,17 @@ Use this skill for focused interactive execution of a single approved task.
 
 ## Required workflow
 
-1. Claim only through task-source operations with durable intent.
+1. Claim only through `quirks-tasks claim --request-file .quirks/requests/claim-TASK_ID.json --json` with durable intent.
 2. Run reproduced verification commands before `quirks-tasks submit-review`.
-3. Attach provenance with `quirks-tasks attach-provenance` using validator-approved candidates only.
+3. Attach provenance with `quirks-tasks attach-provenance --request-file .quirks/requests/provenance-TASK_ID.json --json` using validator-approved candidates only.
 4. Use repository-relative POSIX paths only and reject absolute paths outside the repository.
-5. Call `quirks-tasks complete` only after acknowledgement, sync acknowledgement, and exact commit or artifact evidence—never while `pending_sync` remains.
+5. Call `quirks-tasks complete --request-file .quirks/requests/complete-TASK_ID.json --json` only after acknowledgement, sync acknowledgement, and exact commit or artifact evidence—never while `pending_sync` remains.
 6. Respect `completionBoundary` from normalized task metadata.
 7. When running inside a campaign job, publish live progress via `quirks-campaign progress set`.
 
 ## Reference
 
-See `references/provenance-candidates.md` for compact provenance rules.
+See `references/provenance-candidates.md` for compact provenance rules, and `../../references/task-mutation-requests.md` for repository-relative request files, schema/operation matching, and cleanup only after acknowledgement.
 
 ## Prohibited patterns
 

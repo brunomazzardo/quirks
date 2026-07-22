@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, cp, mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -27,19 +27,82 @@ const PLACEHOLDER_MESSAGE =
   "Campaign execution is not installed; implement the approved runner-control and campaign plans.";
 
 const originalStateDir = process.env.QUIRKS_STATE_DIR;
+const originalConfigDir = process.env.QUIRKS_CONFIG_DIR;
 
 test.after(() => {
   if (originalStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
   else process.env.QUIRKS_STATE_DIR = originalStateDir;
+  if (originalConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+  else process.env.QUIRKS_CONFIG_DIR = originalConfigDir;
 });
 
-function testEnv(stateDir: string): NodeJS.ProcessEnv {
-  return { ...process.env, QUIRKS_STATE_DIR: stateDir };
+async function executableFakeRunner(scriptName: string, configDir: string): Promise<string> {
+  const fixtureDir = path.resolve("test/fixtures/fake-runners");
+  await cp(path.join(fixtureDir, "shared-modes.mjs"), path.join(configDir, "shared-modes.mjs"));
+  const source = path.join(fixtureDir, scriptName);
+  const target = path.join(configDir, scriptName);
+  const original = await readFile(source, "utf8");
+  await writeFile(target, `#!/usr/bin/env node\n${original}`, "utf8");
+  await chmod(target, 0o755);
+  return target;
 }
 
-async function freshCampaignRepo(): Promise<{ root: string; stateDir: string }> {
+async function writeCampaignRunnerConfig(configDir: string): Promise<void> {
+  await mkdir(configDir, { recursive: true });
+  const codexExecutable = await executableFakeRunner("fake-codex.mjs", configDir);
+  const claudeExecutable = await executableFakeRunner("fake-claude.mjs", configDir);
+  await writeFile(
+    path.join(configDir, "profiles.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      tierAliases: {
+        "fable-principal": { tier: "principal" },
+        "composer-standard": { tier: "standard" },
+      },
+      profiles: [
+        {
+          schemaVersion: 1,
+          profileId: "codex-standard",
+          runnerType: "codex",
+          executable: codexExecutable,
+          accountAlias: "work",
+          quotaPoolId: "pool-codex",
+          tier: "standard",
+          model: "composer-standard",
+          effort: "standard",
+          capabilities: ["repository-read", "repository-write"],
+          wallClockMs: 5_000,
+          redactionRules: [],
+        },
+        {
+          schemaVersion: 1,
+          profileId: "claude-principal",
+          runnerType: "claude",
+          executable: claudeExecutable,
+          accountAlias: "work",
+          quotaPoolId: "pool-claude",
+          tier: "principal",
+          model: "fable-principal",
+          effort: "principal",
+          capabilities: ["repository-read", "repository-write"],
+          wallClockMs: 5_000,
+          redactionRules: [],
+        },
+      ],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+function testEnv(stateDir: string, configDir: string): NodeJS.ProcessEnv {
+  return { ...process.env, QUIRKS_STATE_DIR: stateDir, QUIRKS_CONFIG_DIR: configDir };
+}
+
+async function freshCampaignRepo(): Promise<{ root: string; stateDir: string; configDir: string }> {
   const root = await mkdtemp(path.join(os.tmpdir(), "quirks-control-plane-"));
-  const stateDir = path.join(root, ".quirks-state");
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-control-plane-state-"));
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-control-plane-config-"));
+  await writeCampaignRunnerConfig(configDir);
   await cp(fixture, root, { recursive: true });
   await execFileAsync("git", ["init", root]);
   await execFileAsync("git", ["-C", root, "config", "user.email", "test@example.com"]);
@@ -47,7 +110,8 @@ async function freshCampaignRepo(): Promise<{ root: string; stateDir: string }> 
   await execFileAsync("git", ["-C", root, "add", "."]);
   await execFileAsync("git", ["-C", root, "commit", "-m", "fixture"]);
   process.env.QUIRKS_STATE_DIR = stateDir;
-  return { root, stateDir };
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  return { root, stateDir, configDir };
 }
 
 function storeReadyEnvelope(envelope: CampaignEnvelope): CampaignEnvelope {
@@ -156,7 +220,9 @@ test("headless approval, start, and status work without UI", async () => {
     await supervisor.startApproved();
     const status = await supervisor.status();
     assert.equal(status.claimedTaskIds.includes("QK-101"), true);
-    assert.equal(status.dispatchedJobs.length, 1);
+    assert.equal(status.dispatchedJobs.length, 2);
+    assert.equal(status.dispatchedJobs.filter((job) => job.role === "implementer").length, 1);
+    assert.equal(status.dispatchedJobs.filter((job) => job.role === "reviewer").length, 1);
     assert.equal(status.dispatchedJobs[0]?.taskId, "QK-101");
     const state = await context.store.readState();
     assert.equal(state.status, "running");
@@ -232,11 +298,11 @@ test("approval replay is rejected after durable consumption", async () => {
 });
 
 async function campaignCliIsPlaceholder(): Promise<boolean> {
-  const { root, stateDir } = await freshCampaignRepo();
+  const { root, stateDir, configDir } = await freshCampaignRepo();
   try {
     await execFileAsync(process.execPath, [campaignCli, "preflight", "--task", "QK-101", "--json"], {
       cwd: root,
-      env: testEnv(stateDir),
+      env: testEnv(stateDir, configDir),
     });
     return false;
   } catch (error) {
@@ -253,12 +319,15 @@ test("CLI exec: preflight, approval, start, and status when campaign CLI is inst
     return;
   }
 
-  const { root, stateDir } = await freshCampaignRepo();
+  const { root, stateDir, configDir } = await freshCampaignRepo();
   try {
-    const env = testEnv(stateDir);
+    const env = testEnv(stateDir, configDir);
     const preflight = JSON.parse(
-      (await execFileAsync(process.execPath, [campaignCli, "preflight", "--task", "QK-101", "--json"], { cwd: root, env }))
-        .stdout,
+      (await execFileAsync(
+        process.execPath,
+        [campaignCli, "preflight", "--task", "QK-101", "--external-routing", "--json"],
+        { cwd: root, env },
+      )).stdout,
     );
     assert.equal(preflight.ok, true);
     const approve = JSON.parse(

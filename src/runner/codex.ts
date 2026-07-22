@@ -1,3 +1,5 @@
+import path from "node:path";
+
 export interface BuildCodexArgvInput {
   executable: string;
   model: string;
@@ -47,6 +49,10 @@ const CODEX_STATUSES = new Set<CodexResultStatus>([
   "usage_limit",
   "permission_denied",
 ]);
+
+export function codexResultPath(artifactDir: string): string {
+  return path.join(artifactDir, "codex-result.json");
+}
 
 export function buildCodexArgv(input: BuildCodexArgvInput): readonly string[] {
   return [
@@ -119,5 +125,5 @@ function isCodexResultStatus(value: unknown): value is CodexResultStatus {
 function parseArtifactPaths(value: unknown, declaredResultPath: string): readonly string[] {
   if (value === undefined) return [declaredResultPath];
   if (!Array.isArray(value)) return [];
-  return value.filter((path): path is string => typeof path === "string" && path.length > 0);
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 }

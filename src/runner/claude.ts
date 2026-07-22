@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import path from "node:path";
 
 export interface ClaudeArgvInput {
   executable: string;
@@ -129,6 +130,10 @@ function hasUsageLimit(events: readonly ClaudeStreamEvent[]): boolean {
     if (info.requests_remaining === 0 || info.tokens_remaining === 0) return true;
   }
   return false;
+}
+
+export function claudeArtifactPaths(artifactDir: string): readonly string[] {
+  return [path.join(artifactDir, "result.json")];
 }
 
 function verifyArtifactPaths(paths: readonly string[]): string[] | undefined {

@@ -34,6 +34,22 @@ test("parseArgs accepts the supported command shapes", () => {
   assert.deepEqual(parseArgs(["sync"]), { command: "sync", json: false });
 });
 
+test("mutation commands require a repository-relative request file", () => {
+  assert.deepEqual(parseArgs(["propose", "--request-file", ".quirks/requests/propose.json", "--json"]), {
+    command: "propose",
+    requestFile: ".quirks/requests/propose.json",
+    json: true,
+  });
+  for (const command of ["claim", "submit-review", "attach-provenance", "complete", "block", "release"]) {
+    assert.deepEqual(parseArgs([command, "--request-file", ".quirks/requests/request.json"]), {
+      command,
+      requestFile: ".quirks/requests/request.json",
+      json: false,
+    });
+  }
+  assert.throws(() => parseArgs(["complete", "--request-file", "../outside.json"]), /repository-relative/);
+});
+
 test("parseArgs rejects duplicate flags, unknown options, and extra positionals", () => {
   assert.throws(() => parseArgs(["validate", "--json", "--json"]), CliParseError);
   assert.throws(() => parseArgs(["validate", "--config", "a", "--config", "b"]), CliParseError);

@@ -1,4 +1,40 @@
-# Quirks local control UI — agent guidance
+# Quirks — agent guidance
+
+## Repository purpose and authority
+
+Quirks is a project-agnostic local control plane for planning, dispatching, observing, reviewing, and auditing agent work across repositories. It is a standalone plugin/CLI/loopback UI, not project-specific infrastructure code.
+
+- `TaskSource` is the task authority boundary. JSON is the first implementation; external issue providers are adapters. Never edit `.quirks/tasks.json` or a provider file directly.
+- Git and the selected task provider remain authoritative for source, commits, PRs, and canonical status. Quirks performs semantic mutations and durable sync; UI/client state is only a projection.
+- Specs, plans, commits, PRs, and reports are referenced by path/commit/URL. Do not copy their full bodies into task JSON.
+- Real external execution must be bound to an approved campaign envelope, configured runner profile, budget, worktree, and independent review.
+
+## Active dogfood release repair
+
+The current repair is `QK-DGF-002` on branch `codex/qk-dgf-002`. On a machine with an existing repair worktree, locate it with `git worktree list` and continue there rather than restarting from `main`.
+
+Before continuing it, read:
+
+1. `docs/handoffs/2026-07-22-qk-dgf-002.md`
+2. `docs/superpowers/plans/2026-07-22-quirks-dogfood-release-repair.md`
+3. `.superpowers/sdd/progress.md`
+4. `references/dogfood.md`
+
+Do not trust the old Wave 7 release summary as proof: the real host/runner, marketplace, and bounded-campaign gates were stubbed or blocked. Finish the seven repair slices and reconcile task truth before making a release claim.
+
+Until the transition criteria in `references/dogfood.md` pass, use the documented Superpowers bootstrap for parent orchestration. Quirks CLIs remain the only mechanical task/campaign authority.
+
+## Required development discipline
+
+- Preserve unrelated user changes and use an isolated worktree for repair work.
+- Use TDD for behavior changes and require a fresh independent review of the complete per-task commit range.
+- Resolve every Critical/Important finding before accepting a task. A worker summary is not completion evidence.
+- Run `pnpm check` and `git diff --check` before accepting code. Run relevant Playwright and real smoke gates at their owning layer.
+- Never substitute fake adapters, skipped tests, stubs, or documents for an authorized real release gate.
+- Do not expose credentials or raw provider output in logs/artifacts. No production/destructive action, force push, or campaign expansion without explicit authority.
+- Do not push `QK-DGF-002` before the plan's final exact reviewed push gate.
+
+## Local control UI guidance
 
 ## Pinned browser stack (production dependencies only)
 

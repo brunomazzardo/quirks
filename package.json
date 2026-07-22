@@ -15,11 +15,16 @@
   "scripts": {
     "build": "node scripts/generate-validators.mjs && tsc -p tsconfig.build.json && pnpm bundle:ui",
     "bundle:ui": "node scripts/bundle-ui-client.mjs",
+    "quirks:campaign": "node scripts/quirks-campaign",
+    "quirks:tasks": "node scripts/quirks-tasks",
     "lint": "oxlint src test scripts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm build && node scripts/run-tests.mjs",
     "validate:skills": "node scripts/validate-skills.mjs",
-    "check": "pnpm lint && pnpm typecheck && pnpm validate:skills && pnpm test"
+    "check": "pnpm lint && pnpm typecheck && pnpm validate:skills && pnpm test",
+    "smoke:fast": "node scripts/quirks-smoke-fast.mjs",
+    "smoke:poc": "node scripts/quirks-smoke-host-runner.mjs --poc",
+    "smoke:matrix": "node scripts/quirks-smoke-host-runner.mjs --all"
   },
   "dependencies": {
     "@tanstack/react-form": "1.33.2",
