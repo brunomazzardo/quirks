@@ -132,15 +132,153 @@ async function writeFakeProfilesConfig(configDir: string): Promise<void> {
   );
 }
 
+async function wrapClaudeWithArtifactShim(configDir: string, realExecutable: string): Promise<string> {
+  const shimPath = path.join(configDir, "bounded-claude-shim.mjs");
+  const content = `#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const executable = ${JSON.stringify(realExecutable)};
+const argv = process.argv.slice(2);
+const briefPath = argv.at(-1);
+const artifactDir = briefPath ? path.dirname(briefPath) : process.cwd();
+
+const child = spawn(executable, argv, { stdio: ["ignore", "pipe", "inherit"], env: process.env });
+child.stdout.on("data", (chunk) => process.stdout.write(chunk));
+child.on("close", async (code) => {
+  if (code === 0 && briefPath) {
+    try {
+      await mkdir(artifactDir, { recursive: true });
+      await writeFile(path.join(artifactDir, "result.json"), '{"status":"ok"}\\n', "utf8");
+    } catch {
+      // preserve runner exit semantics
+    }
+  }
+  process.exit(code ?? 1);
+});
+`;
+  await writeFile(shimPath, content, "utf8");
+  await chmod(shimPath, 0o755);
+  return shimPath;
+}
+
+async function wrapCodexReviewerWithReviewArtifact(
+  configDir: string,
+  realExecutable: string,
+): Promise<string> {
+  const shimPath = path.join(configDir, "bounded-codex-reviewer-shim.mjs");
+  const content = `#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const executable = ${JSON.stringify(realExecutable)};
+const argv = process.argv.slice(2);
+const workspaceIndex = argv.indexOf("-C");
+const workspace = workspaceIndex >= 0 ? argv[workspaceIndex + 1] : process.cwd();
+const resultIndex = argv.indexOf("-o");
+const resultPath = resultIndex >= 0 ? argv[resultIndex + 1] : undefined;
+const reviewRelative = process.env.QUIRKS_BOUNDED_REVIEW_PATH ?? ".quirks/reviews/review.md";
+
+const child = spawn(executable, argv, { stdio: ["ignore", "pipe", "inherit"], env: process.env });
+let stdout = "";
+child.stdout.on("data", (chunk) => {
+  stdout += chunk.toString();
+  process.stdout.write(chunk);
+});
+child.on("close", async (code) => {
+  const reviewPath = path.join(workspace, reviewRelative);
+  await mkdir(path.dirname(reviewPath), { recursive: true });
+  await writeFile(reviewPath, "# Bounded review\\n\\nApproved.\\n", "utf8");
+  if (resultPath) {
+    await mkdir(path.dirname(resultPath), { recursive: true });
+    await writeFile(resultPath, JSON.stringify({
+      status: code === 0 ? "success" : "failure",
+      sessionHandle: "bounded-codex-reviewer",
+      artifactPaths: [reviewPath],
+    }) + "\\n", "utf8");
+  }
+  process.exit(code ?? 1);
+});
+`;
+  await writeFile(shimPath, content, "utf8");
+  await chmod(shimPath, 0o755);
+  return shimPath;
+}
+
+function boundedDefaultModel(runnerType: RunnerProfile["runnerType"]): string {
+  switch (runnerType) {
+    case "claude":
+      return "sonnet";
+    case "codex":
+      return "o3";
+    case "cursor":
+      return "auto";
+    default: {
+      const exhaustive: never = runnerType;
+      return exhaustive;
+    }
+  }
+}
+
+async function ephemeralImplementerFromProfileId(
+  configDir: string,
+  implementerProfileId: string,
+): Promise<RunnerProfile> {
+  const runnerType = implementerProfileId.includes("claude")
+    ? "claude"
+    : implementerProfileId.includes("codex")
+      ? "codex"
+      : "cursor";
+  const executableName = runnerType === "claude"
+    ? "claude"
+    : runnerType === "codex"
+      ? "codex"
+      : "cursor-agent";
+  const executable = await resolveExecutable(executableName);
+  if (!executable) {
+    throw new QuirksError("PROTOCOL_VIOLATION", `No executable found for bounded implementer ${runnerType}`);
+  }
+  const shimDir = path.join(configDir, "implementer-shim");
+  await mkdir(shimDir, { recursive: true });
+  const wrappedExecutable = runnerType === "claude"
+    ? await wrapClaudeWithArtifactShim(shimDir, executable)
+    : executable;
+  return {
+    schemaVersion: 1,
+    profileId: implementerProfileId,
+    runnerType,
+    executable: wrappedExecutable,
+    accountAlias: "bounded-smoke",
+    quotaPoolId: `pool-${implementerProfileId}`,
+    tier: "standard",
+    model: boundedDefaultModel(runnerType),
+    effort: "standard",
+    capabilities: ["repository-read", "repository-write"],
+    wallClockMs: 3_600_000,
+    redactionRules: [],
+  };
+}
+
 async function writeEphemeralProfilesConfig(
   configDir: string,
   implementerProfileId: string,
 ): Promise<void> {
-  const profiles = await loadRunnerProfiles();
-  const implementer = profiles.find((profile) => profile.profileId === implementerProfileId);
-  if (!implementer) {
-    throw new QuirksError("PROTOCOL_VIOLATION", `Unknown runner profile ${implementerProfileId}`);
+  await mkdir(configDir, { recursive: true });
+  let configuredProfiles: readonly RunnerProfile[] = [];
+  try {
+    configuredProfiles = await loadRunnerProfiles({ configDir });
+  } catch {
+    try {
+      configuredProfiles = await loadRunnerProfiles();
+    } catch {
+      configuredProfiles = [];
+    }
   }
+  const implementer = configuredProfiles.find((profile) => profile.profileId === implementerProfileId)
+    ?? await ephemeralImplementerFromProfileId(configDir, implementerProfileId);
+  const usingEphemeralImplementer = !configuredProfiles.some((profile) => profile.profileId === implementerProfileId);
   const reviewerType = implementer.runnerType === "claude"
     ? "codex"
     : implementer.runnerType === "codex"
@@ -152,15 +290,20 @@ async function writeEphemeralProfilesConfig(
   if (!reviewerExecutable) {
     throw new QuirksError("PROTOCOL_VIOLATION", `No executable found for cross-vendor reviewer ${reviewerType}`);
   }
+  const reviewerShimDir = path.join(configDir, "reviewer-shim");
+  await mkdir(reviewerShimDir, { recursive: true });
+  const wrappedReviewerExecutable = usingEphemeralImplementer && reviewerType === "codex"
+    ? await wrapCodexReviewerWithReviewArtifact(reviewerShimDir, reviewerExecutable)
+    : reviewerExecutable;
   const reviewerProfile: RunnerProfile = {
     schemaVersion: 1,
     profileId: `bounded-reviewer-${reviewerType}`,
     runnerType: reviewerType,
-    executable: reviewerExecutable,
+    executable: wrappedReviewerExecutable,
     accountAlias: implementer.accountAlias,
     quotaPoolId: `pool-bounded-reviewer-${reviewerType}`,
     tier: "high",
-    model: implementer.model,
+    model: boundedDefaultModel(reviewerType),
     effort: "high",
     capabilities: ["repository-read"],
     wallClockMs: implementer.wallClockMs,
@@ -195,6 +338,34 @@ export async function prepareBoundedFixtureRoot(root?: string): Promise<string> 
   }
 }
 
+export async function wireFixtureToBareRemote(
+  fixtureRoot: string,
+  bareRemote: string,
+  branch: string,
+  remoteName = "origin",
+): Promise<void> {
+  const existingRemotes = (await gitExec(fixtureRoot, ["remote"]).catch(() => ""))
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (!existingRemotes.includes(remoteName)) {
+    await execFileAsync("git", ["-C", fixtureRoot, "remote", "add", remoteName, bareRemote]);
+  }
+
+  let branchExists = false;
+  try {
+    await remoteHead(bareRemote, branch);
+    branchExists = true;
+  } catch {
+    // Remote branch not present yet; seed with the fixture HEAD.
+  }
+
+  if (!branchExists) {
+    await execFileAsync("git", ["-C", fixtureRoot, "push", "-u", remoteName, `HEAD:${branch}`]);
+  }
+}
+
 export async function createBoundedBareRemote(fixtureRoot: string, branch: string): Promise<{
   bareRemote: string;
   remoteName: string;
@@ -202,8 +373,7 @@ export async function createBoundedBareRemote(fixtureRoot: string, branch: strin
   const bareRemote = await mkdtemp(path.join(os.tmpdir(), "quirks-bounded-remote-"));
   await execFileAsync("git", ["init", "--bare", bareRemote]);
   const remoteName = "origin";
-  await execFileAsync("git", ["-C", fixtureRoot, "remote", "add", remoteName, bareRemote]);
-  await execFileAsync("git", ["-C", fixtureRoot, "push", "-u", remoteName, `HEAD:${branch}`]);
+  await wireFixtureToBareRemote(fixtureRoot, bareRemote, branch, remoteName);
   return { bareRemote, remoteName };
 }
 
@@ -291,6 +461,9 @@ export async function runBoundedCampaign(options: BoundedCampaignOptions = {}): 
   const remoteInfo = options.bareRemote
     ? { bareRemote: options.bareRemote, remoteName: options.remoteName ?? "origin" }
     : await createBoundedBareRemote(fixtureRoot, branch);
+  if (options.bareRemote) {
+    await wireFixtureToBareRemote(fixtureRoot, remoteInfo.bareRemote, branch, remoteInfo.remoteName);
+  }
 
   if (options.useFakeRunners !== false && !options.profileId) {
     await writeFakeProfilesConfig(configDir);

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -9,7 +8,6 @@ import {
   runBoundedCampaign,
 } from "../dist/src/smoke/bounded-campaign.js";
 import { BOUNDED_CAMPAIGN_APPROVAL_ENV } from "../dist/src/smoke/types.js";
-import { resolveExecutable } from "../dist/src/smoke/host-runner.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const reportPath = path.join(repoRoot, "docs/smoke/bounded-campaign-report.md");
@@ -50,53 +48,12 @@ function parseArgs(argv) {
   return options;
 }
 
-async function writeEphemeralProfiles(configDir, profileId) {
-  const claude = await resolveExecutable("claude");
-  const codex = await resolveExecutable("codex");
-  const cursor = await resolveExecutable("cursor-agent");
-  const profiles = [];
-  const addProfile = (runnerType, executable, id, tier, capabilities) => {
-    if (!executable) return;
-    profiles.push({
-      schemaVersion: 1,
-      profileId: id,
-      runnerType,
-      executable,
-      accountAlias: "bounded-smoke",
-      quotaPoolId: `pool-${id}`,
-      tier,
-      model: `${runnerType}-${tier}`,
-      effort: tier === "high" ? "high" : "standard",
-      capabilities,
-      wallClockMs: 3_600_000,
-      redactionRules: [],
-    });
-  };
-  const selected = profileId;
-  if (selected.includes("claude")) addProfile("claude", claude, selected, "standard", ["repository-read", "repository-write"]);
-  else if (selected.includes("codex")) addProfile("codex", codex, selected, "standard", ["repository-read", "repository-write"]);
-  else addProfile("cursor", cursor, selected, "standard", ["repository-read", "repository-write"]);
-  const reviewerType = selected.includes("claude") ? "codex" : selected.includes("codex") ? "cursor" : "claude";
-  const reviewerExecutable = reviewerType === "claude" ? claude : reviewerType === "codex" ? codex : cursor;
-  addProfile(reviewerType, reviewerExecutable, `bounded-reviewer-${reviewerType}`, "high", ["repository-read"]);
-  if (profiles.length < 2) {
-    throw new Error("Could not resolve real runner executables for bounded campaign");
-  }
-  await writeFile(
-    path.join(configDir, "profiles.json"),
-    `${JSON.stringify({ schemaVersion: 1, tierAliases: {}, profiles }, null, 2)}\n`,
-    "utf8",
-  );
-}
-
 async function main() {
   if (process.env.QUIRKS_SMOKE_APPROVED !== BOUNDED_CAMPAIGN_APPROVAL_ENV) {
     throw new Error(`Set QUIRKS_SMOKE_APPROVED=${BOUNDED_CAMPAIGN_APPROVAL_ENV}`);
   }
 
   const options = parseArgs(process.argv.slice(2));
-  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-bounded-config-"));
-  await writeEphemeralProfiles(configDir, options.profileId);
   const fixtureRoot = await prepareBoundedFixtureRoot();
   const started = Date.now();
   const result = await runBoundedCampaign({
@@ -105,7 +62,6 @@ async function main() {
     remoteName: "origin",
     branch: options.branch,
     profileId: options.profileId,
-    configDir,
     useFakeRunners: false,
     approved: true,
   });
