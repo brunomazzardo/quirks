@@ -5,9 +5,11 @@ import type { ApiClient } from "../api-client.js";
 import { ApprovalForm } from "../components/approval-form.js";
 import { isAuthHttpError } from "../http-errors.js";
 import { queryClient as sharedQueryClient } from "../query-client.js";
-import { preflightQueryOptions, queryKeys } from "../query-options.js";
+import { preflightQueryOptions, promptQueryOptions, queryKeys } from "../query-options.js";
 import { useTokenVault } from "../app.js";
 import type { UiPreflightProposalV1 } from "../../types/preflight-proposal.js";
+import type { UiPromptSetV1 } from "../../../prompt/types.js";
+import { PromptActions } from "../components/prompt-actions.js";
 import { confidenceBadge, routeTierLabel, type BadgeDescriptor } from "../visual-states.js";
 
 type RouterRuntime = {
@@ -156,6 +158,10 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
   const preflightQuery = useQuery(preflightQueryOptions(apiClient, campaignId));
+  const promptQuery = useQuery({
+    ...promptQueryOptions(apiClient, { contextKind: "campaign", campaignId }),
+    retry: false,
+  });
 
   useEffect(() => {
     const handleClose = () => vault.clearAll();
@@ -217,6 +223,7 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
       approvalDisabled={approvalSettled || approvalMutation.isSuccess}
       approvalSubmitting={approvalMutation.isPending}
       digestVisible={digestVisible}
+      {...(promptQuery.data ? { promptSet: promptQuery.data } : {})}
       onApprove={async () => {
         setApprovalMessage(null);
         await approvalMutation.mutateAsync({
@@ -236,6 +243,7 @@ export function PreflightProposalView({
   digestVisible = proposal.envelopeDigest.length > 0 &&
     proposal.approval.envelopeDigest === proposal.envelopeDigest &&
     proposal.approval.campaignId === proposal.campaignId,
+  promptSet,
   onApprove = async () => {},
 }: {
   proposal: UiPreflightProposalV1;
@@ -243,6 +251,7 @@ export function PreflightProposalView({
   approvalDisabled?: boolean;
   approvalSubmitting?: boolean;
   digestVisible?: boolean;
+  promptSet?: UiPromptSetV1;
   onApprove?: () => Promise<void>;
 }) {
   const [taskFilter, setTaskFilter] = useState("");
@@ -258,6 +267,7 @@ export function PreflightProposalView({
         <p>
           <StatusBadge label={summaryConfidence.label} tone={summaryConfidence.tone} />
         </p>
+        {promptSet ? <PromptActions promptSet={promptSet} /> : null}
       </header>
 
       <Section title="What will run">

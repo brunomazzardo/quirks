@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouteContext } from "@tanstack/react-router";
 import type { ApiClient } from "../api-client.js";
-import { campaignDetailQueryOptions, planProgressQueryOptions } from "../query-options.js";
+import { campaignDetailQueryOptions, planProgressQueryOptions, promptQueryOptions } from "../query-options.js";
 import type { RouterContext } from "../router.js";
 import { CampaignDetailView } from "../views/campaign-detail-view.js";
 
@@ -12,6 +12,10 @@ function CampaignDetailContent({ apiClient, campaignId }: { apiClient: ApiClient
     ...planProgressQueryOptions(apiClient, selectedTaskId ?? "", campaignId),
     enabled: Boolean(selectedTaskId),
   });
+  const promptQuery = useQuery({
+    ...promptQueryOptions(apiClient, { contextKind: "campaign", campaignId }),
+    retry: false,
+  });
 
   if (query.isPending) return <p role="status">Loading campaign…</p>;
   if (query.isError) return <p role="alert">Unable to load campaign.</p>;
@@ -21,6 +25,7 @@ function CampaignDetailContent({ apiClient, campaignId }: { apiClient: ApiClient
       detail={query.data}
       {...(progressQuery.data ? { planProgress: progressQuery.data } : {})}
       planProgressPending={progressQuery.isPending}
+      {...(promptQuery.data ? { promptSet: promptQuery.data } : {})}
     />
   );
 }
