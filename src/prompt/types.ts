@@ -88,8 +88,6 @@ export interface PromptContext {
   skills: Readonly<Record<string, string>>;
   implementer?: PromptProfileContext;
   profiles: readonly PromptProfileContext[];
-  /** Compact verification summaries; never complete logs. */
-  verificationSummary?: readonly string[];
 }
 
 /** A reviewed production recipe definition. Not user-authored text. */

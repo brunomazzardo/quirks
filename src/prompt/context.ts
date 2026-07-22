@@ -44,7 +44,6 @@ export interface AssemblePromptContextInput {
   skills: Readonly<Record<string, string>>;
   profiles: readonly RunnerProfile[];
   implementerProfileId?: string;
-  verificationSummary?: readonly string[];
 }
 
 function assertFullSha(value: string, label: string): string {
@@ -150,10 +149,6 @@ export async function assemblePromptContext(input: AssemblePromptContextInput): 
       );
     }
     context.implementer = implementer;
-  }
-
-  if (input.verificationSummary) {
-    context.verificationSummary = compactSummaries(input.verificationSummary);
   }
 
   return context;

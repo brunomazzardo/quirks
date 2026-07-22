@@ -17,6 +17,8 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /\bAKIA[0-9A-Z]{16}\b/g,
 ];
 
+const HOME_PATH_PATTERN = /(?:\/Users|\/home)\/[^\s"'`]+/g;
+
 /** Replace secret-shaped substrings with a fixed redaction marker. */
 export function redactSecretShapedText(value: string): string {
   let redacted = value;
@@ -24,6 +26,37 @@ export function redactSecretShapedText(value: string): string {
     redacted = redacted.replaceAll(pattern, "[redacted-secret]");
   }
   return redacted;
+}
+
+/** Replace absolute home paths with a fixed redaction marker. */
+export function redactHomePaths(value: string): string {
+  return value.replaceAll(HOME_PATH_PATTERN, "[redacted-home-path]");
+}
+
+/**
+ * Flatten untrusted text to a single bounded line: secrets and home paths
+ * redacted, every control character (including newlines) collapsed to a
+ * space, delimiter collisions neutralized. Used for evidence that must not
+ * be able to fake list or section structure, such as verification commands.
+ */
+export function sanitizeInlineEvidence(value: string, maxLength = 256): string {
+  let flattened = "";
+  let lastWasSpace = false;
+  for (const char of redactHomePaths(redactSecretShapedText(value))) {
+    const code = char.codePointAt(0)!;
+    if (code < 0x20 || code === 0x7f) {
+      if (!lastWasSpace) flattened += " ";
+      lastWasSpace = true;
+      continue;
+    }
+    flattened += char;
+    lastWasSpace = char === " ";
+  }
+  let sanitized = neutralizeDelimiterCollisions(flattened).trim();
+  if (sanitized.length > maxLength) {
+    sanitized = `${sanitized.slice(0, maxLength)}${TRUNCATION_MARKER}`;
+  }
+  return sanitized;
 }
 
 function stripControlCharacters(value: string): string {
@@ -54,7 +87,7 @@ export function delimitUntrustedEvidence(label: string, value: string): string {
   if (!LABEL_PATTERN.test(label)) {
     throw new QuirksError("PROTOCOL_VIOLATION", `Invalid evidence label: ${JSON.stringify(label)}`);
   }
-  let body = neutralizeDelimiterCollisions(redactSecretShapedText(stripControlCharacters(value)));
+  let body = neutralizeDelimiterCollisions(redactHomePaths(redactSecretShapedText(stripControlCharacters(value))));
   if (body.length > MAX_EVIDENCE_CHARS) {
     body = `${body.slice(0, MAX_EVIDENCE_CHARS)}${TRUNCATION_MARKER}`;
   }
