@@ -2,11 +2,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { QuirksError } from "../core/errors.js";
 import { hasDurableApproval } from "./approval.js";
-import { buildExecutionPlan, selectRunnableTasks } from "./scheduler.js";
+import { BudgetExceededError, BudgetTracker } from "./budgets.js";
+import { evaluateCircuitBreakers, type CircuitBreakerDecision } from "./circuit-breakers.js";
+import { classifyFailure, type FailureClass } from "./failures.js";
+import { buildExecutionPlan, selectRunnableTasks, type ExecutionPlan } from "./scheduler.js";
 import type { RunnerPort, WorktreePort, GitWorktreePort } from "./ports.js";
 import type { CampaignStore } from "./store.js";
-import type { CampaignApproval, CampaignEnvelope } from "./types.js";
-import type { RunnerProfile } from "../runner/types.js";
+import type { CampaignApproval, CampaignEnvelope, CampaignStatus } from "./types.js";
+import type { RunnerJobResult, RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
 import { RepositoryLock } from "../state/repository-lock.js";
 import { SessionRegistry } from "../runner/sessions.js";
@@ -39,6 +42,13 @@ export interface SupervisorStatus {
   dispatchedJobs: readonly DispatchedJob[];
 }
 
+export interface RunToCompletionOutcome {
+  status: "completed" | "paused" | "hold" | "stopped";
+  completedJobs: readonly DispatchedJob[];
+  pausedLanes: readonly string[];
+  breaker?: CircuitBreakerDecision;
+}
+
 function nowIso(context: CampaignSupervisorContext): string {
   return context.now?.() ?? new Date().toISOString();
 }
@@ -54,6 +64,25 @@ type NormalizedSupervisorTask = {
   parallelismKeys: readonly string[];
   nativeRevision: string;
 };
+
+interface PreparedRun {
+  envelope: CampaignEnvelope;
+  plan: ExecutionPlan;
+  planTaskIds: readonly string[];
+  sessions: SessionRegistry;
+}
+
+interface TaskDispatchOutcome {
+  taskId: string;
+  attempt: number;
+  implementer: RunnerJobResult;
+  implementerRoute: ResolvedRoute;
+  reviewer?: RunnerJobResult;
+  reviewerRoute?: ResolvedRoute;
+  jobs: readonly DispatchedJob[];
+  startedAt: string;
+  finishedAt: string;
+}
 
 const NON_CLAIMABLE_STATUSES = new Set(["proposed", "blocked", "cancelled"]);
 
@@ -110,6 +139,11 @@ async function loadNormalizedTask(
   };
 }
 
+function elapsedMs(startedAt: string, finishedAt: string): number {
+  const elapsed = Date.parse(finishedAt) - Date.parse(startedAt);
+  return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
+}
+
 export class CampaignSupervisor {
   private lockHandle: RepositoryLockHandle | undefined;
   private readonly claimed = new Set<string>();
@@ -126,6 +160,157 @@ export class CampaignSupervisor {
   }
 
   async startApproved(): Promise<void> {
+    const run = await this.prepareRun();
+    const runnable = selectRunnableTasks(run.plan, new Set(), new Set());
+    await this.journalWave(run, "wave.started", 0, runnable);
+    const completed: string[] = [];
+    for (const taskId of runnable) {
+      const outcome = await this.dispatchTask(run, taskId, 1, "awaiting_approval");
+      if (outcome.implementer.status === "success") completed.push(taskId);
+    }
+    await this.journalWave(run, "wave.completed", 0, runnable, { completedTaskIds: completed.join(",") });
+    await this.writeRunningState(run, new Set());
+  }
+
+  async runToCompletion(): Promise<RunToCompletionOutcome> {
+    const run = await this.prepareRun();
+    await this.writeRunningState(run, new Set());
+
+    const budgets = run.envelope.budgets;
+    const tracker = new BudgetTracker({
+      maxTasks: budgets.maxTasks,
+      maxWallClockMs: budgets.maxWallClockMs,
+      maxRetries: budgets.maxRetries,
+    });
+    const completedTasks = new Set<string>();
+    const pausedLanes = new Set<string>();
+    const attempts = new Map<string, number>();
+    const laneFailures = new Map<string, number>();
+    const completedJobs: DispatchedJob[] = [];
+    let lastLaneBreaker: CircuitBreakerDecision | undefined;
+    let wave = 0;
+
+    while (completedTasks.size < run.planTaskIds.length) {
+      const runnable = selectRunnableTasks(run.plan, completedTasks, pausedLanes);
+      if (runnable.length === 0) {
+        const decision = lastLaneBreaker ?? { action: "pause_lane" as const, reason: "LANE_FAILURE_THRESHOLD" };
+        return this.haltRun(run, "paused", "ALL_LANES_PAUSED", decision, completedJobs, pausedLanes);
+      }
+
+      for (const taskId of runnable) {
+        if ((attempts.get(taskId) ?? 0) === 0) continue;
+        try {
+          tracker.recordRetry();
+        } catch (error) {
+          if (!(error instanceof BudgetExceededError)) throw error;
+          const decision = evaluateCircuitBreakers(this.breakerInput(budgets, 0, undefined, true));
+          return this.haltRun(run, "stopped", decision.reason, decision, completedJobs, pausedLanes);
+        }
+      }
+
+      await this.journalWave(run, "wave.started", wave, runnable);
+      const waveAttempts = runnable.map((taskId) => {
+        const attempt = (attempts.get(taskId) ?? 0) + 1;
+        attempts.set(taskId, attempt);
+        return { taskId, attempt };
+      });
+      const settled = await Promise.allSettled(
+        waveAttempts.map(({ taskId, attempt }) => this.dispatchTask(run, taskId, attempt, "running")),
+      );
+
+      let halting: CircuitBreakerDecision | undefined;
+      const waveCompleted: string[] = [];
+      for (const [index, { taskId }] of waveAttempts.entries()) {
+        const entry = settled[index]!;
+        const outcome = entry.status === "fulfilled" ? entry.value : undefined;
+        const lanes = this.lanesForTask(run.plan, taskId);
+
+        let budgetExceeded = false;
+        try {
+          tracker.recordTask({ wallClockMs: outcome ? elapsedMs(outcome.startedAt, outcome.finishedAt) : 0 });
+        } catch (error) {
+          if (!(error instanceof BudgetExceededError)) throw error;
+          budgetExceeded = true;
+        }
+
+        const succeeded = outcome?.implementer.status === "success";
+        if (succeeded) {
+          completedTasks.add(taskId);
+          waveCompleted.push(taskId);
+          for (const lane of lanes) laneFailures.set(lane, 0);
+        } else {
+          for (const lane of lanes) laneFailures.set(lane, (laneFailures.get(lane) ?? 0) + 1);
+        }
+        if (outcome) {
+          for (const job of outcome.jobs) {
+            const result = job.role === "implementer" ? outcome.implementer : outcome.reviewer;
+            if (result?.status === "success") completedJobs.push(job);
+          }
+        }
+
+        const failureClass: FailureClass | undefined = succeeded
+          ? undefined
+          : outcome
+            ? classifyFailure({ status: outcome.implementer.status, failure: outcome.implementer.failure })
+            : "transient_runner";
+        const consecutive = lanes.reduce((max, lane) => Math.max(max, laneFailures.get(lane) ?? 0), 0);
+        const decision = evaluateCircuitBreakers(this.breakerInput(budgets, consecutive, failureClass, budgetExceeded));
+
+        if (decision.action === "pause_lane") {
+          lastLaneBreaker = decision;
+          for (const lane of lanes) pausedLanes.add(lane);
+          await this.journalLanePause(run, taskId, lanes, decision);
+        } else if (decision.action !== "continue") {
+          halting ??= decision;
+        }
+
+        if (succeeded && outcome) {
+          await this.attachProvenance(run, outcome);
+        }
+      }
+
+      await this.journalWave(run, "wave.completed", wave, runnable, { completedTaskIds: waveCompleted.join(",") });
+
+      if (halting) {
+        const status = halting.action === "stop" ? "stopped" : halting.action === "hold" ? "hold" : "paused";
+        return this.haltRun(run, status, halting.reason, halting, completedJobs, pausedLanes);
+      }
+
+      wave += 1;
+    }
+
+    return {
+      status: "completed",
+      completedJobs: [...completedJobs],
+      pausedLanes: [...pausedLanes].toSorted(),
+    };
+  }
+
+  async tick(): Promise<void> {
+    // Orchestration ticks reconcile pending sync intents only in v1 slice.
+    const envelope = await this.context.store.readEnvelope();
+    await syncBoundary({
+      boundary: "resume",
+      campaignId: envelope.campaignId,
+      outbox: this.context.outbox,
+      source: this.context.source,
+      taskIds: envelope.taskIds,
+    });
+  }
+
+  async status(): Promise<SupervisorStatus> {
+    return {
+      claimedTaskIds: [...this.claimed],
+      dispatchedJobs: [...this.dispatched],
+    };
+  }
+
+  async stop(): Promise<void> {
+    await this.lockHandle?.release();
+    this.lockHandle = undefined;
+  }
+
+  private async prepareRun(): Promise<PreparedRun> {
     const envelope = await this.context.store.readEnvelope();
     if (!(await hasDurableApproval(this.context.store, envelope.digest))) {
       throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_REQUIRED");
@@ -195,120 +380,281 @@ export class CampaignSupervisor {
         status: task.status,
       }));
     const plan = buildExecutionPlan(tasks, envelope.budgets);
-    const runnable = selectRunnableTasks(plan, new Set(), new Set());
-
     const sessions = await SessionRegistry.open(this.context.store);
-    for (const taskId of runnable) {
-      const worktree = await this.context.worktree.prepareTaskWorktree(taskId, envelope.git.baseCommit);
-      const route = routeForTask(envelope, taskId, "implementer", this.context.profileIndex);
-      const jobId = `${envelope.campaignId}:${taskId}:implementer:1`;
-      const briefPath = path.join(this.context.repositoryRoot, ".quirks", "briefs", `${taskId}.md`);
-      await mkdir(path.dirname(briefPath), { recursive: true });
-      await writeFile(briefPath, `# ${taskId}\n`, "utf8");
-
-      const result = await this.context.runner.dispatch({
-        jobId,
-        taskId,
-        role: "implementer",
-        route,
-        briefPath,
-        worktreePath: worktree.path,
-      });
-
-      await sessions.register({
-        jobId,
-        role: "implementer",
-        profileId: route.profileId,
-        sessionHandle: result.sessionHandle,
-        pid: process.pid,
-        artifactPaths: [...result.artifactPaths],
-      });
-
-      const at = nowIso(this.context);
-      await this.context.store.appendEvent({
-        schemaVersion: 1,
-        id: `dispatch:${jobId}`,
-        type: "runner.dispatched",
-        at,
-        actor: "supervisor",
-        from: "awaiting_approval",
-        to: "running",
-        reason: "task_dispatched",
-        evidence: { jobId, taskId, profileId: route.profileId },
-      });
-
-      this.dispatched.push({ jobId, taskId, role: "implementer" });
-
-      if (isGitWorktreePort(this.context.worktree)) {
-        const candidateCommit = await this.context.worktree.readCommit(worktree.path) ?? envelope.git.baseCommit;
-        const reviewWorktree = await this.context.worktree.prepareReviewWorktree(taskId, candidateCommit);
-        const reviewerRoute = routeForTask(envelope, taskId, "reviewer", this.context.profileIndex);
-        const reviewJobId = `${envelope.campaignId}:${taskId}:reviewer:1`;
-        const reviewResult = await this.context.runner.dispatch({
-          jobId: reviewJobId,
-          taskId,
-          role: "reviewer",
-          route: reviewerRoute,
-          briefPath,
-          worktreePath: reviewWorktree.path,
-        });
-
-        await sessions.register({
-          jobId: reviewJobId,
-          role: "reviewer",
-          profileId: reviewerRoute.profileId,
-          sessionHandle: reviewResult.sessionHandle,
-          pid: process.pid,
-          artifactPaths: [...reviewResult.artifactPaths],
-        });
-
-        await this.context.store.appendEvent({
-          schemaVersion: 1,
-          id: `dispatch:${reviewJobId}`,
-          type: "runner.dispatched",
-          at: nowIso(this.context),
-          actor: "supervisor",
-          from: "running",
-          to: "running",
-          reason: "review_dispatched",
-          evidence: { jobId: reviewJobId, taskId, profileId: reviewerRoute.profileId },
-        });
-
-        this.dispatched.push({ jobId: reviewJobId, taskId, role: "reviewer" });
-      }
-    }
-
-    await this.context.store.writeState({
-      schemaVersion: 1,
-      campaignId: envelope.campaignId,
-      status: "running",
-      digest: envelope.digest,
-      updatedAt: nowIso(this.context),
-      activeLanes: plan.lanes.map((lane) => lane.key),
-    });
+    return { envelope, plan, planTaskIds: tasks.map((task) => task.id), sessions };
   }
 
-  async tick(): Promise<void> {
-    // Orchestration ticks reconcile pending sync intents only in v1 slice.
-    const envelope = await this.context.store.readEnvelope();
-    await syncBoundary({
-      boundary: "resume",
-      campaignId: envelope.campaignId,
-      outbox: this.context.outbox,
-      source: this.context.source,
-      taskIds: envelope.taskIds,
-    });
+  private lanesForTask(plan: ExecutionPlan, taskId: string): readonly string[] {
+    return plan.lanes.filter((lane) => lane.taskOrder.includes(taskId)).map((lane) => lane.key);
   }
 
-  async status(): Promise<SupervisorStatus> {
+  private breakerInput(
+    budgets: CampaignEnvelope["budgets"],
+    consecutiveLaneFailures: number,
+    failureClass: FailureClass | undefined,
+    budgetExceeded: boolean,
+  ) {
     return {
-      claimedTaskIds: [...this.claimed],
-      dispatchedJobs: [...this.dispatched],
+      laneFailureThreshold: budgets.laneFailureThreshold,
+      consecutiveLaneFailures,
+      integrationFailure: failureClass === "integration_failure",
+      envelopeDrift: false,
+      usageLimitWithoutReset: failureClass === "usage_limit",
+      budgetExceeded,
+      ambiguousAcceptedOrPushed: failureClass === "ambiguous_mutation" || failureClass === "post_push_ambiguity",
     };
   }
 
-  async stop(): Promise<void> {
-    await this.lockHandle?.release();
-    this.lockHandle = undefined;
+  private async dispatchTask(
+    run: PreparedRun,
+    taskId: string,
+    attempt: number,
+    implementerEventFrom: CampaignStatus,
+  ): Promise<TaskDispatchOutcome> {
+    const { envelope, sessions } = run;
+    const startedAt = nowIso(this.context);
+    const worktree = await this.context.worktree.prepareTaskWorktree(taskId, envelope.git.baseCommit);
+    const route = routeForTask(envelope, taskId, "implementer", this.context.profileIndex);
+    const jobId = `${envelope.campaignId}:${taskId}:implementer:${attempt}`;
+    const briefPath = path.join(this.context.repositoryRoot, ".quirks", "briefs", `${taskId}.md`);
+    await mkdir(path.dirname(briefPath), { recursive: true });
+    await writeFile(briefPath, `# ${taskId}\n`, "utf8");
+
+    const result = await this.context.runner.dispatch({
+      jobId,
+      taskId,
+      role: "implementer",
+      route,
+      briefPath,
+      worktreePath: worktree.path,
+    });
+
+    await sessions.register({
+      jobId,
+      role: "implementer",
+      profileId: route.profileId,
+      sessionHandle: result.sessionHandle,
+      pid: process.pid,
+      artifactPaths: [...result.artifactPaths],
+    });
+
+    await this.context.store.appendEvent({
+      schemaVersion: 1,
+      id: `dispatch:${jobId}`,
+      type: "runner.dispatched",
+      at: nowIso(this.context),
+      actor: "supervisor",
+      from: implementerEventFrom,
+      to: "running",
+      reason: "task_dispatched",
+      evidence: { jobId, taskId, profileId: route.profileId },
+    });
+
+    const jobs: DispatchedJob[] = [{ jobId, taskId, role: "implementer" }];
+    this.dispatched.push({ jobId, taskId, role: "implementer" });
+
+    let reviewer: RunnerJobResult | undefined;
+    let reviewerRoute: ResolvedRoute | undefined;
+    if (isGitWorktreePort(this.context.worktree)) {
+      const candidateCommit = await this.context.worktree.readCommit(worktree.path) ?? envelope.git.baseCommit;
+      const reviewWorktree = await this.context.worktree.prepareReviewWorktree(taskId, candidateCommit);
+      reviewerRoute = routeForTask(envelope, taskId, "reviewer", this.context.profileIndex);
+      const reviewJobId = `${envelope.campaignId}:${taskId}:reviewer:${attempt}`;
+      reviewer = await this.context.runner.dispatch({
+        jobId: reviewJobId,
+        taskId,
+        role: "reviewer",
+        route: reviewerRoute,
+        briefPath,
+        worktreePath: reviewWorktree.path,
+      });
+
+      await sessions.register({
+        jobId: reviewJobId,
+        role: "reviewer",
+        profileId: reviewerRoute.profileId,
+        sessionHandle: reviewer.sessionHandle,
+        pid: process.pid,
+        artifactPaths: [...reviewer.artifactPaths],
+      });
+
+      await this.context.store.appendEvent({
+        schemaVersion: 1,
+        id: `dispatch:${reviewJobId}`,
+        type: "runner.dispatched",
+        at: nowIso(this.context),
+        actor: "supervisor",
+        from: "running",
+        to: "running",
+        reason: "review_dispatched",
+        evidence: { jobId: reviewJobId, taskId, profileId: reviewerRoute.profileId },
+      });
+
+      jobs.push({ jobId: reviewJobId, taskId, role: "reviewer" });
+      this.dispatched.push({ jobId: reviewJobId, taskId, role: "reviewer" });
+    }
+
+    const finishedAt = nowIso(this.context);
+    return {
+      taskId,
+      attempt,
+      implementer: result,
+      implementerRoute: route,
+      ...(reviewer ? { reviewer } : {}),
+      ...(reviewerRoute ? { reviewerRoute } : {}),
+      jobs,
+      startedAt,
+      finishedAt,
+    };
+  }
+
+  private async journalWave(
+    run: PreparedRun,
+    type: "wave.started" | "wave.completed",
+    wave: number,
+    taskIds: readonly string[],
+    extraEvidence: Record<string, string> = {},
+  ): Promise<void> {
+    await this.context.store.appendEvent({
+      schemaVersion: 1,
+      id: `wave:${wave}:${type === "wave.started" ? "started" : "completed"}`,
+      type,
+      at: nowIso(this.context),
+      actor: "supervisor",
+      from: "running",
+      to: "running",
+      reason: type === "wave.started" ? "wave_started" : "wave_completed",
+      evidence: {
+        campaignId: run.envelope.campaignId,
+        wave: String(wave),
+        taskIds: taskIds.join(",").slice(0, 4096),
+        ...extraEvidence,
+      },
+    });
+  }
+
+  private async journalLanePause(
+    run: PreparedRun,
+    taskId: string,
+    lanes: readonly string[],
+    decision: CircuitBreakerDecision,
+  ): Promise<void> {
+    await this.context.store.appendEvent({
+      schemaVersion: 1,
+      id: `lane:paused:${taskId}:${nowIso(this.context)}`,
+      type: "lane.paused",
+      at: nowIso(this.context),
+      actor: "supervisor",
+      from: "running",
+      to: "running",
+      reason: decision.reason,
+      evidence: {
+        campaignId: run.envelope.campaignId,
+        taskId,
+        lanes: lanes.join(",").slice(0, 4096),
+      },
+    });
+  }
+
+  private async haltRun(
+    run: PreparedRun,
+    status: "paused" | "hold" | "stopped",
+    reason: string,
+    decision: CircuitBreakerDecision,
+    completedJobs: readonly DispatchedJob[],
+    pausedLanes: ReadonlySet<string>,
+  ): Promise<RunToCompletionOutcome> {
+    const toState: CampaignStatus = status === "hold" ? "hold" : "paused";
+    const at = nowIso(this.context);
+    await this.context.store.appendEvent({
+      schemaVersion: 1,
+      id: `campaign:${toState}:${at}`,
+      type: toState === "hold" ? "campaign.hold" : "campaign.paused",
+      at,
+      actor: "supervisor",
+      from: "running",
+      to: toState,
+      reason,
+      evidence: {
+        breakerAction: decision.action,
+        breakerReason: decision.reason,
+        pausedLanes: [...pausedLanes].toSorted().join(",").slice(0, 4096),
+      },
+    });
+    await this.context.store.writeState({
+      schemaVersion: 1,
+      campaignId: run.envelope.campaignId,
+      status: toState,
+      digest: run.envelope.digest,
+      updatedAt: nowIso(this.context),
+      ...(toState === "paused" ? { pausedReason: reason } : {}),
+      activeLanes: run.plan.lanes.map((lane) => lane.key).filter((key) => !pausedLanes.has(key)),
+    });
+    return {
+      status,
+      completedJobs: [...completedJobs],
+      pausedLanes: [...pausedLanes].toSorted(),
+      breaker: decision,
+    };
+  }
+
+  private async writeRunningState(run: PreparedRun, pausedLanes: ReadonlySet<string>): Promise<void> {
+    await this.context.store.writeState({
+      schemaVersion: 1,
+      campaignId: run.envelope.campaignId,
+      status: "running",
+      digest: run.envelope.digest,
+      updatedAt: nowIso(this.context),
+      activeLanes: run.plan.lanes.map((lane) => lane.key).filter((key) => !pausedLanes.has(key)),
+    });
+  }
+
+  private async attachProvenance(run: PreparedRun, outcome: TaskDispatchOutcome): Promise<void> {
+    const task = await loadNormalizedTask(this.context.source, outcome.taskId, run.envelope);
+    const iterationId = `${run.envelope.campaignId}.${outcome.taskId}.${outcome.attempt}`
+      .replaceAll(":", "-")
+      .slice(0, 128);
+    const participants = [
+      {
+        role: "implementer",
+        runner: outcome.implementerRoute.profileId,
+        ...(outcome.implementer.sessionHandle ? { sessionRef: outcome.implementer.sessionHandle } : {}),
+      },
+      ...(outcome.reviewer && outcome.reviewerRoute
+        ? [{
+            role: "reviewer",
+            runner: outcome.reviewerRoute.profileId,
+            ...(outcome.reviewer.sessionHandle ? { sessionRef: outcome.reviewer.sessionHandle } : {}),
+          }]
+        : []),
+    ];
+    await reconcileMutation({
+      campaignId: run.envelope.campaignId,
+      outbox: this.context.outbox,
+      source: this.context.source,
+      request: {
+        schemaVersion: 1,
+        operation: "attach-provenance",
+        taskId: outcome.taskId,
+        expectedNativeRevision: task.nativeRevision,
+        idempotencyKey: `${run.envelope.campaignId}:provenance:${outcome.taskId}:${outcome.attempt}`,
+        input: {
+          iteration: {
+            id: iterationId,
+            campaignId: run.envelope.campaignId,
+            envelopeDigest: run.envelope.digest,
+            taskRevision: task.nativeRevision,
+            outcome: "completed",
+            completionBoundary: "accepted-commit",
+            baseCommit: run.envelope.git.baseCommit,
+            startedAt: outcome.startedAt,
+            finishedAt: outcome.finishedAt,
+            durationMs: elapsedMs(outcome.startedAt, outcome.finishedAt),
+            retries: outcome.attempt - 1,
+            participants,
+          },
+        },
+      },
+    });
   }
 }

@@ -252,6 +252,63 @@ test("claims only ready tasks in mixed envelopes", async () => {
   assert.deepEqual(status.claimedTaskIds, ["QK-2"]);
 });
 
+function standardRoute(taskIds: readonly string[]): CampaignEnvelope["routing"] {
+  return Object.fromEntries(taskIds.map((taskId) => [taskId, {
+    primary: { profileId: "cursor-standard", tier: "standard", effort: "standard" },
+    fallbacks: [],
+  }])) as CampaignEnvelope["routing"];
+}
+
+function executionFor(parallelismKeys: readonly string[]) {
+  return {
+    effort: "standard",
+    risk: [],
+    capabilities: ["repository-write"],
+    parallelismKeys: [...parallelismKeys],
+    humanGates: [],
+    completionBoundary: "accepted-commit",
+  };
+}
+
+test("runToCompletion drives a two-wave DAG to completion in one call", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor([]) });
+  source.upsertTask("QK-B", { status: "ready", dependsOn: ["QK-A"], execution: executionFor([]) });
+  const context = await testContext({
+    taskIds: ["QK-A", "QK-B"],
+    taskRevisions: {
+      "QK-A": source.taskRevision("QK-A"),
+      "QK-B": source.taskRevision("QK-B"),
+    },
+    budgets: { maxTasks: 2, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A", "QK-B"]),
+    source,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.equal(outcome.status, "completed");
+  assert.equal(outcome.breaker, undefined);
+  assert.deepEqual(outcome.pausedLanes, []);
+  const completedImplementers = outcome.completedJobs.filter((job) => job.role === "implementer");
+  assert.deepEqual(completedImplementers.map((job) => job.taskId), ["QK-A", "QK-B"]);
+
+  const status = await supervisor.status();
+  assert.equal(status.dispatchedJobs.filter((job) => job.role === "implementer").length, 2);
+  const implementerOrder = status.dispatchedJobs.filter((job) => job.role === "implementer").map((job) => job.taskId);
+  assert.deepEqual(implementerOrder, ["QK-A", "QK-B"]);
+
+  const events = await context.store.readEvents();
+  const waveStarted = events.filter((event) => event.type === "wave.started");
+  assert.equal(waveStarted.length, 2);
+  assert.equal(waveStarted[0]?.evidence["taskIds"], "QK-A");
+  assert.equal(waveStarted[1]?.evidence["taskIds"], "QK-B");
+  const waveCompleted = events.filter((event) => event.type === "wave.completed");
+  assert.equal(waveCompleted.length, 2);
+  await supervisor.stop();
+});
+
 test("builds scheduler with real dependsOn and parallelismKeys", async () => {
   const source = new FakeTaskSource();
   source.upsertTask("QK-1", {
