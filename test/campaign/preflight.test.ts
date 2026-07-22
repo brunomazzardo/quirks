@@ -81,6 +81,19 @@ test("preflight lands requested max concurrency in the digest-bound envelope", a
   assert.notEqual(tamperedDigest, widened.envelope.digest);
 });
 
+test("preflight reserves retry headroom in the task budget", async () => {
+  const root = await freshRepo();
+  const result = await runPreflight({
+    repositoryRoot: root,
+    selectedTaskIds: ["QK-200"],
+    externalRoutingEnabled: false,
+  });
+  // Attempts are charged against maxTasks per dispatch, so the envelope must
+  // leave headroom for maxRetries re-dispatches beyond the first attempts.
+  assert.equal(result.envelope.taskIds.length, 2);
+  assert.equal(result.envelope.budgets.maxTasks, result.envelope.taskIds.length + result.envelope.budgets.maxRetries);
+});
+
 test("preflight rejects max concurrency below 1", async () => {
   const root = await freshRepo();
   await assert.rejects(

@@ -35,6 +35,8 @@ type NormalizedTask = {
   verification: string[];
 };
 
+const DEFAULT_MAX_RETRIES = 1;
+
 export interface RunPreflightInput {
   repositoryRoot: string;
   selectedTaskIds: readonly string[];
@@ -283,7 +285,16 @@ export async function runPreflight(input: RunPreflightInput): Promise<PreflightR
       },
       authority: ["repository", "task-source", "operator", "git"],
       routing,
-      budgets: { maxTasks: Math.max(1, tasks.length), maxConcurrency, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+      // The supervisor charges every dispatch attempt (including retries) against
+      // maxTasks, so the budget reserves maxRetries slots of headroom beyond the
+      // first attempts; retry frequency itself stays bounded by maxRetries.
+      budgets: {
+        maxTasks: Math.min(10_000, Math.max(1, tasks.length) + DEFAULT_MAX_RETRIES),
+        maxConcurrency,
+        maxWallClockMs: 3_600_000,
+        maxRetries: DEFAULT_MAX_RETRIES,
+        laneFailureThreshold: 2,
+      },
       verification: [...new Set(tasks.flatMap((task) => task.verification))],
       hashes: {
         config: context.configHash,

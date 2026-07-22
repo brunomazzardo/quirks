@@ -383,6 +383,63 @@ test("preflight, approval, and start complete a three-task DAG unattended with p
   }
 });
 
+test("a single failed attempt retries and completes within default preflight budgets", async () => {
+  const { root, stateDir } = await freshCampaignRepo();
+  const dagIds = ["QK-301", "QK-302", "QK-303"];
+  await writeFile(
+    path.join(root, ".quirks/tasks.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      tasks: [dagTask("QK-301", []), dagTask("QK-302", ["QK-301"]), dagTask("QK-303", ["QK-301"])],
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  await execFileAsync("git", ["-C", root, "add", ".quirks/tasks.json"]);
+  await execFileAsync("git", ["-C", root, "commit", "-m", "install dag fixture"]);
+
+  const preflight = await runPreflight({
+    repositoryRoot: root,
+    selectedTaskIds: ["QK-302", "QK-303"],
+    externalRoutingEnabled: false,
+    maxConcurrency: 2,
+  });
+  assert.equal(preflight.blockers.length, 0);
+
+  const context = await openSupervisorContext(root, stateDir, preflight.envelope);
+  try {
+    const runner = context.runner as FakeRunnerPort;
+    const failingJobId = `${preflight.envelope.campaignId}:QK-301:implementer:1`;
+    runner.queueResult(failingJobId, {
+      schemaVersion: 1,
+      jobId: failingJobId,
+      runner: "placeholder",
+      runnerType: "cursor",
+      resolvedModel: "test-model",
+      effort: "standard",
+      status: "failure",
+      sessionHandle: "failed-session",
+      artifactPaths: [],
+      usage: {},
+      failure: { code: "task_rejection", message: "first attempt rejected" },
+    });
+
+    await recordHeadlessApproval(context);
+    const supervisor = await CampaignSupervisor.open(context);
+    const outcome = await supervisor.runToCompletion();
+
+    assert.equal(outcome.status, "completed");
+    const completedImplementers = outcome.completedJobs.filter((job) => job.role === "implementer");
+    assert.deepEqual(completedImplementers.map((job) => job.taskId).toSorted(), dagIds);
+    assert.equal(
+      completedImplementers.some((job) => job.jobId === `${preflight.envelope.campaignId}:QK-301:implementer:2`),
+      true,
+    );
+    await supervisor.stop();
+  } finally {
+    await context.dispose();
+  }
+});
+
 async function campaignCliIsPlaceholder(): Promise<boolean> {
   const { root, stateDir, configDir } = await freshCampaignRepo();
   try {
