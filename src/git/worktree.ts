@@ -4,7 +4,7 @@ import { QuirksError } from "../core/errors.js";
 import { inspectGit } from "../campaign/git-inspect.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { writeJsonAtomic } from "../state/atomic-file.js";
-import type { WorktreePort } from "../campaign/ports.js";
+import type { GitWorktreePort } from "../campaign/ports.js";
 import { runGit, runGitInWorktree } from "./argv.js";
 import type { GitWorktreeRecord, GitWorktreeStore } from "./types.js";
 
@@ -15,16 +15,6 @@ export interface GitWorktreeManagerOptions {
   campaignBranch: string;
   baseCommit: string;
   stateDir?: string;
-}
-
-export interface GitWorktreePort extends WorktreePort {
-  ensureIntegrationBranch(input: {
-    repositoryRoot: string;
-    campaignId: string;
-    baseCommit: string;
-    campaignBranch: string;
-  }): Promise<{ branch: string; commit: string }>;
-  prepareTaskWorktree(taskId: string, baseCommit: string): Promise<{ path: string; branch: string }>;
 }
 
 function taskBranchName(campaignId: string, taskId: string): string {
@@ -109,7 +99,9 @@ export class GitWorktreeManager implements GitWorktreePort {
   }
 
   async prepareReviewWorktree(taskId: string, candidateCommit: string): Promise<{ path: string; branch: string }> {
-    return this.prepareRoleWorktree(taskId, candidateCommit, "reviewer");
+    const lane = await this.prepareRoleWorktree(taskId, this.options.baseCommit, "reviewer");
+    await runGit(lane.path, ["checkout", candidateCommit]);
+    return lane;
   }
 
   private async prepareRoleWorktree(taskId: string, baseCommit: string, role: "implementer" | "reviewer"): Promise<{ path: string; branch: string }> {
@@ -171,6 +163,10 @@ export class GitWorktreeManager implements GitWorktreePort {
 
   get storeFilePath(): string {
     return this.storeFile;
+  }
+
+  get repositoryRoot(): string {
+    return this.options.repositoryRoot;
   }
 
   private async readStore(): Promise<GitWorktreeStore> {
