@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -39,6 +39,48 @@ test("JSON fixture validates, lists, shows, and synchronizes through the same CL
     const show = JSON.parse((await execFileAsync(process.execPath, [cli, "show", "QK-1", "--json"], { cwd })).stdout);
     assert.equal(show.ok, true);
     assert.equal(show.task.id, "QK-1");
+
+    const proposalPath = path.join(cwd, ".quirks", "proposals", "QK-2.json");
+    await mkdir(path.dirname(proposalPath), { recursive: true });
+    await writeFile(proposalPath, JSON.stringify({
+      id: "QK-2",
+      title: "Proposed through CLI",
+      kind: "implementation",
+      priority: "P1",
+      status: "proposed",
+      dependsOn: [],
+      workflow: { family: "superpowers", phase: "execute", designGate: { required: false } },
+      execution: {
+        effort: "standard",
+        risk: [],
+        capabilities: ["repository-write"],
+        parallelismKeys: ["QK-2"],
+        humanGates: [],
+        completionBoundary: "accepted-commit",
+      },
+      sourceRefs: [],
+      deliverables: ["CLI proposal"],
+      acceptanceCriteria: ["Task is durable"],
+      verification: ["pnpm test"],
+      provenance: { schemaVersion: 1, iterations: [] },
+      coordination: null,
+      statusDetail: null,
+    }));
+    const propose = JSON.parse((await execFileAsync(process.execPath, [
+      cli,
+      "propose",
+      "QK-2",
+      "--task-file",
+      ".quirks/proposals/QK-2.json",
+      "--idempotency-key",
+      "brainstorm:QK-2:propose:v1",
+      "--json",
+    ], { cwd })).stdout);
+    assert.equal(propose.ok, true);
+    assert.equal(propose.task.id, "QK-2");
+
+    const proposed = JSON.parse((await execFileAsync(process.execPath, [cli, "show", "QK-2", "--json"], { cwd })).stdout);
+    assert.equal(proposed.task.title, "Proposed through CLI");
 
     const sync = JSON.parse((await execFileAsync(process.execPath, [cli, "sync", "--json"], { cwd })).stdout);
     assert.equal(sync.ok, true);

@@ -13,6 +13,24 @@ test("parseArgs accepts the supported command shapes", () => {
     json: false,
   });
   assert.deepEqual(parseArgs(["show", "QK-1", "--json"]), { command: "show", taskId: "QK-1", json: true });
+  assert.deepEqual(
+    parseArgs([
+      "propose",
+      "QK-2",
+      "--task-file",
+      ".quirks/proposals/QK-2.json",
+      "--idempotency-key",
+      "brainstorm:QK-2:propose:v1",
+      "--json",
+    ]),
+    {
+      command: "propose",
+      taskId: "QK-2",
+      taskFile: ".quirks/proposals/QK-2.json",
+      idempotencyKey: "brainstorm:QK-2:propose:v1",
+      json: true,
+    },
+  );
   assert.deepEqual(parseArgs(["sync"]), { command: "sync", json: false });
 });
 
@@ -24,6 +42,8 @@ test("parseArgs rejects duplicate flags, unknown options, and extra positionals"
   assert.throws(() => parseArgs(["validate", "--config"]), CliParseError);
   assert.throws(() => parseArgs(["validate", "extra"]), CliParseError);
   assert.throws(() => parseArgs(["show", "QK-1", "extra"]), CliParseError);
+  assert.throws(() => parseArgs(["propose", "QK-2", "--task-file", "task.json"]), CliParseError);
+  assert.throws(() => parseArgs(["propose", "QK-2", "--idempotency-key", "key"]), CliParseError);
   assert.throws(() => parseArgs(["validate", "--status", "ready"]), CliParseError);
 });
 

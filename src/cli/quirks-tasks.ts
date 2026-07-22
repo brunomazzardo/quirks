@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { QuirksError } from "../core/errors.js";
+import { assertRepositoryRelativePath } from "../core/repository-path.js";
 import { loadProjectContext } from "../project/config.js";
 import { createTaskSource } from "../task-source/factory.js";
 import { resolveAppPaths } from "../state/app-paths.js";
@@ -22,6 +24,23 @@ import {
 async function openOutbox(repositoryId: string): Promise<SyncOutbox> {
   const appPaths = resolveAppPaths(repositoryId);
   return SyncOutbox.open(path.join(appPaths.repository, "sync-outbox.jsonl"));
+}
+
+const NEW_TASK_REVISION = `sha256:${"0".repeat(64)}`;
+
+async function readProposalTask(root: string, relativePath: string): Promise<unknown> {
+  const normalized = assertRepositoryRelativePath(relativePath);
+  const rootReal = await realpath(root);
+  const fileReal = await realpath(path.join(root, normalized));
+  const relative = path.relative(rootReal, fileReal);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new QuirksError("PROTOCOL_VIOLATION", "Task proposal file escapes the repository");
+  }
+  try {
+    return JSON.parse(await readFile(fileReal, "utf8")) as unknown;
+  } catch {
+    throw new QuirksError("SCHEMA_INVALID", "Task proposal file is not valid JSON");
+  }
 }
 
 async function readCapabilities(source: TaskSource): Promise<TaskSourceCapabilities> {
@@ -106,6 +125,30 @@ async function run(): Promise<number> {
           `conflicts: ${counts.conflicts}`,
           ...(localCoordinationLine(driver) ? [localCoordinationLine(driver)!] : []),
           "ok",
+        ]);
+      }
+      return 0;
+    }
+
+    if (parsed.command === "propose") {
+      assertOkResponse(await source.execute({ schemaVersion: 1, operation: "validate", input: {} }), "validate");
+      const response = assertOkResponse(await source.execute({
+        schemaVersion: 1,
+        operation: "propose",
+        taskId: parsed.taskId!,
+        expectedNativeRevision: NEW_TASK_REVISION,
+        idempotencyKey: parsed.idempotencyKey!,
+        input: { task: await readProposalTask(context.root, parsed.taskFile!) },
+      }), "propose");
+      const task = withSource(driver, response.data as Record<string, unknown>);
+      const payload = { ok: true as const, driver, task, nativeRevision: response.nativeRevision };
+      if (json) {
+        writeJson(process.stdout, payload);
+      } else {
+        writeHuman(process.stdout, [
+          `driver: ${driver}`,
+          ...(localCoordinationLine(driver) ? [localCoordinationLine(driver)!] : []),
+          `${task.id}\t${task.status}\t${task.title}`,
         ]);
       }
       return 0;

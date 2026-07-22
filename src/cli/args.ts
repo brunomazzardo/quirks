@@ -1,4 +1,4 @@
-export type Command = "validate" | "list" | "show" | "sync";
+export type Command = "validate" | "list" | "show" | "sync" | "propose";
 
 export class CliParseError extends Error {
   override readonly name = "CliParseError";
@@ -9,10 +9,12 @@ export interface ParsedArgs {
   configPath?: string;
   status?: string;
   taskId?: string;
+  taskFile?: string;
+  idempotencyKey?: string;
   json: boolean;
 }
 
-const COMMANDS = new Set<Command>(["validate", "list", "show", "sync"]);
+const COMMANDS = new Set<Command>(["validate", "list", "show", "sync", "propose"]);
 
 function takeValue(argv: readonly string[], index: number, flag: string): string {
   const value = argv[index + 1];
@@ -35,6 +37,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let configPath: string | undefined;
   let status: string | undefined;
   let taskId: string | undefined;
+  let taskFile: string | undefined;
+  let idempotencyKey: string | undefined;
   let json = false;
   const positionals: string[] = [];
 
@@ -57,6 +61,18 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       index += 1;
       continue;
     }
+    if (token === "--task-file") {
+      if (taskFile !== undefined) throw new CliParseError("Duplicate flag --task-file");
+      taskFile = takeValue(argv, index, "--task-file");
+      index += 1;
+      continue;
+    }
+    if (token === "--idempotency-key") {
+      if (idempotencyKey !== undefined) throw new CliParseError("Duplicate flag --idempotency-key");
+      idempotencyKey = takeValue(argv, index, "--idempotency-key");
+      index += 1;
+      continue;
+    }
     if (token.startsWith("--")) {
       throw new CliParseError(`Unknown option ${token}`);
     }
@@ -70,13 +86,20 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     throw new CliParseError("--status is only valid for list");
   }
 
-  if (command === "show") {
+  if (command === "show" || command === "propose") {
     if (positionals.length !== 1) {
-      throw new CliParseError("show requires exactly one task id");
+      throw new CliParseError(`${command} requires exactly one task id`);
     }
     taskId = positionals[0];
   } else if (positionals.length > 0) {
     throw new CliParseError("Unexpected positional arguments");
+  }
+
+  if (command === "propose" && (!taskFile || !idempotencyKey)) {
+    throw new CliParseError("propose requires --task-file and --idempotency-key");
+  }
+  if (command !== "propose" && (taskFile || idempotencyKey)) {
+    throw new CliParseError("--task-file and --idempotency-key are only valid for propose");
   }
 
   return {
@@ -84,6 +107,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     ...(configPath ? { configPath } : {}),
     ...(status ? { status } : {}),
     ...(taskId ? { taskId } : {}),
+    ...(taskFile ? { taskFile } : {}),
+    ...(idempotencyKey ? { idempotencyKey } : {}),
     json,
   };
 }
