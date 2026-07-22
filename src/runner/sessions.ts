@@ -70,6 +70,10 @@ function assertSessionRecord(value: unknown): SessionRecord {
 }
 
 export class SessionRegistry {
+  // Serializes read-modify-write cycles so concurrent register/update calls on
+  // one registry instance cannot lose each other's session records.
+  #writeChain: Promise<unknown> = Promise.resolve();
+
   private constructor(private readonly store: CampaignStore) {}
 
   static async open(store: CampaignStore): Promise<SessionRegistry> {
@@ -78,6 +82,20 @@ export class SessionRegistry {
   }
 
   async register(input: SessionRegisterInput): Promise<SessionRecord> {
+    return this.#serialized(() => this.#registerNow(input));
+  }
+
+  async update(input: SessionUpdateInput): Promise<SessionRecord> {
+    return this.#serialized(() => this.#updateNow(input));
+  }
+
+  #serialized<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.#writeChain.then(operation, operation);
+    this.#writeChain = next.catch(() => undefined);
+    return next;
+  }
+
+  async #registerNow(input: SessionRegisterInput): Promise<SessionRecord> {
     const document = await this.store.readSessionsDocument();
     if (document.sessions.some((session) => session.jobId === input.jobId)) {
       throw new QuirksError("PROTOCOL_VIOLATION", `Session already registered for job ${input.jobId}`);
@@ -98,7 +116,7 @@ export class SessionRegistry {
     return record;
   }
 
-  async update(input: SessionUpdateInput): Promise<SessionRecord> {
+  async #updateNow(input: SessionUpdateInput): Promise<SessionRecord> {
     const document = await this.store.readSessionsDocument();
     const index = document.sessions.findIndex((session) => session.jobId === input.jobId);
     if (index < 0) {
