@@ -6,7 +6,9 @@ import {
   buildHostInvocation,
   classifyHostDiagnostics,
   redactDiagnostic,
+  resolveHostTimeoutMs,
 } from "../../src/smoke/host-runner.js";
+import { SMOKE_POC_CELL } from "../../src/smoke/types.js";
 
 const brief = [
   "Run the Quirks campaign smoke flow for this repository.",
@@ -84,4 +86,14 @@ test("classifyHostDiagnostics maps codex models cache failures", () => {
 test("redactDiagnostic removes bearer tokens", () => {
   const redacted = redactDiagnostic("Authorization Bearer abc.def.ghi failed");
   assert.match(redacted, /Bearer \[redacted\]/);
+});
+
+test("resolveHostTimeoutMs defaults and accepts override", () => {
+  assert.equal(resolveHostTimeoutMs({}), 480_000);
+  assert.equal(resolveHostTimeoutMs({ QUIRKS_SMOKE_HOST_TIMEOUT_MS: "180000" }), 180_000);
+  assert.throws(() => resolveHostTimeoutMs({ QUIRKS_SMOKE_HOST_TIMEOUT_MS: "500" }), />= 1000/);
+});
+
+test("SMOKE_POC_CELL defaults to cursor/cursor", () => {
+  assert.deepEqual(SMOKE_POC_CELL, { host: "cursor", runner: "cursor" });
 });

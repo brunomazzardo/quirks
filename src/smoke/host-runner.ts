@@ -17,7 +17,17 @@ import type { HostRunnerEvidence, SmokeHost, SmokeHostConfig, SmokeRunner } from
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_TASK_ID = "QK-101";
-const HOST_TIMEOUT_MS = 480_000;
+const DEFAULT_HOST_TIMEOUT_MS = 480_000;
+
+export function resolveHostTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.QUIRKS_SMOKE_HOST_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return DEFAULT_HOST_TIMEOUT_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 1_000) {
+    throw new Error("QUIRKS_SMOKE_HOST_TIMEOUT_MS must be a finite number >= 1000");
+  }
+  return Math.floor(parsed);
+}
 const MAX_DIAGNOSTIC_CHARS = 480;
 const SMOKE_BRIEF_RELATIVE_PATH = ".quirks/smoke/host-brief.md";
 const SMOKE_EVIDENCE_RELATIVE_PATH = ".quirks/smoke/evidence.json";
@@ -561,7 +571,7 @@ async function invokeHostCell(input: {
     argv: invocation.argv,
     cwd: input.fixtureRoot,
     env,
-    timeoutMs: HOST_TIMEOUT_MS,
+    timeoutMs: resolveHostTimeoutMs(env),
     ...(invocation.stdin ? { stdin: invocation.stdin } : {}),
   });
 
