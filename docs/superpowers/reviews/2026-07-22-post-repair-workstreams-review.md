@@ -23,6 +23,20 @@ Date: 2026-07-22. Process: each branch was implemented TDD-first by a dedicated 
 - Re-review: ACCEPT, scoping verified airtight by falsification (reverting to query-param filtering made the tests fail 5/2). Branch gates: 498 pass/0 fail/4 gated skips; Playwright 26/26.
 - Ledgered debt: `buildPlanProgressProjection` still bakes fabricated plan constants — must be de-fabricated before any production journal-backed plan progress ships; unparseable campaign files skipped with no warning.
 
+## QK-SKL-006 — Script-backed skill surface (`merge caea8b7`)
+
+- Review: ACCEPT, no blocking findings. Adversarial verification included proving the claim-candidate read path performs zero writes (state-dir content hashing), mutation-testing the payload contracts and the terminality tripwire, and validating every backticked skill command line against the real parser tables. The reviewer endorsed hold-as-terminal (resuming held campaigns would auto-un-hold work parked for human review). Branch gate: 555 tests, 551 pass, 0 fail, 4 gated skips.
+- Bonus: the new validator caught pre-existing drift — `executing-tasks` referenced a `quirks-campaign progress set` subcommand that never existed.
+- Ledgered debt: `pnpm validate:skills` standalone script is a silent no-op (no CLI entrypoint; enforcement lives in the test suite); skill progress-mailbox wording drifts from actual supervisor wiring; multi-word subcommands validate only their first token.
+
+## QK-PRM-001 — Contextual prompts and brainstorm materialization (`merge f7c22f6`)
+
+- All 8 plan tasks of `docs/superpowers/plans/2026-07-22-contextual-copy-prompts.md` implemented TDD-first, then a two-stage landing: semantic merge of the rewritten supervisor (main's WS3 shape kept; authoritative briefs re-homed into `dispatchTask`; ID-only briefs eliminated) followed by the review fix round.
+- First review: NEEDS-FIXES — Critical: task `verification` strings rendered as trusted prompt text (secret/home-path leakage + fake trusted headings via newline injection); Important: production UI never wired the prompt port; `TASK_REVISION_DRIFT` untested; instruction freeze fail-open when `workflowSkills` absent.
+- Fix round: verification routed through sanitize/redact/delimit as untrusted evidence; `createWorkspacePromptReadPort` wired into both workspace modes with approval state read only from durable `approvals.jsonl` digests; `workflowSkills` made required plus runtime `INSTRUCTIONS_UNVERIFIED` refusal; drift guards mutation-verified; fake/real propose schema parity.
+- Re-review: ACCEPT — live injection repros re-run and neutralized, merge-revert scan clean (zero WS3 semantics lost). Branch gates: 652 tests, 647 pass, 0 fail, 5 known skips (4 paid-gated + 1 opt-in eval runner); Playwright 31/31.
+- Ledgered debt: workspace prompt port passes empty profiles (honest `independence-unavailable` in UI adversarial recipes) pending envelope-fact exposure; `buildPlanProgressProjection` fabricated constants (carried from QK-UI-005).
+
 ## Merged-main verification
 
 - After QK-RUN-003 + QK-CTL-005: `pnpm check` on `main` — 535 tests, 531 pass, 0 fail, 4 gated skips.
