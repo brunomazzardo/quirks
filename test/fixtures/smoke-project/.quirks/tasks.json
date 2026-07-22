@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "id": "QK-101",
+      "title": "Smoke harness acceptance task",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": ["smoke"],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["implementation"],
+      "acceptanceCriteria": ["smoke harness dispatches runner"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] }
+    }
+  ]
+}
