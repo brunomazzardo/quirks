@@ -31,3 +31,5 @@ quirks-tasks complete --request-file .quirks/requests/complete-QK-123.json --jso
 ```
 
 Only delete `.quirks/requests/*.json` after a successful response has `ok: true` and `pending: 0`; retain it for idempotent retry if acknowledgement is not yet confirmed.
+
+Completion evidence is conservative and provenance-bound: `commit:value` must be a completed iteration's accepted, landed, or listed commit; `review:value` must be that iteration's review artifact path or URL; and `verification:`, `ci:`, and `deployment:` values must match a verification reference of the same kind. Merge-boundary evidence uses a provenance commit from an iteration at least as advanced as that boundary. This is semantic correlation only; it does not inspect Git, filesystems, networks, or external providers.

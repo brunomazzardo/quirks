@@ -17,7 +17,7 @@ Use this skill when proposing or refining tasks in a Quirks repository.
 
 ## Reference
 
-See `references/workflow-policy.md` for design-gate and dependency checks, and `references/task-mutation-requests.md` for the transient request-file schema, operation match, and acknowledgement cleanup rule.
+See `../../references/workflow-policy.md` for design-gate and dependency checks, and `../../references/task-mutation-requests.md` for the transient request-file schema, operation match, and acknowledgement cleanup rule.
 
 ## Prohibited patterns
 

@@ -157,6 +157,25 @@ test("propose mutates only through the configured task source", async () => {
   }
 });
 
+test("CLI proposal rejects terminal injected task state", async () => {
+  const fixture = await freshFixture();
+  try {
+    const taskId = "QK-DGF-TERMINAL";
+    const requestFile = await writeRequest(fixture, "terminal-propose", {
+      schemaVersion: 1, operation: "propose", taskId,
+      expectedNativeRevision: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      idempotencyKey: `C-TEST:${taskId}:propose:terminal`,
+      input: { task: { ...proposedTask(taskId), status: "completed" } },
+    });
+    await assert.rejects(
+      () => runTasksCli(fixture, ["propose", "--request-file", requestFile, "--json"]),
+      (error: { code?: number }) => error.code === 3,
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("large persisted proposals return a compact acknowledged mutation result", async () => {
   const fixture = await freshFixture();
   try {
@@ -243,6 +262,9 @@ test("mutation commands preserve semantic task transitions and acknowledge the o
           id: "cli-iteration-1",
           outcome: "completed",
           completionBoundary: "accepted-commit",
+          acceptedCommit: "a".repeat(40),
+          artifactRefs: [{ kind: "review", path: "docs/cli-review.md", commit: "a".repeat(40) }],
+          verificationRefs: [{ kind: "verification", reference: "pnpm test", outcome: "passed" }],
           startedAt: "2026-07-22T00:00:00.000Z",
         },
       },
@@ -252,7 +274,7 @@ test("mutation commands preserve semantic task transitions and acknowledge the o
     await mutate("submit-review", { evidenceRefs: ["review:cli-1"] }, 3);
     assert.equal((await showTask(fixture, taskId)).status, "in_review");
 
-    await mutate("complete", { evidenceRefs: ["commit:cli-1", "review:cli-1", "verification:pnpm-test"] }, 4);
+    await mutate("complete", { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/cli-review.md", "verification:pnpm test"] }, 4);
     assert.equal((await showTask(fixture, taskId)).status, "completed");
   } finally {
     await rm(fixture.root, { recursive: true, force: true });

@@ -85,18 +85,52 @@ export function applyComplete(
   }
   const boundary = (task.execution as { completionBoundary: CompletionBoundary }).completionBoundary;
   const requiredKinds = evidenceMap[boundary] ?? [];
-  const evidenceKinds = new Set(
-    request.input.evidenceRefs.flatMap((reference) => {
-      const separator = reference.indexOf(":");
-      return separator > 0 && reference.slice(separator + 1).length > 0 ? [reference.slice(0, separator)] : [];
-    }),
-  );
-  if (requiredKinds.some((kind) => !evidenceKinds.has(kind))) {
-    return failure("complete", "SOURCE_CONFLICT", `Completion requires ${boundary} evidence kinds`);
-  }
   const iterations = (task.provenance as { iterations?: Array<Record<string, unknown>> }).iterations ?? [];
-  if (!iterations.some((iteration) => iteration.outcome === "completed" && iteration.completionBoundary === boundary)) {
+  const boundaryRank: Record<CompletionBoundary, number> = {
+    "accepted-commit": 0,
+    "campaign-merge": 1,
+    "target-merge": 2,
+    "remote-push": 3,
+  };
+  const matching = iterations.filter(
+    (iteration) =>
+      iteration.outcome === "completed" &&
+      typeof iteration.completionBoundary === "string" &&
+      boundaryRank[iteration.completionBoundary as CompletionBoundary] >= boundaryRank[boundary],
+  );
+  if (matching.length === 0) {
     return failure("complete", "SOURCE_CONFLICT", `Completion requires completed provenance for boundary ${boundary}`);
+  }
+  const evidenceMatches = (kind: EvidenceKind, value: string): boolean => matching.some((iteration) => {
+    const commits = [iteration.acceptedCommit, iteration.landedCommit, ...(Array.isArray(iteration.commitRefs) ? iteration.commitRefs : [])];
+    if (kind === "commit") return commits.includes(value);
+    if (kind === "review") {
+      return Array.isArray(iteration.artifactRefs) && iteration.artifactRefs.some(
+        (artifact) => artifact !== null && typeof artifact === "object" &&
+          (artifact as Record<string, unknown>).kind === "review" &&
+          ((artifact as Record<string, unknown>).path === value || (artifact as Record<string, unknown>).url === value),
+      );
+    }
+    if (kind === "verification" || kind === "ci" || kind === "deployment") {
+      return Array.isArray(iteration.verificationRefs) && iteration.verificationRefs.some(
+        (verification) => verification !== null && typeof verification === "object" &&
+          (verification as Record<string, unknown>).kind === kind &&
+          (verification as Record<string, unknown>).reference === value,
+      );
+    }
+    if (kind === "campaign-merge" || kind === "target-merge" || kind === "remote-push") {
+      return commits.includes(value) && boundaryRank[iteration.completionBoundary as CompletionBoundary] >= boundaryRank[kind];
+    }
+    return false;
+  });
+  const evidence = request.input.evidenceRefs.flatMap((reference) => {
+    const separator = reference.indexOf(":");
+    return separator > 0 && reference.slice(separator + 1).length > 0
+      ? [{ kind: reference.slice(0, separator) as EvidenceKind, value: reference.slice(separator + 1) }]
+      : [];
+  });
+  if (requiredKinds.some((kind) => !evidence.some((entry) => entry.kind === kind && evidenceMatches(kind, entry.value)))) {
+    return failure("complete", "SOURCE_CONFLICT", `Completion requires provenance-backed ${boundary} evidence`);
   }
   task.status = "completed";
   task.coordination = null;
@@ -140,6 +174,9 @@ export function applyPropose(
   const proposed = { ...(candidate as Record<string, unknown>) };
   if (typeof proposed.id !== "string" || proposed.id !== request.taskId) {
     return failure("propose", "SOURCE_CONFLICT", "Proposed task id must match request taskId");
+  }
+  if (proposed.status !== "proposed" && proposed.status !== "ready") {
+    return failure("propose", "SOURCE_CONFLICT", "Proposed task must start proposed or ready");
   }
   if (envelope.tasks.some((task) => task.id === proposed.id)) {
     return failure("propose", "SOURCE_CONFLICT", `Task ${proposed.id} already exists`);

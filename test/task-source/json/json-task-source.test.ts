@@ -19,7 +19,20 @@ const sampleIteration = {
   id: "iter-1",
   outcome: "completed" as const,
   completionBoundary: "accepted-commit" as const,
+  acceptedCommit: "a".repeat(40),
+  artifactRefs: [{ kind: "review", path: "docs/review.md", commit: "a".repeat(40) }],
+  verificationRefs: [{ kind: "verification", reference: "pnpm test", outcome: "passed" }],
   startedAt: "2026-07-21T00:00:00.000Z",
+};
+
+const correlatedIteration = {
+  id: "iter-correlated",
+  outcome: "completed" as const,
+  completionBoundary: "accepted-commit" as const,
+  acceptedCommit: "a".repeat(40),
+  commitRefs: ["b".repeat(40)],
+  artifactRefs: [{ kind: "review", path: "docs/review.md", commit: "a".repeat(40) }],
+  verificationRefs: [{ kind: "verification", reference: "pnpm test", outcome: "passed" }],
 };
 
 const proposedTask = {
@@ -103,6 +116,77 @@ test("JSON driver rejects a stale claim without changing the file", async () => 
   if (response.ok) assert.fail("stale mutation succeeded");
   assert.equal(response.error.code, "STALE_REVISION");
   assert.equal(await fileDigest(tasksPath), before);
+});
+
+test("JSON proposals reject injected active and terminal state", async () => {
+  const root = await freshFixture();
+  const source = await JsonTaskSource.open(root);
+  for (const status of ["claimed", "in_review", "blocked", "completed", "cancelled"] as const) {
+    const response = await mutate(source, {
+      schemaVersion: 1,
+      operation: "propose",
+      taskId: `QK-${status}`,
+      expectedNativeRevision: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      idempotencyKey: `C-1:QK-${status}:propose:state`,
+      input: { task: { ...proposedTask, id: `QK-${status}`, status } },
+    });
+    assert.equal(response.ok, false);
+    if (response.ok) assert.fail(`accepted ${status} proposal`);
+    assert.equal(response.error.code, "SOURCE_CONFLICT");
+  }
+});
+
+test("JSON completion binds configured evidence to completed provenance", async () => {
+  const root = await freshFixture();
+  const source = await JsonTaskSource.open(root);
+  let shown = await showTask(source);
+  const claim = await mutate(source, {
+    schemaVersion: 1, operation: "claim", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:claim:evidence", input: { campaignId: "C-1", owner: "supervisor:S-1", claimedAt: "2026-07-21T00:00:00.000Z" },
+  });
+  assert.equal(claim.ok, true);
+  shown = await showTask(source);
+  const attach = await mutate(source, {
+    schemaVersion: 1, operation: "attach-provenance", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:attach:evidence", input: { iteration: { ...sampleIteration, id: "iter-minimal" } },
+  });
+  assert.equal(attach.ok, true);
+  shown = await showTask(source);
+  const review = await mutate(source, {
+    schemaVersion: 1, operation: "submit-review", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:review:evidence", input: { evidenceRefs: ["review:docs/review.md"] },
+  });
+  assert.equal(review.ok, true);
+  shown = await showTask(source);
+  const invented = await mutate(source, {
+    schemaVersion: 1, operation: "complete", taskId: "QK-1", expectedNativeRevision: shown.nativeRevision!,
+    idempotencyKey: "C-1:QK-1:complete:invented", input: { evidenceRefs: ["commit:invented", "review:invented", "verification:invented"] },
+  });
+  assert.equal(invented.ok, false);
+  if (invented.ok) assert.fail("invented evidence completed task");
+
+  const sourceWithEvidence = await JsonTaskSource.open(await freshFixture());
+  let correlated = await showTask(sourceWithEvidence);
+  await mutate(sourceWithEvidence, {
+    schemaVersion: 1, operation: "claim", taskId: "QK-1", expectedNativeRevision: correlated.nativeRevision!,
+    idempotencyKey: "C-2:QK-1:claim:evidence", input: { campaignId: "C-2", owner: "supervisor:S-2", claimedAt: "2026-07-21T00:00:00.000Z" },
+  });
+  correlated = await showTask(sourceWithEvidence);
+  await mutate(sourceWithEvidence, {
+    schemaVersion: 1, operation: "attach-provenance", taskId: "QK-1", expectedNativeRevision: correlated.nativeRevision!,
+    idempotencyKey: "C-2:QK-1:attach:evidence", input: { iteration: correlatedIteration },
+  });
+  correlated = await showTask(sourceWithEvidence);
+  await mutate(sourceWithEvidence, {
+    schemaVersion: 1, operation: "submit-review", taskId: "QK-1", expectedNativeRevision: correlated.nativeRevision!,
+    idempotencyKey: "C-2:QK-1:review:evidence", input: { evidenceRefs: ["review:docs/review.md"] },
+  });
+  correlated = await showTask(sourceWithEvidence);
+  const completed = await mutate(sourceWithEvidence, {
+    schemaVersion: 1, operation: "complete", taskId: "QK-1", expectedNativeRevision: correlated.nativeRevision!,
+    idempotencyKey: "C-2:QK-1:complete:evidence", input: { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/review.md", "verification:pnpm test"] },
+  });
+  assert.equal(completed.ok, true);
 });
 
 test("JSON completion requires review status and matching completed provenance", async () => {
@@ -291,7 +375,7 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
     taskId: "QK-1",
     expectedNativeRevision: shown.nativeRevision!,
     idempotencyKey: "C-1:QK-1:complete:blocked",
-    input: { evidenceRefs: ["commit:abc123", "review:evt-1", "verification:pnpm-test"] },
+    input: { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/review.md", "verification:pnpm test"] },
   });
   assert.equal(blockedComplete.ok, false);
   if (blockedComplete.ok) assert.fail("blocked task completed");
@@ -314,7 +398,7 @@ test("JSON driver applies semantic mutations and preserves atomic writes", async
     taskId: "QK-1",
     expectedNativeRevision: shown.nativeRevision!,
     idempotencyKey: "C-1:QK-1:complete:evt-1",
-    input: { evidenceRefs: ["commit:abc123", "review:evt-1", "verification:pnpm-test"] },
+    input: { evidenceRefs: [`commit:${"a".repeat(40)}`, "review:docs/review.md", "verification:pnpm test"] },
   });
   assert.equal(complete.ok, true);
   shown = await showTask(source);
