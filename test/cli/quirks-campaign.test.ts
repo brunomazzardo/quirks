@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CampaignCliParseError, parseCampaignArgs } from "../../src/cli/campaign-args.js";
 import { runCampaignCommand } from "../../src/cli/campaign-commands.js";
+import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.js";
+import { CampaignStore } from "../../src/campaign/store.js";
+import type { CampaignStatus } from "../../src/campaign/types.js";
+import { loadProjectContext } from "../../src/project/config.js";
+import { campaignEnvelope } from "../campaign/support.js";
 import { execFile } from "node:child_process";
 import { chmod, cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -106,6 +111,16 @@ test("parseCampaignArgs accepts documented command shapes", () => {
     scope: "job-1",
     json: false,
   });
+  assert.deepEqual(parseCampaignArgs(["resume-candidate", "--json"]), {
+    command: "resume-candidate",
+    json: true,
+  });
+});
+
+test("resume-candidate accepts only --json", () => {
+  assert.throws(() => parseCampaignArgs(["resume-candidate", "--campaign", "cmp-1"]), CampaignCliParseError);
+  assert.throws(() => parseCampaignArgs(["resume-candidate", "extra"]), CampaignCliParseError);
+  assert.throws(() => parseCampaignArgs(["resume-candidate", "--json", "--json"]), CampaignCliParseError);
 });
 
 test("parseCampaignArgs rejects unknown commands and missing flags", () => {
@@ -259,5 +274,156 @@ test("runCampaignCommand start --single-wave preserves the single-dispatch behav
     else process.env.QUIRKS_STATE_DIR = previousStateDir;
     if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
     else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
+async function seedStoredCampaign(options: {
+  stateDir: string;
+  repositoryId: string;
+  campaignId: string;
+  status: CampaignStatus;
+  updatedAt: string;
+  withPausedEvent?: boolean;
+}): Promise<void> {
+  const incomplete = campaignEnvelope({
+    campaignId: options.campaignId,
+    repositoryId: options.repositoryId,
+  });
+  const envelope = { ...incomplete, digest: computeEnvelopeDigest(stripDigest(incomplete)) };
+  const store = await CampaignStore.create({
+    stateDir: options.stateDir,
+    repositoryId: options.repositoryId,
+    campaignId: options.campaignId,
+    envelope,
+  });
+  if (options.withPausedEvent) {
+    await store.appendEvent({
+      schemaVersion: 1,
+      id: `seed:${options.campaignId}:paused`,
+      type: "campaign.paused",
+      at: options.updatedAt,
+      actor: "control-plane",
+      from: "running",
+      to: "paused",
+      reason: "crash_recovery_revalidation",
+      evidence: {},
+    });
+  }
+  await store.writeState({
+    schemaVersion: 1,
+    campaignId: options.campaignId,
+    status: options.status,
+    digest: envelope.digest,
+    updatedAt: options.updatedAt,
+  });
+}
+
+test("resume-candidate returns the paused campaign with its last event", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const context = await loadProjectContext(root, { mode: "inspection" });
+    await seedStoredCampaign({
+      stateDir,
+      repositoryId: context.repositoryId,
+      campaignId: "cmp-resume-a",
+      status: "paused",
+      updatedAt: "2026-07-22T02:00:00.000Z",
+      withPausedEvent: true,
+    });
+    await seedStoredCampaign({
+      stateDir,
+      repositoryId: context.repositoryId,
+      campaignId: "cmp-resume-b",
+      status: "cancelled",
+      updatedAt: "2026-07-22T03:00:00.000Z",
+    });
+
+    const result = await runCampaignCommand({ command: "resume-candidate", json: true });
+    assert.deepEqual(result, {
+      ok: true,
+      available: true,
+      campaign: {
+        id: "cmp-resume-a",
+        status: "paused",
+        lastEvent: { type: "campaign.paused", at: "2026-07-22T02:00:00.000Z" },
+      },
+    });
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+  }
+});
+
+test("resume-candidate prefers the most recently updated non-terminal campaign", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const context = await loadProjectContext(root, { mode: "inspection" });
+    await seedStoredCampaign({
+      stateDir,
+      repositoryId: context.repositoryId,
+      campaignId: "cmp-older",
+      status: "running",
+      updatedAt: "2026-07-22T01:00:00.000Z",
+    });
+    await seedStoredCampaign({
+      stateDir,
+      repositoryId: context.repositoryId,
+      campaignId: "cmp-newer",
+      status: "awaiting_approval",
+      updatedAt: "2026-07-22T04:00:00.000Z",
+    });
+
+    const result = (await runCampaignCommand({ command: "resume-candidate", json: true })) as {
+      available: boolean;
+      campaign?: { id: string; status: string; lastEvent: unknown };
+    };
+    assert.equal(result.available, true);
+    assert.deepEqual(result.campaign, { id: "cmp-newer", status: "awaiting_approval", lastEvent: null });
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+  }
+});
+
+test("resume-candidate reports no_resumable_campaign for empty or terminal-only stores", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const empty = await runCampaignCommand({ command: "resume-candidate", json: true });
+    assert.deepEqual(empty, { ok: true, available: false, reason: "no_resumable_campaign" });
+
+    const context = await loadProjectContext(root, { mode: "inspection" });
+    for (const [campaignId, status] of [
+      ["cmp-complete", "complete"],
+      ["cmp-cancelled", "cancelled"],
+      ["cmp-hold", "hold"],
+    ] as const) {
+      await seedStoredCampaign({
+        stateDir,
+        repositoryId: context.repositoryId,
+        campaignId,
+        status,
+        updatedAt: "2026-07-22T05:00:00.000Z",
+      });
+    }
+    const terminalOnly = await runCampaignCommand({ command: "resume-candidate", json: true });
+    assert.deepEqual(terminalOnly, { ok: true, available: false, reason: "no_resumable_campaign" });
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
   }
 });

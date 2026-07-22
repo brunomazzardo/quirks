@@ -46,6 +46,70 @@ async function walkFiles(directory) {
 
 const MARKDOWN_REFERENCE_PATTERN = /`([^`\n]+\.md)`/g;
 
+const CLI_MENTION_PATTERN = /`(quirks-tasks|quirks-campaign)\s+([^`\n]+)`/g;
+
+/** @type {Promise<Record<string, Set<string>>> | undefined} */
+let cliCommandTablesPromise;
+
+/**
+ * Loads the CLI parser tables so backticked `quirks-tasks <sub>` and
+ * `quirks-campaign <sub>` mentions in skills can be cross-checked against the
+ * real command sets. Resolves relative to this script so both the source tree
+ * (`scripts/` next to `dist/`) and the compiled tree (`dist/scripts/` next to
+ * `dist/src/`) find the built modules.
+ *
+ * @returns {Promise<Record<string, Set<string>>>}
+ */
+function loadCliCommandTables() {
+  cliCommandTablesPromise ??= (async () => {
+    const candidates = [
+      ["../src/cli/args.js", "../src/cli/campaign-args.js"],
+      ["../dist/src/cli/args.js", "../dist/src/cli/campaign-args.js"],
+    ];
+    /** @type {unknown} */
+    let lastError;
+    for (const [tasksPath, campaignPath] of candidates) {
+      try {
+        const [tasks, campaign] = await Promise.all([
+          import(new URL(tasksPath, import.meta.url).href),
+          import(new URL(campaignPath, import.meta.url).href),
+        ]);
+        return {
+          "quirks-tasks": new Set(tasks.TASK_CLI_COMMANDS),
+          "quirks-campaign": new Set(campaign.CAMPAIGN_CLI_COMMANDS),
+        };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw new Error(
+      `CLI parser tables unavailable (run pnpm build first): ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+    );
+  })();
+  return cliCommandTablesPromise;
+}
+
+/**
+ * @param {string} filePath
+ * @param {string} root
+ * @param {Record<string, Set<string>>} commandTables
+ */
+async function validateCliCommandMentions(filePath, root, commandTables) {
+  /** @type {string[]} */
+  const errors = [];
+  const relativeFile = path.relative(root, filePath);
+  const content = await readFile(filePath, "utf8");
+  for (const match of content.matchAll(CLI_MENTION_PATTERN)) {
+    const binary = match[1];
+    const subcommand = match[2].trim().split(/\s+/)[0];
+    if (!subcommand || subcommand.startsWith("-")) continue;
+    if (!commandTables[binary].has(subcommand)) {
+      errors.push(`unknown ${binary} subcommand \`${subcommand}\` in ${relativeFile}`);
+    }
+  }
+  return errors;
+}
+
 /**
  * @param {string} content
  */
@@ -155,10 +219,12 @@ export async function validateSkills({ root = process.cwd() } = {}) {
         if (frontmatter.name && frontmatter.name.length > MAX_NAME_LENGTH) skillErrors.push("name exceeds bounded length");
       }
       const files = await walkFiles(skillPath);
+      const commandTables = await loadCliCommandTables();
       for (const file of files) {
         skillErrors.push(...await scanSkillFile(file, root));
         if (file.endsWith(".md")) {
           skillErrors.push(...await validateMarkdownReferences(file, skillPath, root));
+          skillErrors.push(...await validateCliCommandMentions(file, root, commandTables));
         }
       }
     } catch {

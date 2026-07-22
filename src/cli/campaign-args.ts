@@ -5,6 +5,7 @@ export type CampaignCommand =
   | "status"
   | "attach"
   | "resume"
+  | "resume-candidate"
   | "cancel"
   | "ui";
 
@@ -19,6 +20,7 @@ export type ParsedCampaignArgs =
   | { command: "status"; campaignId: string; json: boolean }
   | { command: "attach"; campaignId: string; json: boolean }
   | { command: "resume"; campaignId: string; json: boolean }
+  | { command: "resume-candidate"; json: boolean }
   | { command: "cancel"; campaignId: string; scope?: string; json: boolean }
   | { command: "ui"; uiArgv: string[] };
 
@@ -29,9 +31,13 @@ const COMMANDS = new Set<CampaignCommand>([
   "status",
   "attach",
   "resume",
+  "resume-candidate",
   "cancel",
   "ui",
 ]);
+
+// Runtime view of the parser table for the skill validator cross-check.
+export const CAMPAIGN_CLI_COMMANDS: ReadonlySet<string> = COMMANDS;
 
 function takeValue(argv: readonly string[], index: number, flag: string): string {
   const value = argv[index + 1];
@@ -138,8 +144,22 @@ function parseStart(argv: readonly string[]): Extract<ParsedCampaignArgs, { comm
   return { command: "start", campaignId, singleWave, json };
 }
 
+function parseResumeCandidate(argv: readonly string[]): Extract<ParsedCampaignArgs, { command: "resume-candidate" }> {
+  let json = false;
+  for (const token of argv) {
+    if (token === "--json") {
+      if (json) throw new CampaignCliParseError("Duplicate flag --json");
+      json = true;
+      continue;
+    }
+    if (token.startsWith("--")) throw new CampaignCliParseError(`Unknown option ${token}`);
+    throw new CampaignCliParseError(`Unexpected argument ${token}`);
+  }
+  return { command: "resume-candidate", json };
+}
+
 function parseCampaignScoped(
-  command: Exclude<CampaignCommand, "preflight" | "start" | "ui">,
+  command: Exclude<CampaignCommand, "preflight" | "start" | "resume-candidate" | "ui">,
   argv: readonly string[],
   extra?: (token: string, argv: readonly string[], index: number) => number | "handled",
 ): ParsedCampaignArgs {
@@ -206,5 +226,6 @@ export function parseCampaignArgs(argv: readonly string[]): ParsedCampaignArgs {
   if (command === "ui") return { command: "ui", uiArgv: rest };
   if (command === "preflight") return parsePreflight(rest);
   if (command === "start") return parseStart(rest);
+  if (command === "resume-candidate") return parseResumeCandidate(rest);
   return parseCampaignScoped(command, rest);
 }
