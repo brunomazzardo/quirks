@@ -9,7 +9,7 @@ export type MutationCommand =
   | "block"
   | "release";
 
-export type Command = "validate" | "list" | "show" | "sync" | MutationCommand;
+export type Command = "validate" | "list" | "show" | "sync" | "claim-candidate" | MutationCommand;
 
 export class CliParseError extends Error {
   override readonly name = "CliParseError";
@@ -31,6 +31,7 @@ const COMMANDS = new Set<Command>([
   "list",
   "show",
   "sync",
+  "claim-candidate",
   "propose",
   "claim",
   "submit-review",

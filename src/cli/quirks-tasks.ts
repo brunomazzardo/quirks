@@ -116,6 +116,71 @@ function withSource<T extends Record<string, unknown>>(
   };
 }
 
+const PRIORITY_ORDER = ["P0", "P1", "P2", "P3"] as const;
+
+function priorityRank(priority: string): number {
+  const rank = PRIORITY_ORDER.indexOf(priority as (typeof PRIORITY_ORDER)[number]);
+  return rank === -1 ? PRIORITY_ORDER.length : rank;
+}
+
+type ClaimCandidatePayload =
+  | { ok: true; available: true; task: { id: string; title: string; status: string; dependsOnSatisfied: true } }
+  | { ok: true; available: false; reason: "no_ready_tasks" | "pending_sync" };
+
+// Read-only claim candidate selection: no mutation, no request file, no lock.
+// Highest priority (P0 > P1 > P2 > P3) among `ready` tasks whose dependsOn are
+// all `completed`; deterministic ascending-id tie-break.
+async function claimCandidatePayload(source: TaskSource, pending: number): Promise<ClaimCandidatePayload> {
+  if (pending > 0) {
+    return { ok: true, available: false, reason: "pending_sync" };
+  }
+  const listResponse = assertOkResponse(
+    await source.execute({ schemaVersion: 1, operation: "list", input: {} }),
+    "list",
+  );
+  const summaries = (listResponse.data as { tasks: { id: string; status: string }[] }).tasks;
+  const statusById = new Map(summaries.map((task) => [task.id, task.status]));
+  const readyIds = summaries
+    .filter((task) => task.status === "ready")
+    .map((task) => task.id)
+    .toSorted();
+
+  let candidate: { id: string; title: string; status: string; priority: string } | undefined;
+  for (const taskId of readyIds) {
+    const showResponse = assertOkResponse(
+      await source.execute({ schemaVersion: 1, operation: "show", taskId, input: {} }),
+      "show",
+    );
+    const task = showResponse.data as {
+      id: string;
+      title: string;
+      status: string;
+      priority?: string;
+      dependsOn?: string[];
+    };
+    const dependsOn = Array.isArray(task.dependsOn) ? task.dependsOn : [];
+    if (!dependsOn.every((dependency) => statusById.get(dependency) === "completed")) continue;
+    const next = {
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: typeof task.priority === "string" ? task.priority : "P3",
+    };
+    if (!candidate || priorityRank(next.priority) < priorityRank(candidate.priority)) {
+      candidate = next;
+    }
+  }
+
+  if (!candidate) {
+    return { ok: true, available: false, reason: "no_ready_tasks" };
+  }
+  return {
+    ok: true,
+    available: true,
+    task: { id: candidate.id, title: candidate.title, status: candidate.status, dependsOnSatisfied: true },
+  };
+}
+
 async function run(): Promise<number> {
   let json = false;
   let source: TaskSource | undefined;
@@ -153,6 +218,23 @@ async function run(): Promise<number> {
           `driver: ${driver}`,
           ...(localCoordinationLine(driver) ? [localCoordinationLine(driver)!] : []),
           `${task.id}\t${task.status}\t${task.title}`,
+        ]);
+      }
+      return 0;
+    }
+
+    if (parsed.command === "claim-candidate") {
+      const payload = await claimCandidatePayload(source, counts.pending);
+      if (json) {
+        writeJson(process.stdout, payload);
+      } else {
+        writeHuman(process.stdout, [
+          `driver: ${driver}`,
+          ...(localCoordinationLine(driver) ? [localCoordinationLine(driver)!] : []),
+          `available: ${payload.available}`,
+          ...(payload.available
+            ? [`${payload.task.id}\t${payload.task.status}\t${payload.task.title}`]
+            : [`reason: ${payload.reason}`]),
         ]);
       }
       return 0;
