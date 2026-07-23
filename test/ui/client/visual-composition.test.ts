@@ -285,6 +285,53 @@ test("preflight composes header, summary metrics, wave map, inspector, and bound
   assert.doesNotMatch(html, /Use current agent only/);
 });
 
+function durablePreflightProposal(): UiPreflightProposalV1 {
+  const base = preflightProposal();
+  return {
+    ...base,
+    summary: {
+      ...base.summary,
+      waveCount: null,
+      estimatedMinutes: null,
+      confidence: "unavailable",
+    },
+    waves: [],
+    lanes: [],
+    tasks: base.tasks.map((task) => ({
+      ...task,
+      waveId: null,
+      laneId: null,
+      confidence: "unavailable" as const,
+    })),
+    inspector: null,
+  };
+}
+
+test("preflight renders durable proposals honestly and suppresses read-only approval", () => {
+  const html = renderToStaticMarkup(
+    createElement(PreflightProposalView, { proposal: durablePreflightProposal(), approvalAvailable: false }),
+  );
+  // Nullable summary fields render honest unavailability, never "null waves".
+  assert.match(html, />Unavailable</);
+  assert.doesNotMatch(html, /null waves|null min/);
+  assert.match(html, /Confidence unavailable/);
+  // Empty wave/lane projections keep the explicit durable-envelope copy, once each.
+  assert.equal(
+    (html.match(/Wave assignments are not recorded in the durable campaign envelope\./g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (html.match(/Agent lane details are not recorded in the durable campaign envelope\./g) ?? []).length,
+    1,
+  );
+  // Read-only workspaces suppress the approval form with the honest copy.
+  assert.doesNotMatch(html, /Approve campaign/);
+  assert.doesNotMatch(html, /reviewed the preflight proposal/);
+  assert.match(html, /This workspace is read-only and holds no approval credential\./);
+  // The digest stays visible even when approval is suppressed.
+  assert.match(html, /envelope-digest/);
+});
+
 test("existing tasks compose stats, toolbar, frontier map, table, and inspector aside", () => {
   const html = renderToStaticMarkup(createElement(ExistingTasksView, { projection: existingTasksProjection() }));
   assert.match(html, /summary-grid/);

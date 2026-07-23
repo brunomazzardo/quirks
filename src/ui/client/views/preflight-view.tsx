@@ -63,6 +63,16 @@ function ExecutionMap({ proposal }: { proposal: UiPreflightProposalV1 }) {
     () => new Map(proposal.tasks.map((task) => [task.taskId, task])),
     [proposal.tasks],
   );
+  if (proposal.waves.length === 0) {
+    // Durable envelopes persist no scheduling projection — say so, honestly.
+    return (
+      <Panel title="Dependency and execution map" meta="Left → right is execution order" flush>
+        <p className="data-table-empty">
+          Wave assignments are not recorded in the durable campaign envelope.
+        </p>
+      </Panel>
+    );
+  }
   return (
     <Panel title="Dependency and execution map" meta="Left → right is execution order" flush>
       <div className="wave-map-scroll">
@@ -134,7 +144,7 @@ function TaskTable({ proposal, filter }: { proposal: UiPreflightProposalV1; filt
     });
     if (!normalizedFilter) return ordered;
     return ordered.filter((task) => {
-      const haystack = `${task.taskId} ${task.title} ${task.waveId} ${task.laneId}`.toLowerCase();
+      const haystack = `${task.taskId} ${task.title} ${task.waveId ?? ""} ${task.laneId ?? ""}`.toLowerCase();
       return haystack.includes(normalizedFilter);
     });
   }, [normalizedFilter, proposal.tasks, proposal.waves]);
@@ -165,8 +175,8 @@ function TaskTable({ proposal, filter }: { proposal: UiPreflightProposalV1; filt
               <td>
                 <span>{task.taskId}</span> — {task.title}
               </td>
-              <td>{wave?.label ?? task.waveId}</td>
-              <td>{lane?.label ?? task.laneId}</td>
+              <td>{wave?.label ?? task.waveId ?? "Unavailable"}</td>
+              <td>{lane?.label ?? task.laneId ?? "Unavailable"}</td>
               <td>
                 {task.route.profileId} ({routeTierLabel(task.route.tier)}, {task.route.effort})
               </td>
@@ -289,6 +299,11 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
   const { apiClient, queryClient } = useRouteContext({ strict: false }) as RouterRuntime;
   const [approvalSettled, setApprovalSettled] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  // Captured once at mount: read-only workspaces never receive an approval
+  // credential, so the approval affordance is suppressed rather than rendered
+  // as a dead form. Only the capability (a boolean) is captured — the
+  // credential itself stays in the closure-backed vault.
+  const [approvalCapable] = useState(() => vault.withApprovalToken(() => true) === true);
 
   const preflightQuery = useQuery(preflightQueryOptions(apiClient, campaignId));
   const promptQuery = useQuery({
@@ -353,6 +368,7 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
     <PreflightProposalView
       proposal={proposal}
       approvalMessage={approvalMessage}
+      approvalAvailable={approvalCapable}
       approvalDisabled={approvalSettled || approvalMutation.isSuccess}
       approvalSubmitting={approvalMutation.isPending}
       digestVisible={digestVisible}
@@ -371,6 +387,7 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
 export function PreflightProposalView({
   proposal,
   approvalMessage = null,
+  approvalAvailable = true,
   approvalDisabled = true,
   approvalSubmitting = false,
   digestVisible = proposal.envelopeDigest.length > 0 &&
@@ -381,6 +398,7 @@ export function PreflightProposalView({
 }: {
   proposal: UiPreflightProposalV1;
   approvalMessage?: string | null;
+  approvalAvailable?: boolean;
   approvalDisabled?: boolean;
   approvalSubmitting?: boolean;
   digestVisible?: boolean;
@@ -421,12 +439,24 @@ export function PreflightProposalView({
         />
         <SummaryStat
           label="Execution"
-          value={`${proposal.summary.waveCount} ${proposal.summary.waveCount === 1 ? "wave" : "waves"}`}
-          detail={`${proposal.lanes.length} agent ${proposal.lanes.length === 1 ? "lane" : "lanes"}`}
+          value={
+            proposal.summary.waveCount === null
+              ? "Unavailable"
+              : `${proposal.summary.waveCount} ${proposal.summary.waveCount === 1 ? "wave" : "waves"}`
+          }
+          detail={
+            proposal.lanes.length > 0
+              ? `${proposal.lanes.length} agent ${proposal.lanes.length === 1 ? "lane" : "lanes"}`
+              : "Lane detail unavailable"
+          }
         />
         <SummaryStat
           label="Estimate"
-          value={`${proposal.summary.estimatedMinutes} min`}
+          value={
+            proposal.summary.estimatedMinutes === null
+              ? "Unavailable"
+              : `${proposal.summary.estimatedMinutes} min`
+          }
           detail={summaryConfidence.label}
         />
         <SummaryStat
@@ -495,13 +525,17 @@ export function PreflightProposalView({
           <p>
             <strong>Concurrency:</strong> {String(proposal.summary.budget.maxConcurrency)}
           </p>
-          <ul>
-            {proposal.lanes.map((lane) => (
-              <li key={lane.id}>
-                {lane.label}: runner {lane.runner}, model {lane.model}, tasks {lane.taskIds.join(", ")}
-              </li>
-            ))}
-          </ul>
+          {proposal.lanes.length === 0 ? (
+            <p>Agent lane details are not recorded in the durable campaign envelope.</p>
+          ) : (
+            <ul>
+              {proposal.lanes.map((lane) => (
+                <li key={lane.id}>
+                  {lane.label}: runner {lane.runner}, model {lane.model}, tasks {lane.taskIds.join(", ")}
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
         <Panel title="Stop conditions and residuals" meta="Known before launch">
           <p>
@@ -529,12 +563,19 @@ export function PreflightProposalView({
                 {approvalMessage}
               </p>
             ) : null}
-            <ApprovalForm
-              digestVisible={digestVisible}
-              disabled={approvalDisabled}
-              isSubmitting={approvalSubmitting}
-              onApprove={onApprove}
-            />
+            {approvalAvailable ? (
+              <ApprovalForm
+                digestVisible={digestVisible}
+                disabled={approvalDisabled}
+                isSubmitting={approvalSubmitting}
+                onApprove={onApprove}
+              />
+            ) : (
+              <p className="approval-message">
+                This workspace is read-only and holds no approval credential. To approve, open the
+                campaign-bound workspace for this campaign.
+              </p>
+            )}
           </div>
         </div>
       </footer>

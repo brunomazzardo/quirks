@@ -107,6 +107,77 @@ test("preflight rejects max concurrency below 1", async () => {
   );
 });
 
+test("preflight blocks a proposed non-target closure member instead of deferring the failure to start", async () => {
+  const root = await freshRepo();
+  const tasksPath = path.join(root, ".quirks/tasks.json");
+  const tasks = JSON.parse(await readFile(tasksPath, "utf8")) as {
+    tasks: Array<{ id: string; kind: string; status: string; workflow: Record<string, unknown> }>;
+  };
+  // Make the dependency a plain implementation task so the blocker under test
+  // is the proposed-status one, not the design-gate blocker.
+  const dependency = tasks.tasks.find((task) => task.id === "QK-100")!;
+  dependency.kind = "implementation";
+  dependency.status = "proposed";
+  dependency.workflow = { family: "superpowers", phase: "execute", designGate: { required: false } };
+  await writeFile(tasksPath, JSON.stringify(tasks));
+
+  const result = await runPreflight({
+    repositoryRoot: root,
+    selectedTaskIds: ["QK-200"],
+    externalRoutingEnabled: false,
+  });
+
+  const blocker = result.blockers.find((entry) => entry.includes("QK-100") && entry.includes("proposed"));
+  assert.ok(blocker, `expected a blocker naming the proposed closure member, got: ${JSON.stringify(result.blockers)}`);
+});
+
+test("preflight admits an explicitly targeted proposed task whose dependencies are complete", async () => {
+  const root = await freshRepo();
+  const tasksPath = path.join(root, ".quirks/tasks.json");
+  const tasks = JSON.parse(await readFile(tasksPath, "utf8")) as {
+    tasks: Array<{ id: string; status: string }>;
+  };
+  tasks.tasks.find((task) => task.id === "QK-100")!.status = "completed";
+  tasks.tasks.find((task) => task.id === "QK-200")!.status = "proposed";
+  await writeFile(tasksPath, JSON.stringify(tasks));
+
+  const result = await runPreflight({
+    repositoryRoot: root,
+    selectedTaskIds: ["QK-200"],
+    externalRoutingEnabled: false,
+  });
+
+  assert.deepEqual(result.blockers, [], "an explicitly targeted proposed task is promotable at claim time");
+});
+
+test("preflight blocks a proposed target whose dependencies are incomplete", async () => {
+  const root = await freshRepo();
+  const tasksPath = path.join(root, ".quirks/tasks.json");
+  const tasks = JSON.parse(await readFile(tasksPath, "utf8")) as {
+    tasks: Array<{ id: string; kind: string; status: string; workflow: Record<string, unknown> }>;
+  };
+  // Neutralize the design-gate blocker so the proposed-target blocker is isolated.
+  const dependency = tasks.tasks.find((task) => task.id === "QK-100")!;
+  dependency.kind = "implementation";
+  dependency.workflow = { family: "superpowers", phase: "execute", designGate: { required: false } };
+  tasks.tasks.find((task) => task.id === "QK-200")!.status = "proposed";
+  await writeFile(tasksPath, JSON.stringify(tasks));
+
+  const result = await runPreflight({
+    repositoryRoot: root,
+    selectedTaskIds: ["QK-200"],
+    externalRoutingEnabled: false,
+  });
+
+  const blocker = result.blockers.find(
+    (entry) => entry.includes("QK-200") && entry.includes("proposed") && entry.includes("QK-100"),
+  );
+  assert.ok(
+    blocker,
+    `expected a blocker naming the proposed target and its incomplete dependency, got: ${JSON.stringify(result.blockers)}`,
+  );
+});
+
 test("preflight rejects dependency cycles", async () => {
   const root = await freshRepo();
   const tasksPath = path.join(root, ".quirks/tasks.json");

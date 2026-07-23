@@ -111,7 +111,15 @@ function attemptFailingResult(outcome: TaskDispatchOutcome): RunnerJobResult | u
   return undefined;
 }
 
-const NON_CLAIMABLE_STATUSES = new Set(["proposed", "blocked", "cancelled"]);
+const NON_CLAIMABLE_STATUSES = new Set(["blocked", "cancelled"]);
+
+// A proposed task can only reach an approved envelope when the operator
+// explicitly targeted it (preflight blocks proposed non-target closure
+// members), so the digest-bound approval is the authority to promote it; the
+// task layer performs proposed -> ready -> claimed with dependency checks.
+function isClaimableStatus(status: string): boolean {
+  return status === "ready" || status === "proposed";
+}
 
 function routeForTask(
   envelope: CampaignEnvelope,
@@ -158,8 +166,10 @@ async function loadNormalizedTask(
   const approvedRevision = envelope.taskRevisions[taskId];
   const claimedByThisCampaign =
     options.allowClaimedByCampaign === true && facts.coordination?.campaignId === envelope.campaignId;
+  // Completed closure members are frozen facts: they are never claimed, but
+  // their revision is checked exactly like claimable work - a frozen fact
+  // that changed after approval invalidates the approved envelope.
   if (
-    facts.status !== "completed" &&
     !claimedByThisCampaign &&
     approvedRevision !== undefined &&
     nativeRevision !== approvedRevision
@@ -193,6 +203,15 @@ export class CampaignSupervisor {
   }
 
   async startApproved(): Promise<void> {
+    try {
+      await this.startApprovedUnguarded();
+    } catch (error) {
+      await this.releaseLockAfterFailure();
+      throw error;
+    }
+  }
+
+  private async startApprovedUnguarded(): Promise<void> {
     const run = await this.prepareRun();
     const runnable = selectRunnableTasks(run.plan, new Set(), new Set());
     await this.journalWave(run, "wave.started", 0, runnable);
@@ -206,6 +225,15 @@ export class CampaignSupervisor {
   }
 
   async runToCompletion(): Promise<RunToCompletionOutcome> {
+    try {
+      return await this.runToCompletionUnguarded();
+    } catch (error) {
+      await this.releaseLockAfterFailure();
+      throw error;
+    }
+  }
+
+  private async runToCompletionUnguarded(): Promise<RunToCompletionOutcome> {
     const run = await this.prepareRun();
     await this.writeRunningState(run, new Set());
 
@@ -365,8 +393,32 @@ export class CampaignSupervisor {
   }
 
   async stop(): Promise<void> {
-    await this.lockHandle?.release();
+    const handle = this.lockHandle;
     this.lockHandle = undefined;
+    if (!handle) return;
+    try {
+      await handle.release();
+    } catch {
+      // An externally removed or replaced lock file must not fail a run that
+      // already succeeded; the successor (if any) owns the lock now.
+    }
+  }
+
+  /**
+   * A run that throws must never leak the repository lock: the next start
+   * would face LOCAL_LOCK_HELD from a holder that is done. The original
+   * failure stays authoritative - release problems (for example a lock file
+   * already removed by an operator) are swallowed here.
+   */
+  private async releaseLockAfterFailure(): Promise<void> {
+    const handle = this.lockHandle;
+    this.lockHandle = undefined;
+    if (!handle) return;
+    try {
+      await handle.release();
+    } catch {
+      // Keep the original failure; the stale lock is stealable on retry.
+    }
   }
 
   private async prepareRun(): Promise<PreparedRun> {
@@ -393,6 +445,27 @@ export class CampaignSupervisor {
 
     this.lockHandle = await RepositoryLock.acquire(this.context.lockPath, {
       campaignId: envelope.campaignId,
+      onSteal: async (stale) => {
+        const state = await this.context.store.readState();
+        const at = nowIso(this.context);
+        await this.context.store.appendEvent({
+          schemaVersion: 1,
+          id: `lock:stolen:${at}`,
+          type: "lock.stolen",
+          at,
+          actor: "supervisor",
+          from: state.status,
+          to: state.status,
+          reason: "dead_holder_lock_stolen",
+          evidence: {
+            lockPath: this.context.lockPath,
+            staleCampaignId: stale.campaignId,
+            stalePid: String(stale.pid),
+            staleHostname: stale.hostname,
+            staleAcquiredAt: stale.acquiredAt,
+          },
+        });
+      },
     });
 
     const boundary = await syncBoundary({
@@ -416,13 +489,13 @@ export class CampaignSupervisor {
       if (NON_CLAIMABLE_STATUSES.has(task.status)) {
         throw new QuirksError("PROTOCOL_VIOLATION", `Task ${task.id} is ${task.status} and cannot be claimed`);
       }
-      if (task.status !== "ready") {
+      if (!isClaimableStatus(task.status)) {
         throw new QuirksError("PROTOCOL_VIOLATION", `Task ${task.id} is not ready to claim`);
       }
     }
 
     for (const task of taskMeta.values()) {
-      if (task.status !== "ready") continue;
+      if (!isClaimableStatus(task.status)) continue;
       await reconcileMutation({
         campaignId: envelope.campaignId,
         outbox: this.context.outbox,

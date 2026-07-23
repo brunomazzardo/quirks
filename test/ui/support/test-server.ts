@@ -48,6 +48,18 @@ export async function createTestUiServer(options?: {
   };
   const projectRoot = path.resolve("test/fixtures/json-project");
   const clientScript = options?.clientScript ?? (await loadClientBundle());
+  // Mirrors production semantics: the durable read port refuses campaigns the
+  // workspace does not know, so the test double must 404 for unregistered
+  // campaign ids instead of fabricating a fixture proposal.
+  const registeredPreflight = fakePreflightPort(options?.preflightProposals);
+  const preflightRead = {
+    getProposal: async (campaignId: string) => {
+      if (!campaigns.has(campaignId)) {
+        throw new Error(`campaign ${campaignId} is not registered with the test workspace`);
+      }
+      return registeredPreflight.getProposal(campaignId);
+    },
+  };
   const server = await createUiServer({
     authority,
     repositoryId,
@@ -56,7 +68,7 @@ export async function createTestUiServer(options?: {
     now: getNow,
     getCampaign: (campaignId) => campaigns.get(campaignId),
     getProjectContext: () => loadProjectContext(projectRoot, { mode: "inspection" }),
-    preflightRead: fakePreflightPort(options?.preflightProposals),
+    preflightRead,
     campaignRead: fakeCampaignReadPort(),
     promptRead: fakePromptReadPort(),
     taskHistory: {

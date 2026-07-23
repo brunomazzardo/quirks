@@ -4,6 +4,7 @@ import { recoverCampaignOrThrow } from "../campaign/recovery.js";
 import { runPreflight } from "../campaign/preflight.js";
 import { createCampaignRuntime, lockPathFor } from "../campaign/runtime-context.js";
 import { isTerminalCampaignStatus } from "../campaign/state-machine.js";
+import { stageCampaignEnvelope, type StagingOutcome } from "../campaign/staging.js";
 import { CampaignSupervisor } from "../campaign/supervisor.js";
 import { CampaignStore } from "../campaign/store.js";
 import type { CampaignEnvelope, CampaignSnapshot, CampaignStatus } from "../campaign/types.js";
@@ -45,7 +46,31 @@ async function supervisorContext(store: CampaignStore, repositoryRoot: string) {
   const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
   const source = await createTaskSource(context);
   const outbox = SyncOutbox.open(store.syncOutboxFile);
-  const runtime = await createCampaignRuntime(envelope, repositoryRoot, { mode: "real" });
+  // A stale integration branch from a failed start is disposable only while
+  // the campaign has never dispatched a job; afterwards it may carry real
+  // work and a mismatch must stay a hard, remediation-carrying error.
+  const state = await store.readState();
+  const hasDispatchedJobs = (await store.readEvents()).some((event) => event.type === "runner.dispatched");
+  const runtime = await createCampaignRuntime(envelope, repositoryRoot, {
+    mode: "real",
+    integrationRecovery: {
+      resetOnMismatch: !hasDispatchedJobs,
+      onReset: async ({ branch, fromCommit, toCommit }) => {
+        const at = new Date().toISOString();
+        await store.appendEvent({
+          schemaVersion: 1,
+          id: `integration:reset:${at}`,
+          type: "integration.reset",
+          at,
+          actor: "control-plane",
+          from: state.status,
+          to: state.status,
+          reason: "stale_integration_branch_reset",
+          evidence: { branch, fromCommit, toCommit },
+        });
+      },
+    },
+  });
   return {
     store,
     source,
@@ -60,21 +85,12 @@ async function supervisorContext(store: CampaignStore, repositoryRoot: string) {
   };
 }
 
-async function persistPreflightStore(envelope: CampaignEnvelope): Promise<CampaignStore> {
-  const stateDir = stateDirFor(envelope.repositoryId);
-  try {
-    return await CampaignStore.create({
-      stateDir,
-      repositoryId: envelope.repositoryId,
-      campaignId: envelope.campaignId,
-      envelope,
-    });
-  } catch (error) {
-    if (error instanceof QuirksError && error.message.includes("already exists")) {
-      return CampaignStore.open(stateDir, envelope.repositoryId, envelope.campaignId);
-    }
-    throw error;
-  }
+async function persistPreflightStore(envelope: CampaignEnvelope): Promise<StagingOutcome> {
+  const { outcome } = await stageCampaignEnvelope({
+    stateDir: stateDirFor(envelope.repositoryId),
+    envelope,
+  });
+  return outcome;
 }
 
 type ResumeCandidatePayload =
@@ -153,11 +169,13 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
         repositoryRoot,
         selectedTaskIds: parsed.taskIds,
         externalRoutingEnabled: parsed.externalRouting,
+        ...(parsed.campaignId ? { campaignId: parsed.campaignId } : {}),
         ...(parsed.maxConcurrency !== undefined ? { maxConcurrency: parsed.maxConcurrency } : {}),
         ...(parsed.configPath ? {} : {}),
       });
+      let staging: StagingOutcome | undefined;
       if (result.blockers.length === 0) {
-        await persistPreflightStore(result.envelope);
+        staging = await persistPreflightStore(result.envelope);
       }
       return {
         ok: result.blockers.length === 0,
@@ -165,6 +183,7 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
         envelope: result.envelope,
         blockers: result.blockers,
         proposal: result.proposal,
+        ...(staging ? { staging } : {}),
         localCoordinationOnly: true,
       };
     }
@@ -181,7 +200,16 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
         digest: parsed.digest,
         operator: { kind: "self-asserted", id: "quirks-campaign-cli" },
       });
-      return { ok: true, campaignId: parsed.campaignId, approval, localCoordinationOnly: true };
+      // An approval minted by an earlier token means this call was an
+      // idempotent retry of an already-durably-approved digest.
+      const alreadyApproved = approval.tokenId !== challenge.tokenId;
+      return {
+        ok: true,
+        campaignId: parsed.campaignId,
+        approval,
+        ...(alreadyApproved ? { note: "already-approved" } : {}),
+        localCoordinationOnly: true,
+      };
     }
     case "start": {
       const { store, repositoryRoot } = await openStore(parsed.campaignId, process.cwd());
@@ -192,29 +220,33 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
       const ctx = await supervisorContext(store, repositoryRoot);
       try {
         const supervisor = await CampaignSupervisor.open(ctx);
-        if (parsed.singleWave) {
-          await supervisor.startApproved();
+        try {
+          if (parsed.singleWave) {
+            await supervisor.startApproved();
+            const status = await supervisor.status();
+            return {
+              ok: true,
+              campaignId: parsed.campaignId,
+              claimedTaskIds: status.claimedTaskIds,
+              dispatchedJobs: status.dispatchedJobs,
+              localCoordinationOnly: true,
+            };
+          }
+          const outcome = await supervisor.runToCompletion();
           const status = await supervisor.status();
-          await supervisor.stop();
           return {
             ok: true,
             campaignId: parsed.campaignId,
             claimedTaskIds: status.claimedTaskIds,
             dispatchedJobs: status.dispatchedJobs,
+            outcome,
             localCoordinationOnly: true,
           };
+        } finally {
+          // Release the repository lock on success and on every failure path
+          // alike; a failed start must be immediately retryable.
+          await supervisor.stop();
         }
-        const outcome = await supervisor.runToCompletion();
-        const status = await supervisor.status();
-        await supervisor.stop();
-        return {
-          ok: true,
-          campaignId: parsed.campaignId,
-          claimedTaskIds: status.claimedTaskIds,
-          dispatchedJobs: status.dispatchedJobs,
-          outcome,
-          localCoordinationOnly: true,
-        };
       } finally {
         await disposeTaskSource(ctx.source);
       }

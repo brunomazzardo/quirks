@@ -17,19 +17,37 @@ export function createApprovalChallenge(input: { campaignId: string; digest: str
   return { token, tokenId, expiresAt };
 }
 
+function digestMismatch(storedDigest: string): QuirksError {
+  // The stored digest is the one approval must target; naming it saves the
+  // operator from hunting through the state directory after a re-staging.
+  return new QuirksError(
+    "PROTOCOL_VIOLATION",
+    `DIGEST_MISMATCH: stored envelope digest is ${storedDigest}`,
+    { storedDigest },
+  );
+}
+
 export async function consumeApprovalToken(input: { store: CampaignStore; token: string; campaignId: string; digest: string; operator: ApprovalOperator }): Promise<CampaignApproval> {
   const record = challenges.get(input.token);
   if (!record) throw new QuirksError("PROTOCOL_VIOLATION", "Unknown approval token");
   if (record.campaignId !== input.campaignId) throw new QuirksError("PROTOCOL_VIOLATION", "CAMPAIGN_MISMATCH");
+  const envelope = await input.store.readEnvelope();
   const expected = Buffer.from(record.digest);
   const received = Buffer.from(input.digest);
-  if (expected.length !== received.length || !timingSafeEqual(expected, received)) throw new QuirksError("PROTOCOL_VIOLATION", "DIGEST_MISMATCH");
+  if (expected.length !== received.length || !timingSafeEqual(expected, received)) throw digestMismatch(envelope.digest);
   if (record.consumedAt) throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_REPLAY");
   if (Date.parse(record.expiresAt) <= Date.now()) throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_EXPIRED");
-  const envelope = await input.store.readEnvelope();
-  if (envelope.digest !== input.digest) throw new QuirksError("PROTOCOL_VIOLATION", "DIGEST_MISMATCH");
+  if (envelope.digest !== input.digest) throw digestMismatch(envelope.digest);
   const existing = await input.store.readApprovals();
-  if (existing.some((approval) => approval.digest === input.digest)) throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_REPLAY");
+  const durable = existing.find((approval) => approval.digest === input.digest);
+  if (durable) {
+    // A fresh token approving the already-durably-approved current digest is
+    // an operator retry (for example after an A -> B -> A re-stage carried
+    // the approval forward), not a replay attack: return the original
+    // approval idempotently. Reusing a consumed token still fails above.
+    record.consumedAt = new Date().toISOString();
+    return durable;
+  }
   const approvedAt = new Date().toISOString();
   const approval: CampaignApproval = { schemaVersion: 1, campaignId: input.campaignId, digest: input.digest, approvedAt, operator: input.operator, tokenId: record.tokenId, evidence: { channel: "headless" } };
   await input.store.appendApproval(approval);

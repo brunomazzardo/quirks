@@ -66,9 +66,19 @@
       "required": ["taskCount", "waveCount", "estimatedMinutes", "confidence", "budget", "landing", "push"],
       "properties": {
         "taskCount": { "type": "integer", "minimum": 0, "maximum": 10000 },
-        "waveCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
-        "estimatedMinutes": { "type": "integer", "minimum": 0, "maximum": 31536000 },
-        "confidence": { "enum": ["low", "medium", "high"] },
+        "waveCount": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0, "maximum": 1000 }
+          ]
+        },
+        "estimatedMinutes": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0, "maximum": 31536000 }
+          ]
+        },
+        "confidence": { "enum": ["low", "medium", "high", "unavailable"] },
         "budget": {
           "type": "object",
           "additionalProperties": false,
@@ -157,8 +167,18 @@
       "properties": {
         "taskId": { "$ref": "#/$defs/taskId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 256 },
-        "waveId": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "laneId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "waveId": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "maxLength": 128 }
+          ]
+        },
+        "laneId": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "maxLength": 128 }
+          ]
+        },
         "route": { "$ref": "#/$defs/route" },
         "fallback": {
           "oneOf": [
@@ -166,7 +186,7 @@
             { "$ref": "#/$defs/route" }
           ]
         },
-        "confidence": { "enum": ["low", "medium", "high"] }
+        "confidence": { "enum": ["low", "medium", "high", "unavailable"] }
       }
     },
     "inspector": {

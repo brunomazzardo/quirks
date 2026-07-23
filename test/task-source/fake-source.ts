@@ -187,10 +187,21 @@ export class FakeTaskSource implements TaskSource {
               claimedAt: request.input.claimedAt,
             };
           },
-          (task) =>
-            task.status !== "ready"
+          (task) => {
+            // Mirror the JSON adapter's applyClaim: a proposed task with all
+            // dependencies completed is promoted through the claim path.
+            if (task.status === "proposed") {
+              const satisfied = task.dependsOn.every(
+                (dependencyId) => this.tasks.get(dependencyId)?.status === "completed",
+              );
+              return satisfied
+                ? undefined
+                : failure("claim", "SOURCE_CONFLICT", "Task dependencies are not satisfied");
+            }
+            return task.status !== "ready"
               ? failure("claim", "SOURCE_CONFLICT", "Task is not ready to claim")
-              : undefined,
+              : undefined;
+          },
         );
       case "release":
         return this.applyMutation(request, (task) => {
