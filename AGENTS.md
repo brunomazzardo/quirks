@@ -68,6 +68,8 @@ Inspect the scratch `package.json`, bootstrap, route registration, and generated
 - **Framework-independent Node `http` server** serves a nonce-injected single IIFE bundle (no TanStack Start, no Vite dev server, no framework-owned API routes).
 - No Tailwind, devtools, or remote assets in the client bundle.
 
+**Stack decision (ratified 2026-07-23, owner):** stay on this framework-independent stack — no migration to TanStack Start, Next, or Bun. The daemon/dashboard needs no SSR, server functions, or file routing; a framework would expand surface, not consolidate it. Dev speed comes from esbuild watch + the standing-server bundle reload, not a framework dev server. Do not re-propose a framework migration unless one of these becomes true: the app needs to ship beyond the local machine (hosted/multi-user/real auth), it needs true server-side rendering, or the route tree outgrows code-based wiring. See `docs/superpowers/specs/2026-07-24-always-on-workspace-server-design.md`.
+
 ## TanStack Intent (development tooling only)
 
 ```bash

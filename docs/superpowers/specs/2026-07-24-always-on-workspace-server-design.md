@@ -48,7 +48,7 @@ Explicitly **not** building: threat models, port-scoping analyses, credential ce
 
 ## Stack decision
 
-Keep the framework-independent stack: Node `http` + esbuild IIFE bundle + pinned TanStack libraries. No TanStack Start, Next, or Bun. The daemon needs no SSR or server functions; a framework migration adds surface and version churn for no benefit here, and esbuild watch + torn-safe reload already gives the fast dev loop. If live push ever beats polling, SSE on the existing server is a small addition. Revisit only on a real server-rendering need, multi-user/remote access, or the route tree outgrowing code-based wiring.
+**Status: ratified by the owner, 2026-07-23.** Keep the framework-independent stack: Node `http` + esbuild IIFE bundle + pinned TanStack libraries. No TanStack Start, Next, or Bun. The daemon needs no SSR or server functions; a framework migration adds surface and version churn for no benefit here, and esbuild watch + torn-safe reload already gives the fast dev loop. If live push ever beats polling, SSE on the existing server is a small addition. Revisit only on a real server-rendering need, multi-user/remote access, or the route tree outgrowing code-based wiring.
 
 ## Out of scope (v1)
 
