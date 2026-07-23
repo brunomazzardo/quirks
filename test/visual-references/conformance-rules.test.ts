@@ -118,6 +118,25 @@ test("lists the accepted divergences with resolvable decision pointers", async (
   }
 });
 
+test("commits a reviewed screenshot baseline for every surface and viewport", async () => {
+  const rules = await readRules();
+  const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  for (const surface of rules.surfaces) {
+    for (const viewportName of Object.keys(rules.viewports)) {
+      const baseline = path.join(
+        ROOT,
+        rules.baselineDirectory,
+        `${surface.id}-${viewportName}-${rules.baselinePlatform}.png`,
+      );
+      const header = (await readFile(baseline)).subarray(0, 4);
+      assert.ok(
+        header.equals(PNG_MAGIC),
+        `${surface.id}-${viewportName} baseline must be a PNG captured on ${rules.baselinePlatform}`,
+      );
+    }
+  }
+});
+
 test("declares the determinism constraints for reproducible baselines", async () => {
   const rules = await readRules();
   assert.equal(rules.baselinePlatform, "darwin");
