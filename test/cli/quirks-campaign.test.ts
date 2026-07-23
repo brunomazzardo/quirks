@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CampaignCliParseError, parseCampaignArgs } from "../../src/cli/campaign-args.js";
 import { runCampaignCommand } from "../../src/cli/campaign-commands.js";
+import { hasDurableApproval } from "../../src/campaign/approval.js";
 import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.js";
 import { CampaignStore } from "../../src/campaign/store.js";
 import type { CampaignStatus } from "../../src/campaign/types.js";
 import { loadProjectContext } from "../../src/project/config.js";
+import { createDurableApprovalWritePort } from "../../src/ui/open-workspace.js";
 import { campaignEnvelope } from "../campaign/support.js";
 import { execFile } from "node:child_process";
 import { chmod, cp, mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
@@ -270,6 +272,88 @@ test("runCampaignCommand start --single-wave preserves the single-dispatch behav
       json: true,
     })) as { status: string };
     assert.equal(status.status, "running");
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
+// Contract guard for the loopback UI approval path: an approval recorded by
+// the browser workspace's durable write port must satisfy the exact same
+// durable predicate (hasDurableApproval over approvals.jsonl) that gates
+// `quirks-campaign start`. If the record shape or the predicate drifts,
+// browser approvals would silently stop unlocking start — this test fails
+// instead.
+test("browser-recorded durable approval unlocks quirks-campaign start", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const preflight = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string } };
+    assert.equal(preflight.ok, true);
+
+    // The gate is active before any approval exists.
+    await assert.rejects(
+      runCampaignCommand({
+        command: "start",
+        campaignId: preflight.campaignId,
+        singleWave: false,
+        json: true,
+      }),
+      /APPROVAL_REQUIRED/,
+    );
+
+    // Approve through the browser workspace's durable port — the same code
+    // path the loopback UI approval POST uses — never through the CLI approve.
+    const browserApproval = createDurableApprovalWritePort(stateDir);
+    const issued = await browserApproval.issueToken({
+      campaignId: preflight.campaignId,
+      envelopeDigest: preflight.envelope.digest,
+    });
+    const outcome = await browserApproval.approve({
+      campaignId: preflight.campaignId,
+      envelopeDigest: preflight.envelope.digest,
+      approvalToken: issued.approvalToken,
+      operator: { label: "local-ui", evidence: "loopback-session" },
+    });
+    assert.equal(outcome.result, "approved");
+
+    // The recorded approval satisfies the exact predicate start gates on,
+    // through the same store open the CLI uses.
+    const context = await loadProjectContext(root, { mode: "inspection" });
+    const store = await CampaignStore.open(stateDir, context.repositoryId, preflight.campaignId);
+    assert.equal(await hasDurableApproval(store, preflight.envelope.digest), true);
+
+    const start = (await runCampaignCommand({
+      command: "start",
+      campaignId: preflight.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; dispatchedJobs: unknown[]; outcome?: { status: string } };
+    assert.equal(start.ok, true);
+    assert.ok(start.dispatchedJobs.length >= 1);
+    assert.equal(start.outcome?.status, "completed");
+
+    const status = (await runCampaignCommand({
+      command: "status",
+      campaignId: preflight.campaignId,
+      json: true,
+    })) as { approvalCount: number };
+    assert.equal(status.approvalCount, 1);
   } finally {
     process.chdir(previousCwd);
     if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;

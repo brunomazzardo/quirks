@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -325,6 +325,42 @@ test("durable preflight proposal contains no fixture placeholder values", async 
     assert.ok(!raw.includes("preflight-digest"), "no fake fixture digest leaks into production data");
     assert.ok(!raw.includes("composer-2.5"), "no fixture lane model leaks into production data");
     assert.ok(!raw.includes("Delegated design task"), "no fixture task title leaks into production data");
+  } finally {
+    await workspace.close?.();
+  }
+});
+
+// A degenerate (empty or whitespace-only) ledger title must not fail the
+// proposal schema's minLength and 404 the entire preflight view — the honest
+// fallback is the task id.
+test("whitespace-only ledger titles fall back to the task id", async () => {
+  const repositoryRoot = await createFixtureProject();
+  const tasksPath = path.join(repositoryRoot, ".quirks", "tasks.json");
+  const ledger = JSON.parse(await readFile(tasksPath, "utf8")) as {
+    tasks: Array<{ id: string; title: string }>;
+  };
+  const task = ledger.tasks.find((entry) => entry.id === "QK-1");
+  assert.ok(task);
+  task.title = "   ";
+  await writeFile(tasksPath, `${JSON.stringify(ledger, null, 2)}\n`, "utf8");
+
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-durable-title-state-"));
+  const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
+  await seedDurableCampaign(stateDir, context.repositoryId, "C-title");
+
+  const workspace = await openWorkspace({
+    repositoryRoot,
+    stateDir,
+    deps: { json: true, isTty: false },
+  });
+  try {
+    const { viewerToken } = tokensFromLaunchUrl(workspace.launchUrl);
+    const response = await fetch(`${workspace.authority}/api/v1/campaigns/C-title/preflight`, {
+      headers: readHeaders(workspace.authority, viewerToken),
+    });
+    assert.equal(response.status, 200, "a degenerate ledger title must not 404 the preflight view");
+    const proposal = (await response.json()) as UiPreflightProposalV1;
+    assert.equal(proposal.tasks[0]!.title, "QK-1");
   } finally {
     await workspace.close?.();
   }

@@ -24,6 +24,21 @@ test("GET /api/v1/campaigns/:id/preflight returns proposal for awaiting approval
   await server.close();
 });
 
+// Pins the test double to production semantics: campaigns the workspace never
+// registered must 404, not receive a fabricated fixture proposal.
+test("GET /api/v1/campaigns/:id/preflight returns 404 for unregistered campaigns", async () => {
+  const server = await createTestUiServer();
+  try {
+    const { viewerToken } = await server.issue("C-1", "sha256:abc");
+    const response = await fetch(`${server.authority.baseUrl}/api/v1/campaigns/C-unregistered/preflight`, {
+      headers: readHeaders(server.authority, viewerToken),
+    });
+    assert.equal(response.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
 test("GET /api/v1/campaigns/:id/preflight returns 404 when not awaiting approval", async () => {
   const server = await createTestUiServer({
     campaigns: { "C-2": { repositoryId: "repo-1", envelopeDigest: "sha256:abc", status: "running" } },

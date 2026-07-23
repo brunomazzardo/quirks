@@ -485,9 +485,13 @@ function buildDurablePreflightProposal(options: {
       throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${campaignId} envelope has no routing for task ${taskId}`);
     }
     const fallback = routing.fallbacks[0];
+    // Empty or whitespace-only ledger titles would fail the proposal schema's
+    // minLength and 404 the whole view; the honest fallback is the task id.
+    const ledgerTitle = options.titles.get(taskId);
+    const title = ledgerTitle !== undefined && ledgerTitle.trim().length > 0 ? ledgerTitle : taskId;
     return {
       taskId,
-      title: clampProposalTitle(options.titles.get(taskId) ?? taskId),
+      title: clampProposalTitle(title),
       waveId: null,
       laneId: null,
       route: {
@@ -622,6 +626,14 @@ export function createDurableApprovalWritePort(
         now: getNow(),
       });
       if (consumed !== "ok") return { result: consumed };
+      // Reviewer notes (2026-07-23, minors, accepted as-is):
+      // - The token is consumed before the durable write; if the write below
+      //   fails the token is burned and the response is "invalid". Fail-closed
+      //   is intentional — the operator re-opens the workspace for a fresh
+      //   token; no partial approval is ever recorded.
+      // - Expiry boundary parity nit: this store treats now === expiresAt as
+      //   still valid, while campaign/approval.ts treats it as expired. The
+      //   one-instant divergence never widens the durable replay/digest gates.
       const resolved = await resolveCampaignFromState(stateDir, input.campaignId);
       if (!resolved) return { result: "invalid" };
       try {

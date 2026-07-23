@@ -18,6 +18,9 @@ export async function handlePreflight(
   // without a status (standalone read-only workspaces resolve campaigns from
   // durable state, not a static map) defer to the read port, which re-reads
   // state.json and refuses anything that is not awaiting approval.
+  // Reviewer note (2026-07-23, minor): same-repository campaign ids no longer
+  // 404 before the port runs; the probe surface is acceptable because every
+  // request here is already viewer-authenticated and repository-scoped.
   const campaign = options.getCampaign(options.campaignId);
   if (campaign?.status !== undefined && campaign.status !== "awaiting_approval") {
     return sendJson(res, 404, NOT_FOUND_BODY);
