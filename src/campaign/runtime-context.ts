@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { RunnerPort, WorktreePort } from "./ports.js";
+import type { IntegrationBranchRecovery, RunnerPort, WorktreePort } from "./ports.js";
 import type { CampaignEnvelope } from "./types.js";
 import { QuirksError } from "../core/errors.js";
 import { GitWorktreeManager } from "../git/worktree.js";
@@ -19,6 +19,12 @@ export type CreateCampaignRuntimeOptions =
       mode: "real";
       configDir?: string;
       stateDir?: string;
+      /**
+       * How to treat an integration branch left at the wrong commit by a
+       * failed start. Callers that know whether the campaign has dispatched
+       * jobs pass it here; without it a mismatch stays a hard error.
+       */
+      integrationRecovery?: IntegrationBranchRecovery;
     }
   | {
       mode: "fake";
@@ -61,6 +67,7 @@ export async function createCampaignRuntime(
     campaignId: envelope.campaignId,
     baseCommit: envelope.git.baseCommit,
     campaignBranch: envelope.git.campaignBranch,
+    ...(options.integrationRecovery ? { recovery: options.integrationRecovery } : {}),
   });
 
   if (!envelope.git.targetBranch) {

@@ -107,6 +107,13 @@ test("parseCampaignArgs accepts documented command shapes", () => {
     maxConcurrency: 3,
     json: true,
   });
+  assert.deepEqual(parseCampaignArgs(["preflight", "--task", "QK-1", "--campaign", "cmp-retry-1", "--json"]), {
+    command: "preflight",
+    taskIds: ["QK-1"],
+    campaignId: "cmp-retry-1",
+    externalRouting: false,
+    json: true,
+  });
   assert.deepEqual(parseCampaignArgs(["cancel", "--campaign", "cmp-1", "--scope", "job-1"]), {
     command: "cancel",
     campaignId: "cmp-1",
@@ -140,6 +147,14 @@ test("parseCampaignArgs rejects unknown commands and missing flags", () => {
     () => parseCampaignArgs(["start", "--campaign", "cmp-1", "--single-wave", "--single-wave"]),
     CampaignCliParseError,
   );
+  assert.throws(
+    () => parseCampaignArgs(["preflight", "--task", "QK-1", "--campaign", "cmp-1", "--campaign", "cmp-2"]),
+    CampaignCliParseError,
+  );
+  // Campaign ids become branch names (quirks/<id>/integration): enforce a
+  // git-branch-safe charset at the parser boundary.
+  assert.throws(() => parseCampaignArgs(["preflight", "--task", "QK-1", "--campaign", "cmp:colon"]), CampaignCliParseError);
+  assert.throws(() => parseCampaignArgs(["preflight", "--task", "QK-1", "--campaign", "-leading-dash"]), CampaignCliParseError);
 });
 
 async function freshAcceptanceRepo(): Promise<{ root: string; stateDir: string }> {
@@ -219,6 +234,81 @@ test("runCampaignCommand preflight approve start status flow uses real runtime w
     })) as { localCoordinationOnly: boolean; status: string };
     assert.equal(status.localCoordinationOnly, true);
     assert.equal(status.status, "running");
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
+test("preflight re-staging lets a config-fix-and-retry loop reach an approvable envelope", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    // First staging attempt: placeholder routing lands in the store.
+    const placeholderRun = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: false,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string } };
+    assert.equal(placeholderRun.ok, true);
+
+    // Operator fixes routing config and retries: same campaign, fresh envelope.
+    const realRun = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string } };
+    assert.equal(realRun.ok, true);
+    assert.equal(realRun.campaignId, placeholderRun.campaignId);
+    assert.notEqual(realRun.envelope.digest, placeholderRun.envelope.digest);
+
+    // Approving the stale digest must fail loudly, naming the stored digest.
+    await assert.rejects(
+      () => runCampaignCommand({
+        command: "approve",
+        campaignId: placeholderRun.campaignId,
+        digest: placeholderRun.envelope.digest,
+        json: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /DIGEST_MISMATCH/);
+        assert.ok(
+          error.message.includes(realRun.envelope.digest),
+          "approve failure must surface the stored envelope digest",
+        );
+        return true;
+      },
+    );
+
+    // Approving the stored (fresh) digest succeeds without state-dir surgery.
+    const approve = (await runCampaignCommand({
+      command: "approve",
+      campaignId: realRun.campaignId,
+      digest: realRun.envelope.digest,
+      json: true,
+    })) as { ok: boolean };
+    assert.equal(approve.ok, true);
+
+    const status = (await runCampaignCommand({
+      command: "status",
+      campaignId: realRun.campaignId,
+      json: true,
+    })) as { envelopeDigest: string; digest: string };
+    assert.equal(status.envelopeDigest, realRun.envelope.digest);
+    assert.equal(status.digest, realRun.envelope.digest);
   } finally {
     process.chdir(previousCwd);
     if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
@@ -319,6 +409,287 @@ async function seedStoredCampaign(options: {
     updatedAt: options.updatedAt,
   });
 }
+
+test("a refused re-stage can mint a distinct campaign for the same closure via --campaign", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const first = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string } };
+    assert.equal(first.ok, true);
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: first.campaignId,
+      digest: first.envelope.digest,
+      json: true,
+    });
+    const started = (await runCampaignCommand({
+      command: "start",
+      campaignId: first.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; dispatchedJobs: unknown[] };
+    assert.ok(started.dispatchedJobs.length >= 1);
+    await runCampaignCommand({ command: "cancel", campaignId: first.campaignId, json: true });
+
+    // Same closure, approved work ran: re-staging under the derived id must
+    // refuse and point at the real escape hatch.
+    await assert.rejects(
+      () => runCampaignCommand({
+        command: "preflight",
+        taskIds: ["QK-101"],
+        externalRouting: true,
+        json: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /ENVELOPE_REPLACE_REFUSED/);
+        assert.ok(error.message.includes(first.envelope.digest), "refusal must name the stored digest");
+        assert.ok(error.message.includes("--campaign"), "refusal must name the real preflight flag");
+        return true;
+      },
+    );
+
+    // The flag mints a distinct campaign for the very same task closure.
+    const retry = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      campaignId: "cmp-retry-1",
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string }; staging?: string };
+    assert.equal(retry.ok, true);
+    assert.equal(retry.campaignId, "cmp-retry-1");
+    assert.notEqual(retry.campaignId, first.campaignId);
+    assert.equal(retry.staging, "created");
+
+    // The refused campaign store is untouched and the new one is approvable.
+    const context = await loadProjectContext(root, { mode: "inspection" });
+    const oldStore = await CampaignStore.open(stateDir, context.repositoryId, first.campaignId);
+    assert.equal((await oldStore.readEnvelope()).digest, first.envelope.digest);
+    const approve = (await runCampaignCommand({
+      command: "approve",
+      campaignId: retry.campaignId,
+      digest: retry.envelope.digest,
+      json: true,
+    })) as { ok: boolean };
+    assert.equal(approve.ok, true);
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
+test("an explicitly targeted proposed task runs end-to-end through preflight, approve, and start", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const tasksPath = path.join(root, ".quirks/tasks.json");
+    const tasksDoc = JSON.parse(await readFile(tasksPath, "utf8")) as {
+      tasks: Array<{ id: string; status: string }>;
+    };
+    tasksDoc.tasks.find((task) => task.id === "QK-101")!.status = "proposed";
+    await writeFile(tasksPath, `${JSON.stringify(tasksDoc, null, 2)}\n`, "utf8");
+    await execFileAsync("git", ["-C", root, "add", ".quirks/tasks.json"]);
+    await execFileAsync("git", ["-C", root, "commit", "-m", "propose QK-101"]);
+
+    const preflight = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string }; blockers: string[] };
+    assert.equal(preflight.ok, true, `expected no blockers, got: ${JSON.stringify(preflight.blockers)}`);
+
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: preflight.campaignId,
+      digest: preflight.envelope.digest,
+      json: true,
+    });
+
+    const start = (await runCampaignCommand({
+      command: "start",
+      campaignId: preflight.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; claimedTaskIds: string[]; dispatchedJobs: unknown[]; outcome?: { status: string } };
+    assert.equal(start.ok, true);
+    assert.deepEqual(start.claimedTaskIds, ["QK-101"]);
+    assert.ok(start.dispatchedJobs.length >= 1);
+    assert.equal(start.outcome?.status, "completed");
+
+    const after = JSON.parse(await readFile(tasksPath, "utf8")) as {
+      tasks: Array<{ id: string; status: string; coordination: { campaignId: string } | null }>;
+    };
+    const claimed = after.tasks.find((task) => task.id === "QK-101")!;
+    assert.equal(claimed.status, "claimed", "the proposed target was promoted through the claim path");
+    assert.equal(claimed.coordination?.campaignId, preflight.campaignId);
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
+test("start resets a stale integration branch to the envelope base when nothing was dispatched", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const preflight = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string; git: { baseCommit: string } } };
+    assert.equal(preflight.ok, true);
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: preflight.campaignId,
+      digest: preflight.envelope.digest,
+      json: true,
+    });
+
+    // A previous failed start left the integration branch at a stale base.
+    await writeFile(path.join(root, "drift.txt"), "drift\n", "utf8");
+    await execFileAsync("git", ["-C", root, "add", "drift.txt"]);
+    await execFileAsync("git", ["-C", root, "commit", "-m", "post-preflight drift"]);
+    const { stdout: staleTip } = await execFileAsync("git", ["-C", root, "rev-parse", "HEAD"]);
+    const branch = `quirks/${preflight.campaignId}/integration`;
+    await execFileAsync("git", ["-C", root, "branch", branch, staleTip.trim()]);
+
+    const start = (await runCampaignCommand({
+      command: "start",
+      campaignId: preflight.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; outcome?: { status: string } };
+    assert.equal(start.ok, true);
+    assert.equal(start.outcome?.status, "completed");
+
+    const { stdout: branchTip } = await execFileAsync("git", ["-C", root, "rev-parse", branch]);
+    assert.equal(branchTip.trim(), preflight.envelope.git.baseCommit);
+
+    const context = await loadProjectContext(root, { mode: "inspection" });
+    const store = await CampaignStore.open(stateDir, context.repositoryId, preflight.campaignId);
+    const reset = (await store.readEvents()).find((event) => event.type === "integration.reset");
+    assert.ok(reset, "expected an integration.reset journal event");
+    assert.equal(reset.evidence["branch"], branch);
+    assert.equal(reset.evidence["fromCommit"], staleTip.trim());
+    assert.equal(reset.evidence["toCommit"], preflight.envelope.git.baseCommit);
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
+test("start refuses to reset a mismatched integration branch once jobs were dispatched", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const preflight = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string; git: { baseCommit: string } } };
+    assert.equal(preflight.ok, true);
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: preflight.campaignId,
+      digest: preflight.envelope.digest,
+      json: true,
+    });
+    const firstStart = (await runCampaignCommand({
+      command: "start",
+      campaignId: preflight.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; dispatchedJobs: unknown[] };
+    assert.equal(firstStart.ok, true);
+    assert.ok(firstStart.dispatchedJobs.length >= 1);
+
+    // Commit everything the first start left behind (task briefs) plus fresh
+    // drift so the second start reaches the integration-branch validation.
+    await writeFile(path.join(root, "drift.txt"), "drift\n", "utf8");
+    await execFileAsync("git", ["-C", root, "add", "-A"]);
+    await execFileAsync("git", ["-C", root, "commit", "-m", "post-dispatch drift"]);
+    const { stdout: staleTip } = await execFileAsync("git", ["-C", root, "rev-parse", "HEAD"]);
+    const branch = `quirks/${preflight.campaignId}/integration`;
+    await execFileAsync("git", ["-C", root, "branch", "-f", branch, staleTip.trim()]);
+
+    await assert.rejects(
+      () => runCampaignCommand({
+        command: "start",
+        campaignId: preflight.campaignId,
+        singleWave: false,
+        json: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /INTEGRATION_BRANCH_MISMATCH/);
+        assert.ok(error.message.includes(branch), "error must name the branch");
+        assert.ok(error.message.includes(staleTip.trim()), "error must include the actual commit");
+        assert.ok(error.message.includes(preflight.envelope.git.baseCommit), "error must include the expected commit");
+        assert.ok(
+          error.message.includes(`git branch -f ${branch} ${preflight.envelope.git.baseCommit}`),
+          "error must include the exact remediation",
+        );
+        return true;
+      },
+    );
+
+    // The branch stays where it was: evidence for the operator, never reset.
+    const { stdout: branchTip } = await execFileAsync("git", ["-C", root, "rev-parse", branch]);
+    assert.equal(branchTip.trim(), staleTip.trim());
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
 
 test("resume-candidate returns the paused campaign with its last event", async () => {
   const { root, stateDir } = await freshAcceptanceRepo();

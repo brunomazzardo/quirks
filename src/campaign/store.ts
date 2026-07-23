@@ -96,6 +96,22 @@ export class CampaignStore {
   async hasFile(name: string): Promise<boolean> {
     try { await access(path.join(this.campaignPath, name)); return true; } catch { return false; }
   }
+  /**
+   * Overwrite the stored envelope with a fresh one for the same campaign
+   * identity. Create-once semantics stay with {@link CampaignStore.create};
+   * replacement policy (which lifecycle states may be re-staged) is enforced
+   * by the caller — see `stageCampaignEnvelope`.
+   */
+  async replaceEnvelope(envelope: CampaignEnvelope): Promise<void> {
+    validateSchema<CampaignEnvelope>("campaign-v1", envelope);
+    if (envelope.campaignId !== this.campaignId || envelope.repositoryId !== this.repositoryId) {
+      throw new QuirksError("PROTOCOL_VIOLATION", "Campaign store identity does not match envelope");
+    }
+    if (computeEnvelopeDigest(stripDigest(envelope)) !== envelope.digest) {
+      throw new QuirksError("PROTOCOL_VIOLATION", "Campaign envelope digest mismatch");
+    }
+    await writeJsonAtomic(this.campaignFile, envelope);
+  }
   async readEnvelope(): Promise<CampaignEnvelope> { return validateSchema<CampaignEnvelope>("campaign-v1", JSON.parse(await readFile(this.campaignFile, "utf8"))); }
   async readState(): Promise<CampaignSnapshot> { return validateSchema<CampaignSnapshot>("campaign-state-v1", JSON.parse(await readFile(this.stateFile, "utf8"))); }
   async writeState(snapshot: CampaignSnapshot): Promise<void> { validateSchema<CampaignSnapshot>("campaign-state-v1", snapshot); await writeJsonAtomic(this.stateFile, snapshot); }

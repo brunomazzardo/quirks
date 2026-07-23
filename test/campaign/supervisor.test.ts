@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { canonicalJson } from "../../src/core/canonical-json.js";
 import { QuirksError } from "../../src/core/errors.js";
 import { consumeApprovalToken, createApprovalChallenge } from "../../src/campaign/approval.js";
 import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.js";
@@ -246,7 +247,7 @@ test("skips completed dependencies when building scheduler", async () => {
   assert.equal(status.dispatchedJobs.some((job) => job.taskId === "QK-2"), true);
 });
 
-for (const status of ["proposed", "blocked", "cancelled"] as const) {
+for (const status of ["blocked", "cancelled"] as const) {
   test(`rejects ${status} tasks during claim`, async () => {
     const source = new FakeTaskSource();
     source.upsertTask("QK-1", { status });
@@ -256,6 +257,29 @@ for (const status of ["proposed", "blocked", "cancelled"] as const) {
     await assert.rejects(() => supervisor.startApproved(), new RegExp(`Task QK-1 is ${status}`));
   });
 }
+
+test("promotes a proposed task bound in the approved envelope through the claim path", async () => {
+  // Preflight only lets a proposed task into a persistable envelope when the
+  // operator explicitly targeted it, so its presence in the approved,
+  // digest-bound envelope IS the promotion authority. The JSON layer performs
+  // proposed -> ready -> claimed with dependency verification.
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-1", { status: "proposed" });
+  const context = await testContext({ source });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.startApproved();
+
+  const status = await supervisor.status();
+  assert.deepEqual(status.claimedTaskIds, ["QK-1"]);
+  assert.equal(status.dispatchedJobs.some((job) => job.taskId === "QK-1" && job.role === "implementer"), true);
+  const shown = await source.execute({ schemaVersion: 1, operation: "show", taskId: "QK-1", input: {} });
+  assert.ok(shown.ok);
+  const task = shown.data as { status: string; coordination: { campaignId: string } | null };
+  assert.equal(task.status, "claimed");
+  assert.equal(task.coordination?.campaignId, "cmp-supervisor");
+  await supervisor.stop();
+});
 
 test("rejects non-ready tasks that are not completed", async () => {
   const source = new FakeTaskSource();
@@ -1005,6 +1029,107 @@ test("refuses dispatch when workflow skills are absent instead of skipping the f
   const status = await supervisor.status();
   assert.deepEqual(status.claimedTaskIds, [], "no task may be claimed with unverified instructions");
   assert.deepEqual(status.dispatchedJobs, [], "no brief may be dispatched with unverified instructions");
+});
+
+async function assertLockReleased(lockPath: string): Promise<void> {
+  const probe = await RepositoryLock.acquire(lockPath, { campaignId: "cmp-lock-probe" });
+  await probe.release();
+}
+
+test("prepareRun releases the repository lock when claim validation fails", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-1", { status: "blocked" });
+  const context = await testContext({ source });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /QK-1 is blocked/);
+  await assertLockReleased(context.lockPath);
+});
+
+test("prepareRun releases the repository lock when revision drift refuses dispatch", async () => {
+  const context = await testContext({
+    taskRevisions: { "QK-1": `sha256:${"5".repeat(64)}` },
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /TASK_REVISION_DRIFT/);
+  await assertLockReleased(context.lockPath);
+});
+
+test("a dispatch failure after prepareRun releases the repository lock", async () => {
+  const context = await testContext({ worktree: new ThrowingWorktreePort("QK-1") });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /worktree provisioning failed/);
+  await assertLockReleased(context.lockPath);
+});
+
+test("stop tolerates an externally removed lock file after a successful run", async () => {
+  const context = await testContext();
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.startApproved();
+  // An operator (or crash cleanup) removed the lock file out from under us:
+  // a successful run's stop() must still resolve instead of LOCK_NOT_OWNED.
+  await rm(context.lockPath, { force: true });
+  await supervisor.stop();
+});
+
+test("steals a dead-holder repository lock on the same host and journals the steal", async () => {
+  const context = await testContext();
+  await writeFile(
+    context.lockPath,
+    `${canonicalJson({
+      schemaVersion: 1,
+      scope: "local-clone",
+      campaignId: "cmp-dead-holder",
+      pid: 99_999_999,
+      hostname: os.hostname(),
+      acquiredAt: "2026-07-23T00:00:00.000Z",
+      heartbeatAt: "2026-07-23T00:00:00.000Z",
+    })}\n`,
+    { mode: 0o600 },
+  );
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.startApproved();
+
+  const steal = (await context.store.readEvents()).find((event) => event.type === "lock.stolen");
+  assert.ok(steal, "expected a lock.stolen journal event");
+  assert.equal(steal.evidence["staleCampaignId"], "cmp-dead-holder");
+  assert.equal(steal.evidence["stalePid"], "99999999");
+  assert.equal(steal.evidence["staleHostname"], os.hostname());
+
+  const status = await supervisor.status();
+  assert.equal(status.claimedTaskIds.includes("QK-1"), true, "the run proceeds after the steal");
+  await supervisor.stop();
+});
+
+test("completed closure members are frozen facts: revision drift refuses dispatch and they are never claimed", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-1", { status: "completed" });
+  source.upsertTask("QK-2", { status: "ready", dependsOn: ["QK-1"] });
+  const context = await testContext({
+    taskIds: ["QK-1", "QK-2"],
+    taskRevisions: {
+      // The completed dependency was frozen at a different revision than the
+      // source now reports: the frozen fact changed, so dispatch must refuse.
+      "QK-1": `sha256:${"6".repeat(64)}`,
+      "QK-2": source.taskRevision("QK-2"),
+    },
+    budgets: { maxTasks: 2, maxConcurrency: 2, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-1", "QK-2"]),
+    source,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /TASK_REVISION_DRIFT.*QK-1/);
+
+  const status = await supervisor.status();
+  assert.deepEqual(status.claimedTaskIds, [], "drift on a frozen fact must refuse before any claim");
+  const shown = await source.execute({ schemaVersion: 1, operation: "show", taskId: "QK-2", input: {} });
+  assert.equal(shown.ok && (shown.data as { status: string }).status, "ready", "the target stays unclaimed at the source");
+  await assertLockReleased(context.lockPath);
 });
 
 test("TASK_REVISION_DRIFT: a stale approved revision refuses dispatch before any claim", async () => {

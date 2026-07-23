@@ -14,7 +14,7 @@ export class CampaignCliParseError extends Error {
 }
 
 export type ParsedCampaignArgs =
-  | { command: "preflight"; taskIds: string[]; configPath?: string; externalRouting: boolean; maxConcurrency?: number; json: boolean }
+  | { command: "preflight"; taskIds: string[]; campaignId?: string; configPath?: string; externalRouting: boolean; maxConcurrency?: number; json: boolean }
   | { command: "approve"; campaignId: string; digest: string; json: boolean }
   | { command: "start"; campaignId: string; singleWave: boolean; json: boolean }
   | { command: "status"; campaignId: string; json: boolean }
@@ -47,8 +47,14 @@ function takeValue(argv: readonly string[], index: number, flag: string): string
   return value;
 }
 
+// Campaign ids become branch names (quirks/<id>/integration) and state-dir
+// path segments, so the operator-supplied override must stay git-branch and
+// filesystem safe. Stricter than the envelope schema id (no ":").
+const CAMPAIGN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
 function parsePreflight(argv: readonly string[]): Extract<ParsedCampaignArgs, { command: "preflight" }> {
   const taskIds: string[] = [];
+  let campaignId: string | undefined;
   let configPath: string | undefined;
   let externalRouting = false;
   let maxConcurrency: number | undefined;
@@ -64,6 +70,17 @@ function parsePreflight(argv: readonly string[]): Extract<ParsedCampaignArgs, { 
     }
     if (token === "--task") {
       taskIds.push(takeValue(argv, index, "--task"));
+      index += 1;
+      continue;
+    }
+    if (token === "--campaign") {
+      if (campaignId !== undefined) throw new CampaignCliParseError("Duplicate flag --campaign");
+      campaignId = takeValue(argv, index, "--campaign");
+      if (!CAMPAIGN_ID_PATTERN.test(campaignId)) {
+        throw new CampaignCliParseError(
+          "--campaign requires an id matching [A-Za-z0-9][A-Za-z0-9._-]{0,127}",
+        );
+      }
       index += 1;
       continue;
     }
@@ -104,6 +121,7 @@ function parsePreflight(argv: readonly string[]): Extract<ParsedCampaignArgs, { 
   return {
     command: "preflight",
     taskIds,
+    ...(campaignId ? { campaignId } : {}),
     ...(configPath ? { configPath } : {}),
     externalRouting,
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),

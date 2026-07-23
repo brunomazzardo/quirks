@@ -235,7 +235,9 @@ async function resolveRouting(
   }
 }
 
-function preflightBlockers(tasks: readonly NormalizedTask[]): string[] {
+function preflightBlockers(tasks: readonly NormalizedTask[], selectedTaskIds: readonly string[]): string[] {
+  const selected = new Set(selectedTaskIds);
+  const byId = new Map(tasks.map((task) => [task.id, task]));
   const blockers: string[] = [];
   for (const task of tasks) {
     if (task.kind === "design" && task.status !== "completed") {
@@ -243,6 +245,27 @@ function preflightBlockers(tasks: readonly NormalizedTask[]): string[] {
     }
     if (task.workflow.designGate.required && task.workflow.designGate.defaultApproval === "delegated" && !task.workflow.designGate.delegable) {
       blockers.push(`Task ${task.id} is non-delegable and cannot use delegated design mode`);
+    }
+    if (task.status !== "proposed") continue;
+    // A proposed dependency pulled in through the closure would have to
+    // execute before its dependents, but only an explicit operator target
+    // carries the authority to promote a proposed task. Surface that here,
+    // at preflight, instead of failing after approval when start claims.
+    if (!selected.has(task.id)) {
+      blockers.push(
+        `Closure dependency ${task.id} is proposed and cannot be claimed; promote it to ready or complete it before campaign approval`,
+      );
+      continue;
+    }
+    // An explicitly targeted proposed task is promoted through the claim path
+    // at start, but the task layer only promotes when every dependency is
+    // completed - anything less would fail after approval, so block it now.
+    const incomplete = task.dependsOn.filter((dependencyId) => byId.get(dependencyId)?.status !== "completed");
+    if (incomplete.length > 0) {
+      blockers.push(
+        `Target task ${task.id} is proposed with incomplete dependencies (${incomplete.join(", ")}); ` +
+          "complete those dependencies or promote the task to ready before campaign approval",
+      );
     }
   }
   return blockers;
@@ -267,7 +290,7 @@ export async function runPreflight(input: RunPreflightInput): Promise<PreflightR
       taskIds: tasks.map((task) => task.id),
     });
     const git = await inspectGit(context.root, { mode });
-    const blockers = preflightBlockers(tasks);
+    const blockers = preflightBlockers(tasks, input.selectedTaskIds);
     if (syncHealth.pendingIntents.length > 0) blockers.push("Pending sync intents must be reconciled before campaign approval");
     const routing = await resolveRouting(input, tasks, blockers);
     const envelope = finalizeEnvelope({
