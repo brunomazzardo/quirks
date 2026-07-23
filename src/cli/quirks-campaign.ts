@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import path from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { openWorkspace } from "../ui/open-workspace.js";
 import { CampaignCliParseError, parseCampaignArgs } from "./campaign-args.js";
 import { runCampaignCommand } from "./campaign-commands.js";
+import { runCampaignRun, type CampaignRunIo } from "./campaign-run.js";
 import { CliParseError } from "./args.js";
 import { domainErrorCode, exitCodeForError, writeHuman, writeJson } from "./output.js";
 
@@ -173,6 +175,25 @@ async function run(): Promise<number> {
       }
       return exitCodeForError(error);
     }
+  }
+
+  if (parsed.command === "run") {
+    // The run composition prints its own human/json output, including a
+    // recovery command on every failure path, and returns the exit code.
+    const io: CampaignRunIo = {
+      out: (line) => process.stdout.write(`${line}\n`),
+      err: (line) => process.stderr.write(`${line}\n`),
+      isTty: Boolean(process.stdin.isTTY) && Boolean(process.stdout.isTTY),
+      question: async (prompt) => {
+        const readline = createInterface({ input: process.stdin, output: process.stdout });
+        try {
+          return await readline.question(prompt);
+        } finally {
+          readline.close();
+        }
+      },
+    };
+    return runCampaignRun(parsed, io);
   }
 
   try {
