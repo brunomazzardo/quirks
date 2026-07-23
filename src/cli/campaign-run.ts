@@ -1,8 +1,8 @@
+import { readFile } from "node:fs/promises";
 import { hasDurableApproval } from "../campaign/approval.js";
 import { CampaignStore } from "../campaign/store.js";
 import type { StagingOutcome } from "../campaign/staging.js";
 import type { CampaignEnvelope, CampaignEvent } from "../campaign/types.js";
-import { QuirksError } from "../core/errors.js";
 import { loadProjectContext } from "../project/config.js";
 import { openWorkspace } from "../ui/open-workspace.js";
 import type { ParsedCampaignArgs } from "./campaign-args.js";
@@ -147,6 +147,95 @@ function formatEventLine(event: CampaignEvent): string {
   }
 }
 
+/**
+ * How many consecutive polls the SAME journal frame may stay unparseable
+ * before the stream surfaces a warning. A torn tail from an in-flight append
+ * parses cleanly on the next tick; only a frame that never completes (or a
+ * journal that shrinks) is worth surfacing - and even then as a warning,
+ * never as a run failure: the supervisor keeps running detached, so failing
+ * the stream here would report a live campaign as dead.
+ */
+export const TORN_TAIL_TICK_LIMIT = 5;
+
+export interface EventTailState {
+  /** Frames already streamed. */
+  printed: number;
+  /** Line index of the currently unparseable frame, if any. */
+  tornAt?: number;
+  /** Consecutive polls the same frame stayed unparseable. */
+  tornTicks: number;
+  /** Set once a warning was surfaced; further polls stream nothing. */
+  disabled?: boolean;
+}
+
+export function createEventTailState(printed: number): EventTailState {
+  return { printed, tornTicks: 0 };
+}
+
+function parseJournalTail(content: string): { events: CampaignEvent[]; tornAt?: number } {
+  const rawLines = content.split("\n");
+  if (rawLines.at(-1) === "") rawLines.pop();
+  const events: CampaignEvent[] = [];
+  for (const [index, line] of rawLines.entries()) {
+    let frame: unknown;
+    try {
+      frame = JSON.parse(line);
+    } catch {
+      return { events, tornAt: index };
+    }
+    if (typeof frame !== "object" || frame === null || typeof (frame as { type?: unknown }).type !== "string") {
+      return { events, tornAt: index };
+    }
+    events.push(frame as CampaignEvent);
+  }
+  return { events };
+}
+
+/**
+ * Best-effort, display-only read of the campaign journal tail. Tolerates a
+ * torn tail line (an append in flight) by retrying on later polls; surfaces a
+ * warning - never an error - when the same frame stays unparseable for
+ * {@link TORN_TAIL_TICK_LIMIT} consecutive polls or the journal shrinks below
+ * what was already streamed.
+ */
+export async function pollEventTail(
+  eventsFile: string,
+  state: EventTailState,
+): Promise<{ lines: string[]; warning?: string }> {
+  if (state.disabled) return { lines: [] };
+  let content: string;
+  try {
+    content = await readFile(eventsFile, "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return { lines: [] };
+    throw error;
+  }
+  const { events, tornAt } = parseJournalTail(content);
+  if (events.length < state.printed) {
+    state.disabled = true;
+    return { lines: [], warning: "the campaign journal shrank while streaming; event streaming stopped" };
+  }
+  if (tornAt === undefined) {
+    delete state.tornAt;
+    state.tornTicks = 0;
+  } else if (state.tornAt === tornAt) {
+    state.tornTicks += 1;
+  } else {
+    state.tornAt = tornAt;
+    state.tornTicks = 1;
+  }
+  const lines = events.slice(state.printed).map(formatEventLine);
+  state.printed = events.length;
+  if (tornAt !== undefined && state.tornTicks >= TORN_TAIL_TICK_LIMIT) {
+    state.disabled = true;
+    return {
+      lines,
+      warning: `campaign journal frame at line ${tornAt + 1} stayed unparseable; event streaming stopped`,
+    };
+  }
+  return { lines };
+}
+
 function reportBlockers(parsed: ParsedCampaignRunArgs, io: CampaignRunIo, preflight: PreflightPayload): ExitCode {
   const rerun = runCommandLine(parsed);
   if (parsed.json) {
@@ -286,15 +375,19 @@ async function startAndStream(
 ): Promise<ExitCode> {
   const campaignId = envelope.campaignId;
   const pollMs = io.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-  let offset = (await store.readEvents()).length;
+  // Establish the pre-start frame count tolerantly, without printing history.
+  const tail = createEventTailState(0);
+  await pollEventTail(store.eventsFile, tail);
   if (!parsed.json) io.out(`Starting campaign ${campaignId}...`);
 
+  // Streaming is display-only and must never fail the run: a torn tail is
+  // retried on later ticks, and persistent problems surface as one warning
+  // while the supervisor keeps running.
   const flush = async (): Promise<void> => {
-    const events = await store.readEvents();
-    if (!parsed.json) {
-      for (const event of events.slice(offset)) io.out(`  ${formatEventLine(event)}`);
-    }
-    offset = events.length;
+    const { lines, warning } = await pollEventTail(store.eventsFile, tail);
+    if (parsed.json) return;
+    for (const line of lines) io.out(`  ${line}`);
+    if (warning) io.err(`Warning: ${warning}; the run continues - check: ${statusCommandFor(campaignId)}`);
   };
 
   // The guarded promise never rejects, so racing it against the poll tick
@@ -364,19 +457,19 @@ function recoverySteps(
   parsed: ParsedCampaignRunArgs,
   error: unknown,
   campaignId: string | undefined,
-  storedDigest: string | undefined,
 ): string[] {
   const message = error instanceof Error ? error.message : "";
-  const details = error instanceof QuirksError ? error.details : {};
-  const digest = details["storedDigest"] ?? storedDigest;
   if (message.includes("ENVELOPE_REPLACE_REFUSED")) {
     // The stored campaign already ran approved work; the same closure needs a
     // fresh campaign identity.
     return [runCommandLine(parsed, "<new-id>")];
   }
-  if (campaignId !== undefined && digest !== undefined &&
-    (message.includes("DIGEST_MISMATCH") || message.includes("APPROVAL_REQUIRED"))) {
-    return [approveCommandFor(campaignId, digest), startCommandFor(campaignId)];
+  if (message.includes("DIGEST_MISMATCH") || message.includes("APPROVAL_REQUIRED")) {
+    // The stored envelope changed underneath this flow (or its approval is
+    // missing): the operator has NOT seen the summary of what is stored now,
+    // so never coach a durable approve of an unseen envelope. Re-running
+    // `run` re-prints the summary and re-asks the one decision.
+    return [runCommandLine(parsed, campaignId)];
   }
   if (message.includes("INTEGRATION_BRANCH_MISMATCH")) {
     // The error message itself names the exact `git branch -f` fix; after it,
@@ -392,10 +485,9 @@ function reportFailure(
   io: CampaignRunIo,
   error: unknown,
   campaignId: string | undefined,
-  storedDigest: string | undefined,
 ): ExitCode {
   const message = error instanceof Error ? error.message : "Unexpected failure";
-  const recovery = recoverySteps(parsed, error, campaignId, storedDigest);
+  const recovery = recoverySteps(parsed, error, campaignId);
   if (parsed.json) {
     io.out(JSON.stringify({
       ok: false,
@@ -413,7 +505,6 @@ function reportFailure(
 
 export async function runCampaignRun(parsed: ParsedCampaignRunArgs, io: CampaignRunIo): Promise<ExitCode> {
   let campaignId: string | undefined = parsed.campaignId;
-  let storedDigest: string | undefined;
   try {
     // 1. Preflight and stage. Staging safely replaces a stale pre-approval
     //    envelope (journaled as envelope.replaced) or refuses loudly.
@@ -432,7 +523,6 @@ export async function runCampaignRun(parsed: ParsedCampaignRunArgs, io: Campaign
     //    than trusting the in-memory preflight result.
     const store = await openRunStore(preflight.campaignId);
     const envelope = await store.readEnvelope();
-    storedDigest = envelope.digest;
     if (!parsed.json) printEnvelopeSummary(io, envelope, preflight.staging);
 
     // 3. ONE decision, always digest-bound, never bypassing the approval model.
@@ -443,6 +533,6 @@ export async function runCampaignRun(parsed: ParsedCampaignRunArgs, io: Campaign
     //    the outcome with the exact next command.
     return await startAndStream(parsed, io, store, envelope, preflight.staging);
   } catch (error) {
-    return reportFailure(parsed, io, error, campaignId, storedDigest);
+    return reportFailure(parsed, io, error, campaignId);
   }
 }

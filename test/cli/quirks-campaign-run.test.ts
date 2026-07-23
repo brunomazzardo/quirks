@@ -8,8 +8,14 @@ import { promisify } from "node:util";
 import { hasDurableApproval } from "../../src/campaign/approval.js";
 import { CampaignStore } from "../../src/campaign/store.js";
 import { CampaignCliParseError, parseCampaignArgs, type ParsedCampaignArgs } from "../../src/cli/campaign-args.js";
-import { runCampaignRun, type CampaignRunIo } from "../../src/cli/campaign-run.js";
-import { stateDirFor } from "../../src/cli/campaign-commands.js";
+import {
+  createEventTailState,
+  pollEventTail,
+  runCampaignRun,
+  TORN_TAIL_TICK_LIMIT,
+  type CampaignRunIo,
+} from "../../src/cli/campaign-run.js";
+import { runCampaignCommand, stateDirFor } from "../../src/cli/campaign-commands.js";
 import { loadProjectContext } from "../../src/project/config.js";
 import { createDurableApprovalWritePort } from "../../src/ui/open-workspace.js";
 
@@ -416,6 +422,61 @@ test("run re-stages a stale pre-approval envelope automatically after a config f
   }
 });
 
+test("a mid-prompt re-stage refusal coaches re-running run, never a blind approve of an unseen envelope", async () => {
+  const harness = await openRunHarness({ withRunnerConfig: true });
+  try {
+    const parsed: ParsedRun = {
+      command: "run",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      approval: "inline",
+      json: false,
+    };
+    const captured = capturedIo({ isTty: true });
+    // While the operator stares at the prompt, a concurrent preflight
+    // re-stages the same campaign with different routing: the stored digest
+    // changes underneath the pending decision.
+    captured.io.question = async (prompt) => {
+      captured.prompts.push(prompt);
+      const restaged = (await runCampaignCommand({
+        command: "preflight",
+        taskIds: ["QK-101"],
+        externalRouting: false,
+        json: true,
+      })) as { ok: boolean; staging?: string };
+      assert.equal(restaged.ok, true);
+      assert.equal(restaged.staging, "replaced");
+      return "y";
+    };
+    const code = await runCampaignRun(parsed, captured.io);
+    assert.equal(code, 3);
+
+    const campaignId = findCampaignId(captured.out);
+    const store = await openStore(harness.root, harness.stateDir, campaignId);
+    // The approval model refused: nothing was recorded against either digest.
+    assert.equal((await store.readApprovals()).length, 0);
+
+    const transcript = [...captured.out, ...captured.err].join("\n");
+    assert.match(transcript, /DIGEST_MISMATCH/);
+    // The honest recovery re-runs `run`, which re-prints the summary of the
+    // changed envelope and re-asks the one decision.
+    assert.ok(
+      transcript.includes(
+        `Recovery: quirks-campaign run --task QK-101 --campaign ${campaignId} --external-routing`,
+      ),
+      `recovery must re-run run, transcript:\n${transcript}`,
+    );
+    // Never coach a durable approve of an envelope whose summary the operator
+    // has not seen.
+    assert.ok(
+      !transcript.includes("quirks-campaign approve"),
+      `must not coach a blind approve, transcript:\n${transcript}`,
+    );
+  } finally {
+    harness.restore();
+  }
+});
+
 test("run --browser waits for the durable browser approval and then completes", async () => {
   const harness = await openRunHarness({ withRunnerConfig: true });
   try {
@@ -520,6 +581,91 @@ test("the dist CLI entry wires run to the fail-closed json refusal", async () =>
   assert.equal(payload.ok, false);
   assert.equal(payload.reason, "interactive_approval_required");
   assert.ok(payload.approveCommand.includes(payload.digest));
+});
+
+function journalFrame(id: string, type: string, evidence: Record<string, string>): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    id,
+    type,
+    at: "2026-07-23T00:00:00.000Z",
+    actor: "supervisor",
+    from: "running",
+    to: "running",
+    reason: type.replaceAll(".", "_"),
+    evidence,
+  });
+}
+
+test("pollEventTail tolerates a torn tail line and resumes once the frame completes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-journal-"));
+  const eventsFile = path.join(dir, "events.jsonl");
+  const frame1 = journalFrame("w0s", "wave.started", { wave: "0", taskIds: "QK-1" });
+  const frame2 = journalFrame("d1", "runner.dispatched", { jobId: "cmp:QK-1:implementer:1", profileId: "codex-standard" });
+  const frame3 = journalFrame("w0c", "wave.completed", { wave: "0", completedTaskIds: "QK-1" });
+
+  // A writer was interrupted mid-frame: the tail line is torn.
+  await writeFile(eventsFile, `${frame1}\n${frame2}\n{"schemaVersion":1,"id":"tor`, "utf8");
+  const state = createEventTailState(0);
+  const torn = await pollEventTail(eventsFile, state);
+  assert.equal(torn.warning, undefined, "a torn tail is tolerated, not surfaced");
+  assert.deepEqual(torn.lines, [
+    "wave 0 started: QK-1",
+    "job dispatched: cmp:QK-1:implementer:1 (profile codex-standard)",
+  ]);
+
+  // The writer finishes the frame: the next poll streams it and recovers.
+  await writeFile(eventsFile, `${frame1}\n${frame2}\n${frame3}\n`, "utf8");
+  const recovered = await pollEventTail(eventsFile, state);
+  assert.equal(recovered.warning, undefined);
+  assert.deepEqual(recovered.lines, ["wave 0 completed: QK-1"]);
+
+  // Nothing new: quiet poll.
+  const quiet = await pollEventTail(eventsFile, state);
+  assert.deepEqual(quiet, { lines: [] });
+});
+
+test("pollEventTail surfaces a warning only when the same frame stays unparseable across ticks", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-journal-"));
+  const eventsFile = path.join(dir, "events.jsonl");
+  const frame1 = journalFrame("w0s", "wave.started", { wave: "0", taskIds: "QK-1" });
+  await writeFile(eventsFile, `${frame1}\nnot-json-at-all\n`, "utf8");
+
+  const state = createEventTailState(0);
+  const first = await pollEventTail(eventsFile, state);
+  assert.deepEqual(first.lines, ["wave 0 started: QK-1"]);
+  assert.equal(first.warning, undefined);
+
+  let warning: string | undefined;
+  for (let tick = 2; tick <= TORN_TAIL_TICK_LIMIT; tick += 1) {
+    const poll = await pollEventTail(eventsFile, state);
+    assert.deepEqual(poll.lines, []);
+    warning = poll.warning;
+    if (tick < TORN_TAIL_TICK_LIMIT) assert.equal(warning, undefined, `no warning before tick ${TORN_TAIL_TICK_LIMIT}`);
+  }
+  assert.ok(warning, "the persistent unparseable frame must be surfaced");
+  assert.match(warning, /unparseable/);
+
+  // Once surfaced, streaming stays disabled instead of repeating the warning.
+  assert.deepEqual(await pollEventTail(eventsFile, state), { lines: [] });
+});
+
+test("pollEventTail surfaces a shrinking journal instead of re-streaming stale frames", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-journal-"));
+  const eventsFile = path.join(dir, "events.jsonl");
+  const frame1 = journalFrame("w0s", "wave.started", { wave: "0", taskIds: "QK-1" });
+  const frame2 = journalFrame("w0c", "wave.completed", { wave: "0", completedTaskIds: "QK-1" });
+  await writeFile(eventsFile, `${frame1}\n${frame2}\n`, "utf8");
+
+  const state = createEventTailState(0);
+  const streamed = await pollEventTail(eventsFile, state);
+  assert.equal(streamed.lines.length, 2);
+
+  await writeFile(eventsFile, `${frame1}\n`, "utf8");
+  const shrunk = await pollEventTail(eventsFile, state);
+  assert.deepEqual(shrunk.lines, []);
+  assert.ok(shrunk.warning, "a shrinking journal must be surfaced");
+  assert.match(shrunk.warning, /shrank/);
 });
 
 test("stateDirFor honors QUIRKS_STATE_DIR for the run composition", () => {
