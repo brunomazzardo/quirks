@@ -395,6 +395,27 @@ test("resume-candidate prefers the most recently updated non-terminal campaign",
   }
 });
 
+test("scripts/quirks-campaign wrapper produces the same output as the dist CLI entry", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const wrapperPath = path.resolve("scripts/quirks-campaign");
+  const distEntryPath = path.resolve("dist/src/cli/quirks-campaign.js");
+  const env = { ...process.env, QUIRKS_STATE_DIR: stateDir };
+
+  const viaWrapper = await execFileAsync(process.execPath, [wrapperPath, "resume-candidate", "--json"], {
+    cwd: root,
+    env,
+  });
+  const viaDist = await execFileAsync(process.execPath, [distEntryPath, "resume-candidate", "--json"], {
+    cwd: root,
+    env,
+  });
+
+  assert.notEqual(viaWrapper.stdout, "", "wrapper must run the CLI, not silently no-op");
+  assert.deepEqual(JSON.parse(viaWrapper.stdout), { ok: true, available: false, reason: "no_resumable_campaign" });
+  assert.equal(viaWrapper.stdout, viaDist.stdout);
+  assert.equal(viaWrapper.stderr, viaDist.stderr);
+});
+
 test("resume-candidate reports no_resumable_campaign for empty or terminal-only stores", async () => {
   const { root, stateDir } = await freshAcceptanceRepo();
   const previousStateDir = process.env.QUIRKS_STATE_DIR;

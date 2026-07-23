@@ -180,11 +180,14 @@ async function run(): Promise<number> {
   }
 }
 
-const isCliEntry =
-  process.argv[1] !== undefined && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
-
-if (isCliEntry) {
-  void run()
+/**
+ * CLI entry point. Runs the campaign CLI and records the exit code. Exported
+ * so thin launcher scripts (for example `scripts/quirks-campaign`) can invoke
+ * the CLI explicitly instead of relying on the argv[1] entry guard below,
+ * which is false when argv[1] is the launcher rather than this module.
+ */
+export function runQuirksCampaignCli(): Promise<void> {
+  return run()
     .then((code) => {
       process.exitCode = code;
     })
@@ -192,4 +195,11 @@ if (isCliEntry) {
       process.stderr.write(`${error instanceof Error ? error.message : "Unexpected failure"}\n`);
       process.exitCode = 1;
     });
+}
+
+const isCliEntry =
+  process.argv[1] !== undefined && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+
+if (isCliEntry) {
+  void runQuirksCampaignCli();
 }
