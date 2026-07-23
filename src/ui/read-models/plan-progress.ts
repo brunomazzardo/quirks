@@ -8,8 +8,10 @@ export interface UiPlanProgressV1 {
   plan: {
     path: string;
     commit: string;
-    taskNumber: number;
-    taskTitle: string;
+    /** Derived from the journaled step keys; null when no key names a plan task. */
+    taskNumber: number | null;
+    /** Plan-document task titles are not journaled; null unless real data records one. */
+    taskTitle: string | null;
   };
   execution: {
     jobId: string;
@@ -37,75 +39,158 @@ export interface UiPlanProgressV1 {
   source: "controller-journal" | "legacy-best-effort";
 }
 
+/**
+ * Mirrors one durable runner-progress journal observation
+ * (runner-progress-event-v1: binding + status/stage/step facts) plus the
+ * dispatch facts the campaign journal records for the job (agent label,
+ * runner kind, model). Every value the projection shows derives from these
+ * fields — nothing is invented here.
+ */
+export interface PlanProgressJournalEvent {
+  binding: {
+    jobId: string;
+    planPath: string;
+    planCommit: string;
+    allowedPlanTasks: readonly number[];
+  };
+  status: UiPlanProgressV1["execution"]["status"];
+  stage: UiPlanProgressV1["execution"]["stage"];
+  tddPhase: UiPlanProgressV1["execution"]["tddPhase"];
+  currentStepKey: string | null;
+  completedStepIds: readonly string[];
+  note: string | null;
+  workerReportedAt: string | null;
+  controllerObservedAt: string;
+  source: "worker" | "controller" | "legacy-superpowers-ledger";
+  agentLabel: string;
+  runnerKind: string;
+  model: string;
+}
+
 export interface PlanProgressInput {
   campaignId: string;
   taskId: string;
   refreshedAt: string;
-  journalEvent?: {
-    status: UiPlanProgressV1["execution"]["status"];
-    stage: UiPlanProgressV1["execution"]["stage"];
-    tddPhase: UiPlanProgressV1["execution"]["tddPhase"];
-    currentStepKey: string | null;
-    note: string | null;
-    workerReportedAt: string | null;
-    controllerObservedAt: string;
-    completedStepIds: readonly string[];
-    jobId: string;
-    agentLabel: string;
-    runnerKind: string;
-    model: string;
-  };
+  journalEvent?: PlanProgressJournalEvent;
 }
 
-const DEFAULT_STEPS = [
-  { key: "task-14/step-1", number: 1, label: "Write failing tests" },
-  { key: "task-14/step-2", number: 2, label: "Build and verify supervisor is missing" },
-  { key: "task-14/step-3", number: 3, label: "Implement supervisor and recovery" },
-] as const;
+export type PlanProgressProjectionResult =
+  | { available: true; projection: UiPlanProgressV1 }
+  | { available: false; reason: "no-journal-progress" };
 
-export function buildPlanProgressProjection(input: PlanProgressInput): UiPlanProgressV1 {
+const STEP_KEY_PATTERN = /^task-(\d+)\/step-(\d+)$/;
+const MAX_AGE_SECONDS = 31_536_000;
+
+function parseStepKey(key: string): { task: number; step: number } | undefined {
+  const match = STEP_KEY_PATTERN.exec(key);
+  if (!match) return undefined;
+  return { task: Number(match[1]), step: Number(match[2]) };
+}
+
+/**
+ * The journal names steps only by key (`task-N/step-M`); the plan document's
+ * step wording is not journaled, so the label is a plain restatement of the
+ * key — derived, never invented.
+ */
+function stepLabel(key: string): string {
+  const parsed = parseStepKey(key);
+  return parsed ? `Plan task ${parsed.task} · step ${parsed.step}` : key;
+}
+
+function orderedStepKeys(event: PlanProgressJournalEvent): string[] {
+  const keys = [...event.completedStepIds];
+  if (event.currentStepKey !== null && !keys.includes(event.currentStepKey)) {
+    keys.push(event.currentStepKey);
+  }
+  const parseable = keys.filter((key) => parseStepKey(key) !== undefined);
+  const opaque = keys.filter((key) => parseStepKey(key) === undefined);
+  parseable.sort((left, right) => {
+    const a = parseStepKey(left)!;
+    const b = parseStepKey(right)!;
+    return a.task !== b.task ? a.task - b.task : a.step - b.step;
+  });
+  return [...new Set([...parseable, ...opaque])];
+}
+
+function deriveSteps(event: PlanProgressJournalEvent): UiPlanProgressV1["steps"] {
+  const completed = new Set(event.completedStepIds);
+  return orderedStepKeys(event).map((key, index) => {
+    const isCompleted = completed.has(key);
+    const status = isCompleted
+      ? event.status === "reported_complete"
+        ? ("reported_complete" as const)
+        : ("reviewed" as const)
+      : key === event.currentStepKey
+        ? ("active" as const)
+        : ("pending" as const);
+    return {
+      key,
+      number: index + 1,
+      label: stepLabel(key),
+      status,
+      reportedAt: isCompleted ? event.workerReportedAt : null,
+      reviewedAt: status === "reviewed" ? event.controllerObservedAt : null,
+    };
+  });
+}
+
+function deriveTaskNumber(event: PlanProgressJournalEvent): number | null {
+  if (event.currentStepKey !== null) {
+    const parsed = parseStepKey(event.currentStepKey);
+    if (parsed) return parsed.task;
+  }
+  for (let index = event.completedStepIds.length - 1; index >= 0; index -= 1) {
+    const parsed = parseStepKey(event.completedStepIds[index]!);
+    if (parsed) return parsed.task;
+  }
+  if (event.binding.allowedPlanTasks.length === 1) return event.binding.allowedPlanTasks[0]!;
+  return null;
+}
+
+function deriveAgeSeconds(refreshedAt: string, event: PlanProgressJournalEvent): number {
+  const basis = Date.parse(event.workerReportedAt ?? event.controllerObservedAt);
+  const refreshed = Date.parse(refreshedAt);
+  if (Number.isNaN(basis) || Number.isNaN(refreshed)) return 0;
+  const seconds = Math.floor((refreshed - basis) / 1000);
+  return Math.min(Math.max(seconds, 0), MAX_AGE_SECONDS);
+}
+
+/**
+ * Projects plan progress from the journal observation it is fed. Without a
+ * journal event there is nothing to project: the result is the explicit
+ * unavailable state, never a fabricated plan.
+ */
+export function buildPlanProgressProjection(input: PlanProgressInput): PlanProgressProjectionResult {
   const event = input.journalEvent;
-  const completed = new Set(event?.completedStepIds ?? []);
-  const currentKey = event?.currentStepKey ?? null;
+  if (!event) return { available: false, reason: "no-journal-progress" };
   const projection: UiPlanProgressV1 = {
     schemaVersion: 1,
     refreshedAt: input.refreshedAt,
     campaignId: input.campaignId,
     taskId: input.taskId,
     plan: {
-      path: "docs/superpowers/plans/2026-07-21-quirks-campaign-control-plane.md",
-      commit: "a".repeat(40),
-      taskNumber: 14,
-      taskTitle: "Campaign supervisor orchestration and crash recovery",
+      path: event.binding.planPath,
+      commit: event.binding.planCommit,
+      taskNumber: deriveTaskNumber(event),
+      taskTitle: null,
     },
     execution: {
-      jobId: event?.jobId ?? "job-unassigned",
-      agentLabel: event?.agentLabel ?? "unassigned",
-      runnerKind: event?.runnerKind ?? "cursor",
-      model: event?.model ?? "composer-2.5",
-      status: event?.status ?? "queued",
-      stage: event?.stage ?? "setup",
-      tddPhase: event?.tddPhase ?? null,
-      currentStepKey: currentKey,
-      note: event?.note ?? null,
-      workerReportedAt: event?.workerReportedAt ?? null,
-      controllerObservedAt: event?.controllerObservedAt ?? input.refreshedAt,
-      progressAgeSeconds: 0,
+      jobId: event.binding.jobId,
+      agentLabel: event.agentLabel,
+      runnerKind: event.runnerKind,
+      model: event.model,
+      status: event.status,
+      stage: event.stage,
+      tddPhase: event.tddPhase,
+      currentStepKey: event.currentStepKey,
+      note: event.note,
+      workerReportedAt: event.workerReportedAt,
+      controllerObservedAt: event.controllerObservedAt,
+      progressAgeSeconds: deriveAgeSeconds(input.refreshedAt, event),
     },
-    steps: DEFAULT_STEPS.map((step) => ({
-      ...step,
-      status: completed.has(step.key)
-        ? event?.status === "reported_complete"
-          ? "reported_complete"
-          : "reviewed"
-        : currentKey === step.key
-          ? "active"
-          : "pending",
-      reportedAt: completed.has(step.key) ? event?.workerReportedAt ?? null : null,
-      reviewedAt: null,
-    })),
+    steps: deriveSteps(event),
     completionAuthority: "controller",
-    source: event ? "controller-journal" : "legacy-best-effort",
+    source: event.source === "legacy-superpowers-ledger" ? "legacy-best-effort" : "controller-journal",
   };
-  return validateSchema<UiPlanProgressV1>("ui-plan-progress-v1", projection);
+  return { available: true, projection: validateSchema<UiPlanProgressV1>("ui-plan-progress-v1", projection) };
 }

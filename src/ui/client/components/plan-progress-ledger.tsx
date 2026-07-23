@@ -21,9 +21,20 @@ export function PlanProgressLedger({ projection }: { projection: UiPlanProgressV
     <section aria-labelledby="plan-progress-heading" className="workspace-panel plan-progress-ledger">
       <div className="workspace-panel-body">
         <h2 id="plan-progress-heading">Plan progress</h2>
-        <p>
-          <strong>{projection.plan.taskTitle}</strong> ({projection.plan.path})
-        </p>
+        {projection.plan.taskTitle !== null ? (
+          <p>
+            <strong>{projection.plan.taskTitle}</strong> ({projection.plan.path})
+          </p>
+        ) : (
+          <p>
+            <strong>{projection.plan.path}</strong>
+          </p>
+        )}
+        {projection.plan.taskNumber !== null ? (
+          <p className="cell-note">{`Plan task ${projection.plan.taskNumber} at ${projection.plan.commit}`}</p>
+        ) : (
+          <p className="cell-note">{`Plan at ${projection.plan.commit}`}</p>
+        )}
         <p>
           Agent {projection.execution.agentLabel} · {projection.execution.runnerKind} · {projection.execution.model}
         </p>

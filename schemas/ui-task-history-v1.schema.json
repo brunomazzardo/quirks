@@ -53,6 +53,7 @@
       "additionalProperties": false,
       "required": ["path", "commit", "sha", "url", "availability", "actions", "identities"],
       "properties": {
+        "kind": { "enum": ["spec", "plan", "review", "other"] },
         "path": { "$ref": "#/$defs/repositoryPath" },
         "commit": { "$ref": "#/$defs/gitCommit" },
         "sha": { "$ref": "#/$defs/gitCommit" },
