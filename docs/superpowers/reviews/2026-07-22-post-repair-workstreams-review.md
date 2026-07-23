@@ -65,6 +65,12 @@ Six tasks implemented in four parallel worktrees, each independently reviewed wi
 
 Carried notes for QK-VIS-003/QK-UI-006: artifact-ref `kind` projection gap (typed v5 file cards), v3 dark-topbar vs shared-shell drift, §6.A prompt-surface plan amendment, leaked-steal-token dead-pid self-heal, run-tests orphan-dist pruning.
 
+## Wave 2 — ergonomics and handoff deltas (2026-07-23 night)
+
+- **QK-DX-001** (`merge dd9367a`): `quirks-campaign run` — one command, one digest-bound decision, streamed events, recovery commands on every failure path. Review ACCEPT: approval authority verified untouched; the mid-prompt re-staging race was executed live and refused with zero approvals recorded; fix round made refused-envelope recovery re-run `run` instead of coaching a blind approve, and the journal tail reader torn-read tolerant.
+- **QK-UI-006** (`merge dfffb1d`): typed artifact-kind provenance cards + Governing-files panel; `buildPlanProgressProjection` fully de-fabricated (derives from real journal events, honest nulls for unjournaled facts, mutation-verified at source and compiled layers); preflight topbar divergence documented for the VIS-003 record. Review ACCEPT, minors only (per-step timestamp attribution and reviewed-status inference noted for follow-up).
+- Animation opportunity sweep recorded (`docs/superpowers/design/2026-07-23-animation-opportunities.md`): four gated recipes, six explicit rejections; ledgered as QK-UI-008 (motion tokens + press feedback) and QK-UI-009 (occasional-surface entrances).
+
 ## Merged-main verification
 
 - After QK-RUN-003 + QK-CTL-005: `pnpm check` on `main` — 535 tests, 531 pass, 0 fail, 4 gated skips.
