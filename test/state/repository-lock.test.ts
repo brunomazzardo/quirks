@@ -6,6 +6,23 @@ import test from "node:test";
 import { canonicalJson } from "../../src/core/canonical-json.js";
 import { QuirksError } from "../../src/core/errors.js";
 import { RepositoryLock } from "../../src/state/repository-lock.js";
+import type { RepositoryLockRecord } from "../../src/state/types.js";
+
+// A pid far above any platform pid_max: process.kill(pid, 0) throws ESRCH.
+const DEAD_PID = 99_999_999;
+
+function lockRecord(overrides: Partial<RepositoryLockRecord> = {}): RepositoryLockRecord {
+  return {
+    schemaVersion: 1,
+    scope: "local-clone",
+    campaignId: "C-holder",
+    pid: DEAD_PID,
+    hostname: os.hostname(),
+    acquiredAt: "2026-07-23T00:00:00.000Z",
+    heartbeatAt: "2026-07-23T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 test("permits one local writer and never calls the lock global", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-lock-"));
@@ -53,6 +70,63 @@ test("returns stale lock metadata without removing it", async () => {
     },
   );
   await access(lockPath);
+});
+
+test("steals a dead-holder lock on the same host and reports the stale record", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-lock-"));
+  const lockPath = path.join(dir, "lock");
+  const stale = lockRecord({ campaignId: "C-dead" });
+  await writeFile(lockPath, `${canonicalJson(stale)}\n`, { mode: 0o600 });
+
+  const stolen: RepositoryLockRecord[] = [];
+  const handle = await RepositoryLock.acquire(lockPath, {
+    campaignId: "C-new",
+    onSteal: (record) => {
+      stolen.push(record);
+    },
+  });
+
+  assert.equal(handle.record.campaignId, "C-new");
+  assert.deepEqual(stolen, [stale], "the steal must report the dead holder it displaced");
+  const contents = await readFile(lockPath, "utf8");
+  assert.match(contents, /C-new/);
+  assert.doesNotMatch(contents, /C-dead/);
+  await handle.release();
+});
+
+test("does not steal a lock whose holder is alive on this host", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-lock-"));
+  const lockPath = path.join(dir, "lock");
+  const alive = lockRecord({ campaignId: "C-alive", pid: process.pid });
+  const content = `${canonicalJson(alive)}\n`;
+  await writeFile(lockPath, content, { mode: 0o600 });
+
+  const stolen: RepositoryLockRecord[] = [];
+  await assert.rejects(
+    () => RepositoryLock.acquire(lockPath, {
+      campaignId: "C-new",
+      onSteal: (record) => {
+        stolen.push(record);
+      },
+    }),
+    /LOCAL_LOCK_HELD/,
+  );
+  assert.deepEqual(stolen, []);
+  assert.equal(await readFile(lockPath, "utf8"), content, "an alive holder's lock file must be untouched");
+});
+
+test("does not steal a dead-pid lock recorded for a different host", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-lock-"));
+  const lockPath = path.join(dir, "lock");
+  const foreign = lockRecord({ campaignId: "C-foreign", hostname: "another-host" });
+  const content = `${canonicalJson(foreign)}\n`;
+  await writeFile(lockPath, content, { mode: 0o600 });
+
+  await assert.rejects(
+    () => RepositoryLock.acquire(lockPath, { campaignId: "C-new" }),
+    /LOCAL_LOCK_HELD/,
+  );
+  assert.equal(await readFile(lockPath, "utf8"), content, "pid liveness cannot be judged for another host");
 });
 
 test("updates heartbeatAt on heartbeat", async () => {

@@ -9,6 +9,22 @@ import type { RepositoryLockHandle, RepositoryLockRecord } from "./types.js";
 
 export interface AcquireRepositoryLockOptions {
   campaignId: string;
+  /**
+   * Invoked after a dead-holder lock (same hostname, pid no longer alive) has
+   * been stolen, with the displaced record. Callers use this to journal the
+   * steal durably before the run proceeds.
+   */
+  onSteal?: (stale: RepositoryLockRecord) => void | Promise<void>;
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: the process exists but belongs to another user - treat as alive.
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
 }
 
 function lockDetails(record: RepositoryLockRecord): Readonly<Record<string, string>> {
@@ -163,23 +179,42 @@ export class RepositoryLock {
 
     await mkdir(path.dirname(lockPath), { recursive: true });
 
-    try {
-      const handle = await open(lockPath, "wx", 0o600);
+    const tryCreate = async (): Promise<boolean> => {
       try {
-        await writeAll(handle, `${canonicalJson(record)}\n`);
-        await handle.sync();
-      } finally {
-        await handle.close();
+        const handle = await open(lockPath, "wx", 0o600);
+        try {
+          await writeAll(handle, `${canonicalJson(record)}\n`);
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        return true;
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+        return false;
       }
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+    };
 
-      const existing = await readLockRecord(lockPath);
-      throw new QuirksError(
+    const heldBy = (existing: RepositoryLockRecord): QuirksError =>
+      new QuirksError(
         "PROTOCOL_VIOLATION",
         `LOCAL_LOCK_HELD: repository lock is held by campaign ${existing.campaignId}`,
         lockDetails(existing),
       );
+
+    if (!(await tryCreate())) {
+      const existing = await readLockRecord(lockPath);
+      // Liveness can only be judged for pids on this host; a foreign hostname
+      // (or an alive pid) keeps the lock with its recorded holder.
+      const holderIsDead = existing.hostname === record.hostname && !isProcessAlive(existing.pid);
+      if (!holderIsDead) throw heldBy(existing);
+
+      await rm(lockPath, { force: true });
+      if (!(await tryCreate())) {
+        // A concurrent acquirer won the steal race; surface its record.
+        throw heldBy(await readLockRecord(lockPath));
+      }
+      await options.onSteal?.(existing);
     }
 
     return createHandle(lockPath, record);

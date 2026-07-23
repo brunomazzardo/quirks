@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { canonicalJson } from "../../src/core/canonical-json.js";
 import { QuirksError } from "../../src/core/errors.js";
 import { consumeApprovalToken, createApprovalChallenge } from "../../src/campaign/approval.js";
 import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.js";
@@ -944,6 +945,69 @@ test("refuses dispatch when workflow skills are absent instead of skipping the f
   const status = await supervisor.status();
   assert.deepEqual(status.claimedTaskIds, [], "no task may be claimed with unverified instructions");
   assert.deepEqual(status.dispatchedJobs, [], "no brief may be dispatched with unverified instructions");
+});
+
+async function assertLockReleased(lockPath: string): Promise<void> {
+  const probe = await RepositoryLock.acquire(lockPath, { campaignId: "cmp-lock-probe" });
+  await probe.release();
+}
+
+test("prepareRun releases the repository lock when claim validation fails", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-1", { status: "proposed" });
+  const context = await testContext({ source });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /QK-1 is proposed/);
+  await assertLockReleased(context.lockPath);
+});
+
+test("prepareRun releases the repository lock when revision drift refuses dispatch", async () => {
+  const context = await testContext({
+    taskRevisions: { "QK-1": `sha256:${"5".repeat(64)}` },
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /TASK_REVISION_DRIFT/);
+  await assertLockReleased(context.lockPath);
+});
+
+test("a dispatch failure after prepareRun releases the repository lock", async () => {
+  const context = await testContext({ worktree: new ThrowingWorktreePort("QK-1") });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /worktree provisioning failed/);
+  await assertLockReleased(context.lockPath);
+});
+
+test("steals a dead-holder repository lock on the same host and journals the steal", async () => {
+  const context = await testContext();
+  await writeFile(
+    context.lockPath,
+    `${canonicalJson({
+      schemaVersion: 1,
+      scope: "local-clone",
+      campaignId: "cmp-dead-holder",
+      pid: 99_999_999,
+      hostname: os.hostname(),
+      acquiredAt: "2026-07-23T00:00:00.000Z",
+      heartbeatAt: "2026-07-23T00:00:00.000Z",
+    })}\n`,
+    { mode: 0o600 },
+  );
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.startApproved();
+
+  const steal = (await context.store.readEvents()).find((event) => event.type === "lock.stolen");
+  assert.ok(steal, "expected a lock.stolen journal event");
+  assert.equal(steal.evidence["staleCampaignId"], "cmp-dead-holder");
+  assert.equal(steal.evidence["stalePid"], "99999999");
+  assert.equal(steal.evidence["staleHostname"], os.hostname());
+
+  const status = await supervisor.status();
+  assert.equal(status.claimedTaskIds.includes("QK-1"), true, "the run proceeds after the steal");
+  await supervisor.stop();
 });
 
 test("TASK_REVISION_DRIFT: a stale approved revision refuses dispatch before any claim", async () => {
