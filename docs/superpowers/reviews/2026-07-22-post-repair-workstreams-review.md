@@ -37,6 +37,12 @@ Date: 2026-07-22. Process: each branch was implemented TDD-first by a dedicated 
 - Re-review: ACCEPT — live injection repros re-run and neutralized, merge-revert scan clean (zero WS3 semantics lost). Branch gates: 652 tests, 647 pass, 0 fail, 5 known skips (4 paid-gated + 1 opt-in eval runner); Playwright 31/31.
 - Ledgered debt: workspace prompt port passes empty profiles (honest `independence-unavailable` in UI adversarial recipes) pending envelope-fact exposure; `buildPlanProgressProjection` fabricated constants (carried from QK-UI-005).
 
+## QK-CLI-001 — CLI wrapper and workspace keep-alive fixes (`merge 77d36bb`, 2026-07-23)
+
+- Found live while testing the standalone UI: `scripts/quirks-campaign` was a silent no-op (lexical argv[1] entry guard never matched via wrapper import), and `ui open` had no scripted keep-alive contract.
+- Review: ACCEPT after one fix round — explicit `runQuirksCampaignCli()` wrapper invocation with byte-parity tests on stdout/stderr/exit codes including nonzero paths; `ui open --stay` with clean SIGINT/SIGTERM shutdown; entry guard realpaths both sides (macOS `/var → /private/var`), verified end-to-end through a real bin symlink. Branch gate: 657 tests, 652 pass, 0 fail, 5 known skips.
+- Ledgered debt from the same session's live campaign staging: production `ui open` wires no PreflightReadPort so browser approval 503s (QK-UI-007); preflight is create-once and silently keeps a stale envelope on re-staging (QK-CTL-006); claude `--effort` verbatim passthrough (QK-RUN-004).
+
 ## Merged-main verification
 
 - After QK-RUN-003 + QK-CTL-005: `pnpm check` on `main` — 535 tests, 531 pass, 0 fail, 4 gated skips.
