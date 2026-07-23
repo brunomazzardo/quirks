@@ -41,10 +41,33 @@ export interface NativeTaskCandidate {
   statusDetail: null;
 }
 
+/**
+ * One optional visual artifact that materially governs a proposal's result.
+ * Tracked artifacts are commit-pinned repository files; local artifacts stay
+ * honest local paths until a consuming task preserves them.
+ */
+export interface VisualReferenceInput {
+  id: string;
+  path: string;
+  availability: "tracked" | "local";
+  commit?: string;
+  format: "interactive-html" | "png" | "screenshot-set" | "diagram";
+  governs: readonly string[];
+  planTasks: readonly number[];
+  verification: "context-only" | "structural" | "screenshot" | "structural-and-screenshot" | "manual";
+}
+
+/** One approved queue task, its immutable plan mapping, and any governing visuals. */
+export interface PlannedTaskProposal {
+  task: NativeTaskCandidate;
+  plan: PlannedTaskRef;
+  visualReferences?: readonly VisualReferenceInput[];
+}
+
 export interface MaterializePlannedTasksInput {
   source: TaskSource;
   idempotencyNamespace: string;
-  proposals: readonly { task: NativeTaskCandidate; plan: PlannedTaskRef }[];
+  proposals: readonly PlannedTaskProposal[];
 }
 
 export interface MaterializedTask {

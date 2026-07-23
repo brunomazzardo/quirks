@@ -7,6 +7,11 @@ test("writing-tasks skill blocks direct JSON edits", async () => {
   assert.equal(result.skillBlocks, true);
 });
 
+test("writing tasks preserves visual bindings and separates fidelity", async () => {
+  assert.equal((await evaluatePressureScenario("writing-tasks", "drop-plan-visual-binding")).skillBlocks, true);
+  assert.equal((await evaluatePressureScenario("writing-tasks", "treat-layout-test-as-fidelity")).skillBlocks, true);
+});
+
 test("writing-tasks skill blocks every recorded baseline violation", async () => {
   const scenarios = await loadPressureScenarios("writing-tasks");
   for (const scenario of scenarios) {

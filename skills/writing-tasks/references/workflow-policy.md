@@ -18,6 +18,10 @@
 
 - Record compact `sourceRefs` only—never paste plan or spec bodies into task JSON.
 
+## Visual-reference propagation
+
+For each task proposal, inspect the referenced plan tasks for a Visual references section. Keep visual references optional. When present, copy the governed decisions into bounded acceptance criteria, attach tracked artifacts as commit-pinned `other` sourceRefs, and keep the exact numbered plan refs. If a fidelity-bearing reference defines reproduction rules, propose a distinct verification task depending on every affected implementation task. Responsive fit, accessibility, security, and performance checks do not by themselves prove visual fidelity.
+
 ## Plan partition boundaries
 
 - Partition committed plans by independently schedulable or reviewable boundaries, never one queue task per plan heading.

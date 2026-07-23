@@ -24,6 +24,10 @@ When approved brainstorming hands off committed specifications and plans, materi
 3. Propose each task through TaskSource authority with stable idempotency keys and one immutable plan ref per numbered plan task, pinned to the exact plan commit. Do not stop after writing plan documents: brainstorming output is incomplete until the durable task proposal(s) exist.
 4. Read every created task back, verify its immutable source refs and workflow policy, and return the created task IDs with their immutable plan mappings as the terminal output.
 
+## Visual-reference propagation
+
+For each task proposal, inspect the referenced plan tasks for a Visual references section. Keep visual references optional. When present, copy the governed decisions into bounded acceptance criteria, attach tracked artifacts as commit-pinned `other` sourceRefs, and keep the exact numbered plan refs. If a fidelity-bearing reference defines reproduction rules, propose a distinct verification task depending on every affected implementation task. Responsive fit, accessibility, security, and performance checks do not by themselves prove visual fidelity.
+
 ## Reference
 
 See `references/workflow-policy.md` for design-gate and dependency checks, and `../../references/task-mutation-requests.md` for the transient request-file schema, operation match, and acknowledgement cleanup rule.

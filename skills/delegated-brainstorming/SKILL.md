@@ -23,6 +23,12 @@ Delegated mode replaces human checkpoints only with the exact campaign approval 
 
 Brainstorming does not finish when prose artifacts are written. Its successful terminal output is an approved specification, one or more committed plans, one or more durable Quirks task records created through the writing-tasks workflow, and the created task IDs returned to the operator. Stopping after the specification and plan documents is a violation. Invoke the writing-tasks skill to propose an approved task partition from the committed plan set; do not expand the approved scope while partitioning tasks.
 
+## Optional visual references
+
+Visual references are optional. When no visual artifact materially governs the design, require none and add no visual-reference section.
+
+When an approved mock, screenshot, diagram, or comparison governs a material decision, the specification and plan must include a Visual references section naming its availability, exact path, format, governed decisions, consuming plan tasks, and verification method. Never discover references by scanning ignored brainstorm directories. Local references remain honest local paths until a consuming task preserves them; tracked references use full commit-pinned paths.
+
 ## Review independence
 
 - The principal architect drafts specifications and plans.
