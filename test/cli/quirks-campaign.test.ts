@@ -395,6 +395,142 @@ async function seedStoredCampaign(options: {
   });
 }
 
+test("start resets a stale integration branch to the envelope base when nothing was dispatched", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const preflight = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string; git: { baseCommit: string } } };
+    assert.equal(preflight.ok, true);
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: preflight.campaignId,
+      digest: preflight.envelope.digest,
+      json: true,
+    });
+
+    // A previous failed start left the integration branch at a stale base.
+    await writeFile(path.join(root, "drift.txt"), "drift\n", "utf8");
+    await execFileAsync("git", ["-C", root, "add", "drift.txt"]);
+    await execFileAsync("git", ["-C", root, "commit", "-m", "post-preflight drift"]);
+    const { stdout: staleTip } = await execFileAsync("git", ["-C", root, "rev-parse", "HEAD"]);
+    const branch = `quirks/${preflight.campaignId}/integration`;
+    await execFileAsync("git", ["-C", root, "branch", branch, staleTip.trim()]);
+
+    const start = (await runCampaignCommand({
+      command: "start",
+      campaignId: preflight.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; outcome?: { status: string } };
+    assert.equal(start.ok, true);
+    assert.equal(start.outcome?.status, "completed");
+
+    const { stdout: branchTip } = await execFileAsync("git", ["-C", root, "rev-parse", branch]);
+    assert.equal(branchTip.trim(), preflight.envelope.git.baseCommit);
+
+    const context = await loadProjectContext(root, { mode: "inspection" });
+    const store = await CampaignStore.open(stateDir, context.repositoryId, preflight.campaignId);
+    const reset = (await store.readEvents()).find((event) => event.type === "integration.reset");
+    assert.ok(reset, "expected an integration.reset journal event");
+    assert.equal(reset.evidence["branch"], branch);
+    assert.equal(reset.evidence["fromCommit"], staleTip.trim());
+    assert.equal(reset.evidence["toCommit"], preflight.envelope.git.baseCommit);
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
+test("start refuses to reset a mismatched integration branch once jobs were dispatched", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const preflight = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string; git: { baseCommit: string } } };
+    assert.equal(preflight.ok, true);
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: preflight.campaignId,
+      digest: preflight.envelope.digest,
+      json: true,
+    });
+    const firstStart = (await runCampaignCommand({
+      command: "start",
+      campaignId: preflight.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; dispatchedJobs: unknown[] };
+    assert.equal(firstStart.ok, true);
+    assert.ok(firstStart.dispatchedJobs.length >= 1);
+
+    // Commit everything the first start left behind (task briefs) plus fresh
+    // drift so the second start reaches the integration-branch validation.
+    await writeFile(path.join(root, "drift.txt"), "drift\n", "utf8");
+    await execFileAsync("git", ["-C", root, "add", "-A"]);
+    await execFileAsync("git", ["-C", root, "commit", "-m", "post-dispatch drift"]);
+    const { stdout: staleTip } = await execFileAsync("git", ["-C", root, "rev-parse", "HEAD"]);
+    const branch = `quirks/${preflight.campaignId}/integration`;
+    await execFileAsync("git", ["-C", root, "branch", "-f", branch, staleTip.trim()]);
+
+    await assert.rejects(
+      () => runCampaignCommand({
+        command: "start",
+        campaignId: preflight.campaignId,
+        singleWave: false,
+        json: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /INTEGRATION_BRANCH_MISMATCH/);
+        assert.ok(error.message.includes(branch), "error must name the branch");
+        assert.ok(error.message.includes(staleTip.trim()), "error must include the actual commit");
+        assert.ok(error.message.includes(preflight.envelope.git.baseCommit), "error must include the expected commit");
+        assert.ok(
+          error.message.includes(`git branch -f ${branch} ${preflight.envelope.git.baseCommit}`),
+          "error must include the exact remediation",
+        );
+        return true;
+      },
+    );
+
+    // The branch stays where it was: evidence for the operator, never reset.
+    const { stdout: branchTip } = await execFileAsync("git", ["-C", root, "rev-parse", branch]);
+    assert.equal(branchTip.trim(), staleTip.trim());
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
 test("resume-candidate returns the paused campaign with its last event", async () => {
   const { root, stateDir } = await freshAcceptanceRepo();
   const previousStateDir = process.env.QUIRKS_STATE_DIR;

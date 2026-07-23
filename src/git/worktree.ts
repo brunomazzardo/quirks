@@ -4,7 +4,7 @@ import { QuirksError } from "../core/errors.js";
 import { inspectGit } from "../campaign/git-inspect.js";
 import { resolveAppPaths } from "../state/app-paths.js";
 import { writeJsonAtomic } from "../state/atomic-file.js";
-import type { GitWorktreePort } from "../campaign/ports.js";
+import type { EnsureIntegrationBranchInput, GitWorktreePort } from "../campaign/ports.js";
 import { runGit, runGitInWorktree } from "./argv.js";
 import type { GitWorktreeRecord, GitWorktreeStore } from "./types.js";
 
@@ -66,12 +66,7 @@ export class GitWorktreeManager implements GitWorktreePort {
     return manager;
   }
 
-  async ensureIntegrationBranch(input: {
-    repositoryRoot: string;
-    campaignId: string;
-    baseCommit: string;
-    campaignBranch: string;
-  }): Promise<{ branch: string; commit: string }> {
+  async ensureIntegrationBranch(input: EnsureIntegrationBranchInput): Promise<{ branch: string; commit: string }> {
     if (input.baseCommit !== this.options.baseCommit) {
       throw new QuirksError("PROTOCOL_VIOLATION", "Integration branch base commit mismatch");
     }
@@ -82,9 +77,34 @@ export class GitWorktreeManager implements GitWorktreePort {
     }
 
     const head = await runGit(input.repositoryRoot, ["rev-parse", input.campaignBranch]);
-    const commit = head.stdout.trim();
+    let commit = head.stdout.trim();
     if (commit !== input.baseCommit) {
-      throw new QuirksError("PROTOCOL_VIOLATION", "Integration branch points at wrong commit");
+      if (input.recovery?.resetOnMismatch) {
+        // A stale tip from a failed start is disposable while nothing was
+        // dispatched: reset it to the approved base and report the move.
+        await runGit(input.repositoryRoot, ["branch", "-f", input.campaignBranch, input.baseCommit]);
+        await input.recovery.onReset?.({
+          branch: input.campaignBranch,
+          fromCommit: commit,
+          toCommit: input.baseCommit,
+        });
+        commit = input.baseCommit;
+      } else {
+        const remediation = `git branch -f ${input.campaignBranch} ${input.baseCommit}`;
+        throw new QuirksError(
+          "PROTOCOL_VIOLATION",
+          `INTEGRATION_BRANCH_MISMATCH: integration branch ${input.campaignBranch} points at ${commit} but the ` +
+            `approved envelope expects ${input.baseCommit}. Inspect the divergence with: ` +
+            `git log ${input.baseCommit}..${commit}. If those commits are disposable, run: ${remediation} ` +
+            "and retry start; otherwise re-run preflight to stage a new campaign from the current base.",
+          {
+            branch: input.campaignBranch,
+            actualCommit: commit,
+            expectedCommit: input.baseCommit,
+            remediation,
+          },
+        );
+      }
     }
 
     await this.persist({

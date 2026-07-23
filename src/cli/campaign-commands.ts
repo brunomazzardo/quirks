@@ -46,7 +46,31 @@ async function supervisorContext(store: CampaignStore, repositoryRoot: string) {
   const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
   const source = await createTaskSource(context);
   const outbox = SyncOutbox.open(store.syncOutboxFile);
-  const runtime = await createCampaignRuntime(envelope, repositoryRoot, { mode: "real" });
+  // A stale integration branch from a failed start is disposable only while
+  // the campaign has never dispatched a job; afterwards it may carry real
+  // work and a mismatch must stay a hard, remediation-carrying error.
+  const state = await store.readState();
+  const hasDispatchedJobs = (await store.readEvents()).some((event) => event.type === "runner.dispatched");
+  const runtime = await createCampaignRuntime(envelope, repositoryRoot, {
+    mode: "real",
+    integrationRecovery: {
+      resetOnMismatch: !hasDispatchedJobs,
+      onReset: async ({ branch, fromCommit, toCommit }) => {
+        const at = new Date().toISOString();
+        await store.appendEvent({
+          schemaVersion: 1,
+          id: `integration:reset:${at}`,
+          type: "integration.reset",
+          at,
+          actor: "control-plane",
+          from: state.status,
+          to: state.status,
+          reason: "stale_integration_branch_reset",
+          evidence: { branch, fromCommit, toCommit },
+        });
+      },
+    },
+  });
   return {
     store,
     source,
@@ -186,29 +210,33 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
       const ctx = await supervisorContext(store, repositoryRoot);
       try {
         const supervisor = await CampaignSupervisor.open(ctx);
-        if (parsed.singleWave) {
-          await supervisor.startApproved();
+        try {
+          if (parsed.singleWave) {
+            await supervisor.startApproved();
+            const status = await supervisor.status();
+            return {
+              ok: true,
+              campaignId: parsed.campaignId,
+              claimedTaskIds: status.claimedTaskIds,
+              dispatchedJobs: status.dispatchedJobs,
+              localCoordinationOnly: true,
+            };
+          }
+          const outcome = await supervisor.runToCompletion();
           const status = await supervisor.status();
-          await supervisor.stop();
           return {
             ok: true,
             campaignId: parsed.campaignId,
             claimedTaskIds: status.claimedTaskIds,
             dispatchedJobs: status.dispatchedJobs,
+            outcome,
             localCoordinationOnly: true,
           };
+        } finally {
+          // Release the repository lock on success and on every failure path
+          // alike; a failed start must be immediately retryable.
+          await supervisor.stop();
         }
-        const outcome = await supervisor.runToCompletion();
-        const status = await supervisor.status();
-        await supervisor.stop();
-        return {
-          ok: true,
-          campaignId: parsed.campaignId,
-          claimedTaskIds: status.claimedTaskIds,
-          dispatchedJobs: status.dispatchedJobs,
-          outcome,
-          localCoordinationOnly: true,
-        };
       } finally {
         await disposeTaskSource(ctx.source);
       }

@@ -1,13 +1,12 @@
 import { QuirksError } from "../core/errors.js";
+import type { EnsureIntegrationBranchInput } from "../campaign/ports.js";
 import type { GitWorktreeManager } from "./worktree.js";
 import { runGit } from "./argv.js";
 
-export async function ensureCampaignIntegrationBranch(manager: GitWorktreeManager, input: {
-  repositoryRoot: string;
-  campaignId: string;
-  baseCommit: string;
-  campaignBranch: string;
-}): Promise<{ branch: string; commit: string }> {
+export async function ensureCampaignIntegrationBranch(
+  manager: GitWorktreeManager,
+  input: EnsureIntegrationBranchInput,
+): Promise<{ branch: string; commit: string }> {
   return manager.ensureIntegrationBranch(input);
 }
 
