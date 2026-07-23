@@ -47,6 +47,13 @@ Date: 2026-07-22. Process: each branch was implemented TDD-first by a dedicated 
 
 Staging the first real campaign surfaced that preflight's dependency closure includes the v1-suite aggregate parents left `proposed` while every child completed (the stale-parent pattern the 2026-07-22 evaluation flagged), which fail-closed the supervisor's claim step. Reconciled by completing, through the `quirks-tasks` lifecycle: QK-CTL-003, QK-CTL-004, QK-RUN-001, QK-RUN-002, QK-UI-003, QK-UI-004, QK-SKL-005 (children verified completed per task before each completion), and QK-UI-002 (implementation landed and gate-verified long since). Evidence: children's completed provenance plus the landed tree at merge `a16a108` (contains all child implementations), gates re-verified repeatedly on descendants of that commit (latest 652/657 + Playwright 31/31). Carried honestly: QK-UI-004D remains an open proposed follow-up of QK-UI-004 (test-inventory isolation); noted rather than blocking. Design question ledgered separately: preflight should arguably treat non-target closure members as frozen facts instead of claimable work.
 
+## QK-VIS-001 — first real campaign (`merge a0ee250`, 2026-07-23)
+
+- Campaign `cmp-ce7e91c84425`: digest-bound operator approval, real routing (claude opus/high implementer, cursor-hosted gpt-5.3-codex-high reviewer), isolated campaign worktrees, budgeted retry, honest failed-review provenance, lane breaker pause — all exercised live.
+- The implementer delivered plan Tasks 1-3 in three commits and self-reported through `quirks-tasks` (claim provenance, submit-review). The automated cursor reviewer ran twice but failed the structured-result contract (`missing_structured_result` — its result envelope was `{"status":"ok"}`; cursor has no `--output-schema`-style enforcement, unlike the fixed codex runner), tripping the lane failure threshold exactly as designed.
+- Independent review of the branch: ACCEPT, minors only — byte-faithful wireframe preservation verified (v5 email scrub is plan-mandated and test-enforced), test honesty confirmed against base, no scope creep, no new dependencies. Gates at branch head: 680 tests, 675 pass, 0 fail, 5 known skips.
+- Shakeout findings ledgered: cursor structured-result enforcement; crash-path repository-lock leak (dead holder, no steal path); stale integration branch after failed start; preflight closure treating non-target tasks as claimable work (forced the aggregate-parent reconciliation).
+
 ## Merged-main verification
 
 - After QK-RUN-003 + QK-CTL-005: `pnpm check` on `main` — 535 tests, 531 pass, 0 fail, 4 gated skips.
