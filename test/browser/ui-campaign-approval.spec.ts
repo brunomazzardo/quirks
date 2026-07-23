@@ -124,7 +124,9 @@ test("campaign-bound production workspace renders and submits the approval form"
   const network = attachLoopbackNetworkGuard(page, ui.authority);
 
   await page.goto(ui.launchUrl);
-  await expect(page.getByRole("heading", { name: "Preflight proposal" })).toBeVisible();
+  // First paint waits on the durable read port (campaign store + task ledger)
+  // behind a real server boot; allow extra headroom on loaded machines.
+  await expect(page.getByRole("heading", { name: "Preflight proposal" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Campaign", { exact: false }).first()).toBeVisible();
 
   // Durable envelope facts render.
@@ -179,7 +181,9 @@ test("standalone workspace renders the durable proposal with approval suppressed
     expect(viewerFragment).not.toContain("approvalToken");
     await page.goto(`${readOnly.authority}/preflight/C-ro${viewerFragment}`);
 
-    await expect(page.getByRole("heading", { name: "Preflight proposal" })).toBeVisible();
+    // Same headroom as the campaign-bound first paint: the durable read port
+    // does real store and ledger work behind this assertion.
+    await expect(page.getByRole("heading", { name: "Preflight proposal" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Contract task").first()).toBeVisible();
     await expect(page.getByText("Confidence unavailable").first()).toBeVisible();
 
