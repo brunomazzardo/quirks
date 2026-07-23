@@ -247,7 +247,7 @@ test("skips completed dependencies when building scheduler", async () => {
   assert.equal(status.dispatchedJobs.some((job) => job.taskId === "QK-2"), true);
 });
 
-for (const status of ["proposed", "blocked", "cancelled"] as const) {
+for (const status of ["blocked", "cancelled"] as const) {
   test(`rejects ${status} tasks during claim`, async () => {
     const source = new FakeTaskSource();
     source.upsertTask("QK-1", { status });
@@ -257,6 +257,29 @@ for (const status of ["proposed", "blocked", "cancelled"] as const) {
     await assert.rejects(() => supervisor.startApproved(), new RegExp(`Task QK-1 is ${status}`));
   });
 }
+
+test("promotes a proposed task bound in the approved envelope through the claim path", async () => {
+  // Preflight only lets a proposed task into a persistable envelope when the
+  // operator explicitly targeted it, so its presence in the approved,
+  // digest-bound envelope IS the promotion authority. The JSON layer performs
+  // proposed -> ready -> claimed with dependency verification.
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-1", { status: "proposed" });
+  const context = await testContext({ source });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.startApproved();
+
+  const status = await supervisor.status();
+  assert.deepEqual(status.claimedTaskIds, ["QK-1"]);
+  assert.equal(status.dispatchedJobs.some((job) => job.taskId === "QK-1" && job.role === "implementer"), true);
+  const shown = await source.execute({ schemaVersion: 1, operation: "show", taskId: "QK-1", input: {} });
+  assert.ok(shown.ok);
+  const task = shown.data as { status: string; coordination: { campaignId: string } | null };
+  assert.equal(task.status, "claimed");
+  assert.equal(task.coordination?.campaignId, "cmp-supervisor");
+  await supervisor.stop();
+});
 
 test("rejects non-ready tasks that are not completed", async () => {
   const source = new FakeTaskSource();
@@ -1015,11 +1038,11 @@ async function assertLockReleased(lockPath: string): Promise<void> {
 
 test("prepareRun releases the repository lock when claim validation fails", async () => {
   const source = new FakeTaskSource();
-  source.upsertTask("QK-1", { status: "proposed" });
+  source.upsertTask("QK-1", { status: "blocked" });
   const context = await testContext({ source });
   const supervisor = await CampaignSupervisor.open(context);
   await recordApproval(context);
-  await assert.rejects(() => supervisor.startApproved(), /QK-1 is proposed/);
+  await assert.rejects(() => supervisor.startApproved(), /QK-1 is blocked/);
   await assertLockReleased(context.lockPath);
 });
 

@@ -111,7 +111,15 @@ function attemptFailingResult(outcome: TaskDispatchOutcome): RunnerJobResult | u
   return undefined;
 }
 
-const NON_CLAIMABLE_STATUSES = new Set(["proposed", "blocked", "cancelled"]);
+const NON_CLAIMABLE_STATUSES = new Set(["blocked", "cancelled"]);
+
+// A proposed task can only reach an approved envelope when the operator
+// explicitly targeted it (preflight blocks proposed non-target closure
+// members), so the digest-bound approval is the authority to promote it; the
+// task layer performs proposed -> ready -> claimed with dependency checks.
+function isClaimableStatus(status: string): boolean {
+  return status === "ready" || status === "proposed";
+}
 
 function routeForTask(
   envelope: CampaignEnvelope,
@@ -474,13 +482,13 @@ export class CampaignSupervisor {
       if (NON_CLAIMABLE_STATUSES.has(task.status)) {
         throw new QuirksError("PROTOCOL_VIOLATION", `Task ${task.id} is ${task.status} and cannot be claimed`);
       }
-      if (task.status !== "ready") {
+      if (!isClaimableStatus(task.status)) {
         throw new QuirksError("PROTOCOL_VIOLATION", `Task ${task.id} is not ready to claim`);
       }
     }
 
     for (const task of taskMeta.values()) {
-      if (task.status !== "ready") continue;
+      if (!isClaimableStatus(task.status)) continue;
       await reconcileMutation({
         campaignId: envelope.campaignId,
         outbox: this.context.outbox,

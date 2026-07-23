@@ -395,6 +395,67 @@ async function seedStoredCampaign(options: {
   });
 }
 
+test("an explicitly targeted proposed task runs end-to-end through preflight, approve, and start", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const tasksPath = path.join(root, ".quirks/tasks.json");
+    const tasksDoc = JSON.parse(await readFile(tasksPath, "utf8")) as {
+      tasks: Array<{ id: string; status: string }>;
+    };
+    tasksDoc.tasks.find((task) => task.id === "QK-101")!.status = "proposed";
+    await writeFile(tasksPath, `${JSON.stringify(tasksDoc, null, 2)}\n`, "utf8");
+    await execFileAsync("git", ["-C", root, "add", ".quirks/tasks.json"]);
+    await execFileAsync("git", ["-C", root, "commit", "-m", "propose QK-101"]);
+
+    const preflight = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string }; blockers: string[] };
+    assert.equal(preflight.ok, true, `expected no blockers, got: ${JSON.stringify(preflight.blockers)}`);
+
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: preflight.campaignId,
+      digest: preflight.envelope.digest,
+      json: true,
+    });
+
+    const start = (await runCampaignCommand({
+      command: "start",
+      campaignId: preflight.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; claimedTaskIds: string[]; dispatchedJobs: unknown[]; outcome?: { status: string } };
+    assert.equal(start.ok, true);
+    assert.deepEqual(start.claimedTaskIds, ["QK-101"]);
+    assert.ok(start.dispatchedJobs.length >= 1);
+    assert.equal(start.outcome?.status, "completed");
+
+    const after = JSON.parse(await readFile(tasksPath, "utf8")) as {
+      tasks: Array<{ id: string; status: string; coordination: { campaignId: string } | null }>;
+    };
+    const claimed = after.tasks.find((task) => task.id === "QK-101")!;
+    assert.equal(claimed.status, "claimed", "the proposed target was promoted through the claim path");
+    assert.equal(claimed.coordination?.campaignId, preflight.campaignId);
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
 test("start resets a stale integration branch to the envelope base when nothing was dispatched", async () => {
   const { root, stateDir } = await freshAcceptanceRepo();
   const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
