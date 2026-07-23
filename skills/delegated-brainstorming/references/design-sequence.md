@@ -14,6 +14,12 @@ Human-guided design continues to use the installed Superpowers brainstorming wor
 
 After the plan gate, the committed plan set is partitioned into durable Quirks tasks through the writing-tasks workflow. The partition follows execution and review boundaries, not plan headings: a cohesive feature may become one task whose immutable `sourceRefs` enumerate every applicable numbered plan task. Delegated mode preserves the frozen decision envelope while partitioning and returns the created task IDs as its terminal output.
 
+## Optional visual references
+
+Visual references are optional. When no visual artifact materially governs the design, require none and add no visual-reference section.
+
+When an approved mock, screenshot, diagram, or comparison governs a material decision, the specification and plan must include a Visual references section naming its availability, exact path, format, governed decisions, consuming plan tasks, and verification method. Never discover references by scanning ignored brainstorm directories. Local references remain honest local paths until a consuming task preserves them; tracked references use full commit-pinned paths.
+
 ## Principal author tier
 
 Delegated specification work routes to a principal-tier architect (Fable/GPT-5.6 class) per `../../references/model-routing.md`. The architect drafts artifacts; a separate qualified reviewer validates them.
