@@ -6,7 +6,7 @@ import type { RunnerPort } from "../campaign/ports.js";
 import { QuirksError } from "../core/errors.js";
 import { buildClaudeArgv, buildClaudeEnv, claudeArtifactPaths } from "./claude.js";
 import { buildCodexArgv, codexPromptText, codexResultPath, codexResultSchemaPath } from "./codex.js";
-import { buildCursorArgv, cursorArtifactPaths } from "./cursor.js";
+import { buildCursorArgv, cursorResultPath } from "./cursor.js";
 import { dispatchRunnerJob } from "./dispatcher.js";
 import type { RunnerJobResult, RunnerProfile } from "./types.js";
 
@@ -125,7 +125,7 @@ export function artifactPathsForRunner(profile: RunnerProfile, artifactDir: stri
     case "codex":
       return [codexResultPath(artifactDir, jobId)];
     case "cursor":
-      return cursorArtifactPaths(artifactDir);
+      return [cursorResultPath(artifactDir, jobId)];
     default: {
       const exhaustive: never = profile.runnerType;
       return exhaustive;

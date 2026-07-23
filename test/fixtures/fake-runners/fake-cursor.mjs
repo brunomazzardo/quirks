@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import {
   hangForever,
   oversizedPayload,
@@ -6,6 +8,40 @@ import {
   writeArtifact,
   writePartialArtifact,
 } from "./shared-modes.mjs";
+
+function briefPathOf(argv) {
+  const index = argv.indexOf("--file");
+  return index === -1 ? undefined : argv[index + 1];
+}
+
+// A compliant cursor job reads its brief and follows the runner result
+// contract: cursor has no --output-schema/-o equivalent, so the declared
+// envelope path exists only as brief text.
+async function declaredEnvelopePath(argv) {
+  const briefPath = briefPathOf(argv);
+  if (!briefPath) return undefined;
+  try {
+    const brief = await readFile(briefPath, "utf8");
+    const match = brief.match(/write your result envelope JSON to exactly this path: (.+)$/m);
+    return match?.[1]?.trim();
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeEnvelope(argv, sessionId, envelope = {}) {
+  const envelopePath = await declaredEnvelopePath(argv);
+  if (!envelopePath) return;
+  await mkdir(path.dirname(envelopePath), { recursive: true });
+  const payload = {
+    status: "success",
+    sessionHandle: sessionId,
+    artifactPaths: [envelopePath],
+    failure: null,
+    ...envelope,
+  };
+  await writeFile(envelopePath, `${JSON.stringify(payload)}\n`, "utf8");
+}
 
 function emitInit(sessionId) {
   process.stdout.write(`${JSON.stringify({
@@ -47,10 +83,12 @@ async function main() {
     case "success":
       emitInit(sessionId);
       await writeArtifact(outDir);
+      await writeEnvelope(process.argv, sessionId);
       emitResult(sessionId);
       return;
     case "success-no-disk":
       emitInit(sessionId);
+      await writeEnvelope(process.argv, sessionId, { artifactPaths: [] });
       emitResult(sessionId);
       return;
     case "permission-exit-zero":
@@ -61,6 +99,7 @@ async function main() {
     case "partial":
       emitInit(sessionId);
       await writePartialArtifact(outDir);
+      await writeEnvelope(process.argv, sessionId, { status: "failure", failure: "honest_partial" });
       emitErrorResult(sessionId, "honest_partial");
       return;
     case "malformed":

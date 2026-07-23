@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { CliRunnerPort } from "../../src/runner/cli-runner-port.js";
+import { cursorResultContractSection, cursorResultPath } from "../../src/runner/cursor.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 
 async function executableFakeRunner(scriptName: string): Promise<string> {
@@ -119,10 +120,43 @@ test("CliRunnerPort passes the brief contents through to the codex prompt positi
   assert.equal(captured[promptIndex - 1], "--");
 });
 
-test("CliRunnerPort dispatches cursor through structured output mode", async () => {
-  const result = await dispatchFixture("cursor", "fake-cursor.mjs");
+// QK-RUN-005 acceptance: a cursor job that follows the brief's result
+// contract passes validation; the brief-declared path is the job-unique one.
+test("CliRunnerPort dispatches cursor and validates the brief-declared result envelope", async () => {
+  const executable = await executableFakeRunner("fake-cursor.mjs");
+  const profiles = new Map([["cursor", profile("cursor", "cursor", executable)]]);
+  const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-cursor-"));
+  const briefPath = path.join(artifactRoot, "brief.md");
+  const resultPath = cursorResultPath(artifactRoot, "job-cursor");
+  await writeFile(briefPath, `# brief\n\n${cursorResultContractSection(resultPath)}\n`, "utf8");
+  const worktreePath = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-cursor-worktree-"));
+
+  const port = new CliRunnerPort(profiles);
+  const result = await port.dispatch({
+    jobId: "job-cursor",
+    taskId: "QK-1",
+    role: "implementer",
+    route: {
+      profileId: "cursor",
+      runnerType: "cursor",
+      tier: "standard",
+      effort: "standard",
+      quotaPoolId: "pool",
+    },
+    briefPath,
+    worktreePath,
+  });
+
   assert.equal(result.status, "success");
   assert.match(result.sessionHandle, /./);
+  assert.ok(result.artifactPaths.includes(resultPath), "result must report the declared envelope path");
+});
+
+test("CliRunnerPort fails a cursor job that never writes the declared envelope, naming the path", async () => {
+  const result = await dispatchFixture("cursor", "fake-cursor.mjs");
+  assert.equal(result.status, "failure");
+  assert.equal(result.failure?.code, "missing_structured_result");
+  assert.match(result.failure?.message ?? "", /cursor-result-job-cursor\.json/);
 });
 
 test("CliRunnerPort rejects unknown profile ids", async () => {

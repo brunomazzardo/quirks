@@ -45,6 +45,24 @@ interface ClaudeStreamEvent {
   };
 }
 
+/**
+ * Profile effort tiers are quirks judgment tiers, not claude CLI effort
+ * values. The claude CLI (verified against 2.1.218) accepts only
+ * low|medium|high|xhigh|max, so mechanical/standard/principal must be
+ * mapped; claude-native values pass through verbatim. Same bug class as
+ * the fixed codex `codexReasoningEffort` mapping.
+ */
+const CLAUDE_EFFORTS: Readonly<Record<string, string>> = {
+  mechanical: "low",
+  standard: "medium",
+  high: "high",
+  principal: "xhigh",
+};
+
+export function claudeEffort(effort: string): string {
+  return CLAUDE_EFFORTS[effort] ?? effort;
+}
+
 function appendSharedArgv(
   argv: string[],
   input: Pick<ClaudeArgvInput, "model" | "effort" | "workspace" | "allowPermissionBypass">,
@@ -53,7 +71,7 @@ function appendSharedArgv(
     "--model",
     input.model,
     "--effort",
-    input.effort,
+    claudeEffort(input.effort),
     "--output-format",
     "stream-json",
     "--add-dir",

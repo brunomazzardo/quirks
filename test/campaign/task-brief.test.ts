@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildTaskBrief, computeInstructionsHash, type BuildTaskBriefInput } from "../../src/campaign/task-brief.js";
+import { cursorResultPath, parseCursorResult } from "../../src/runner/cursor.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 
 const BASE_COMMIT = "a".repeat(40);
@@ -93,6 +94,51 @@ test("reviewer brief requires a candidate commit", async () => {
     () => buildTaskBrief(briefInput({ role: "reviewer" })),
     /candidate|commit/i,
   );
+});
+
+// QK-RUN-005: cursor has no --output-schema equivalent, so the brief is the
+// only place a cursor job learns the envelope contract and the exact path.
+test("brief with a result contract states the envelope contract, example, and exact path", async () => {
+  const resultPath = cursorResultPath("/repo/.quirks/briefs", "cmp-1:QK-1:implementer:1");
+  const brief = await buildTaskBrief(briefInput({ resultContract: { resultPath } }));
+
+  assert.match(brief, /Runner result contract:/);
+  assert.ok(brief.includes(resultPath), "brief must state the exact result path");
+  for (const field of ["status", "sessionHandle", "artifactPaths", "failure"]) {
+    assert.ok(brief.includes(`"${field}"`), `brief must name envelope field ${field}`);
+  }
+
+  // The filled example must itself satisfy the strict cursor validation.
+  const exampleLine = brief.split("\n").find((line) => line.includes("Filled example"));
+  assert.ok(exampleLine, "brief must include a filled example");
+  const exampleJson = exampleLine.slice(exampleLine.indexOf("{"));
+  const parsedExample = JSON.parse(exampleJson) as Record<string, unknown>;
+  assert.deepEqual(
+    Object.keys(parsedExample).toSorted(),
+    ["artifactPaths", "failure", "sessionHandle", "status"],
+  );
+  const validated = parseCursorResult("", {
+    declaredResultPath: resultPath,
+    files: { [resultPath]: exampleJson },
+  });
+  assert.equal(validated.status, "success");
+  assert.equal(validated.failure, undefined);
+});
+
+test("reviewer brief carries the result contract for its own job", async () => {
+  const resultPath = cursorResultPath("/repo/.quirks/briefs", "cmp-1:QK-1:reviewer:1");
+  const brief = await buildTaskBrief(briefInput({
+    role: "reviewer",
+    git: { baseCommit: BASE_COMMIT, candidateCommit: CANDIDATE_COMMIT },
+    resultContract: { resultPath },
+  }));
+  assert.match(brief, /Runner result contract:/);
+  assert.ok(brief.includes(resultPath));
+});
+
+test("brief without a result contract omits the runner result contract section", async () => {
+  const brief = await buildTaskBrief(briefInput());
+  assert.doesNotMatch(brief, /Runner result contract:/);
 });
 
 test("instructions hash freezes recipe versions plus configured workflow skills", () => {

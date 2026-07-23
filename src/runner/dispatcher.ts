@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import { parseClaudeResult, claudeArtifactPaths } from "./claude.js";
 import { parseCodexResult } from "./codex.js";
-import { parseCursorResult, cursorArtifactPaths } from "./cursor.js";
+import { parseCursorResult, cursorResultPath } from "./cursor.js";
 import { normalizeJobResult } from "./job-result.js";
 import type { RunnerJobFailure, RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
 
@@ -72,7 +72,7 @@ function codexDeclaredResultPath(argv: readonly string[]): string | undefined {
   return extractFlagValue(argv, "-o");
 }
 
-async function readCodexArtifactFiles(
+async function readDeclaredArtifactFiles(
   declaredResultPath: string,
 ): Promise<Readonly<Record<string, string>>> {
   try {
@@ -107,14 +107,15 @@ function failureResult(
   });
 }
 
-function parseRunnerOutput(input: {
+async function parseRunnerOutputAsync(input: {
+  jobId: string;
   profile: RunnerProfile;
   argv: readonly string[];
   artifactDir: string;
   stdout: string;
   exitCode: number | null;
   sessionId?: string;
-}): ParsedDispatch {
+}): Promise<ParsedDispatch> {
   const sessionFallback = input.sessionId ?? "";
 
   switch (input.profile.runnerType) {
@@ -134,18 +135,43 @@ function parseRunnerOutput(input: {
       };
     }
     case "codex": {
+      const declaredResultPath = codexDeclaredResultPath(input.argv);
+      if (!declaredResultPath) {
+        return {
+          status: "failure",
+          sessionHandle: sessionFallback,
+          artifactPaths: [],
+          failure: {
+            code: "missing_result_path",
+            message: "Codex argv did not declare a result artifact path",
+          },
+        };
+      }
+
+      const parsed = parseCodexResult(input.stdout, {
+        declaredResultPath,
+        files: await readDeclaredArtifactFiles(declaredResultPath),
+      });
+
       return {
-        status: "failure",
-        sessionHandle: sessionFallback,
-        artifactPaths: [],
-        failure: {
-          code: "missing_async_parse",
-          message: "Codex parsing must use parseRunnerOutputAsync",
-        },
+        status: parsed.status,
+        sessionHandle: parsed.sessionHandle ?? sessionFallback,
+        artifactPaths: parsed.artifactPaths,
+        ...(parsed.failure !== undefined
+          ? { failure: { code: codexFailureCode(parsed.status), message: parsed.failure } }
+          : {}),
+        ...(parsed.notes.length > 0 ? { notes: parsed.notes } : {}),
       };
     }
     case "cursor": {
-      const parsed = parseCursorResult(input.stdout, cursorArtifactPaths(input.artifactDir));
+      // Cursor has no --output-schema/-o equivalent, so the brief instructs
+      // the agent to write the envelope to the job-unique declared path and
+      // the parser validates it strictly.
+      const declaredResultPath = cursorResultPath(input.artifactDir, input.jobId);
+      const parsed = parseCursorResult(input.stdout, {
+        declaredResultPath,
+        files: await readDeclaredArtifactFiles(declaredResultPath),
+      });
       return {
         status: parsed.status,
         sessionHandle: parsed.sessionHandle ?? sessionFallback,
@@ -165,49 +191,6 @@ function parseRunnerOutput(input: {
       return exhaustive;
     }
   }
-}
-
-async function parseRunnerOutputAsync(input: {
-  profile: RunnerProfile;
-  argv: readonly string[];
-  artifactDir: string;
-  stdout: string;
-  exitCode: number | null;
-  sessionId?: string;
-}): Promise<ParsedDispatch> {
-  const sessionFallback = input.sessionId ?? "";
-
-  if (input.profile.runnerType !== "codex") {
-    return parseRunnerOutput(input);
-  }
-
-  const declaredResultPath = codexDeclaredResultPath(input.argv);
-  if (!declaredResultPath) {
-    return {
-      status: "failure",
-      sessionHandle: sessionFallback,
-      artifactPaths: [],
-      failure: {
-        code: "missing_result_path",
-        message: "Codex argv did not declare a result artifact path",
-      },
-    };
-  }
-
-  const parsed = parseCodexResult(input.stdout, {
-    declaredResultPath,
-    files: await readCodexArtifactFiles(declaredResultPath),
-  });
-
-  return {
-    status: parsed.status,
-    sessionHandle: parsed.sessionHandle ?? sessionFallback,
-    artifactPaths: parsed.artifactPaths,
-    ...(parsed.failure !== undefined
-      ? { failure: { code: codexFailureCode(parsed.status), message: parsed.failure } }
-      : {}),
-    ...(parsed.notes.length > 0 ? { notes: parsed.notes } : {}),
-  };
 }
 
 function codexFailureCode(status: RunnerJobStatus): string {
@@ -296,6 +279,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
     }
 
     const parsed = await parseRunnerOutputAsync({
+      jobId: input.jobId,
       profile: input.profile,
       argv: input.argv,
       artifactDir: input.artifactDir,
