@@ -1,5 +1,5 @@
 import type { Identity } from "../../../provenance/types.js";
-import type { UiArtifactAction, UiArtifactAvailability, UiTaskHistoryV1 } from "../../read-models/task-history.js";
+import type { UiArtifactAction, UiArtifactAvailability, UiArtifactKind, UiTaskHistoryV1 } from "../../read-models/task-history.js";
 import type { UiPromptSetV1 } from "../../../prompt/types.js";
 import { classifyUrl } from "../../security/url-policy.js";
 import { Panel } from "../components/panel.js";
@@ -44,6 +44,37 @@ const ACTION_LABEL: Record<UiArtifactAction, string> = {
   compare: "Compare",
 };
 
+/** v5 typed file cards (SUPERPOWERS SPEC / IMPLEMENTATION PLAN / INDEPENDENT REVIEW). */
+const KIND_LABEL: Record<UiArtifactKind, string> = {
+  spec: "Superpowers spec",
+  plan: "Implementation plan",
+  review: "Independent review",
+  other: "Artifact ref",
+};
+
+/** Kinds promoted into the v5 "Governing files" grouping. */
+const GOVERNING_KINDS: readonly UiArtifactKind[] = ["spec", "plan", "review"];
+
+/**
+ * Governing refs across all iterations, deduped by kind, path, and exact
+ * revision. Only refs whose provenance records a governing kind qualify —
+ * absent kind data yields no governing panel.
+ */
+function collectGoverningRefs(iterations: readonly Iteration[]): ArtifactRef[] {
+  const seen = new Set<string>();
+  const refs: ArtifactRef[] = [];
+  for (const iteration of iterations) {
+    for (const artifactRef of iteration.artifactRefs) {
+      if (artifactRef.kind === undefined || !GOVERNING_KINDS.includes(artifactRef.kind)) continue;
+      const key = `${artifactRef.kind}:${artifactRef.path}@${artifactRef.commit}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      refs.push(artifactRef);
+    }
+  }
+  return refs;
+}
+
 function internalRoute(action: UiArtifactAction, artifactRef: ArtifactRef): string {
   const params = new URLSearchParams({ path: artifactRef.path });
   if (action === "open-as-executed") {
@@ -73,14 +104,22 @@ function IdentityList({ identities }: { identities: readonly Identity[] }) {
 }
 
 /**
- * v5 artifact card: monospace path, executed-at revision, availability, and
- * the exact internal Git actions (plus a provider link when the URL is safe).
+ * v5 artifact card: typed kind chip (when provenance records one), monospace
+ * path, executed-at revision, availability, and the exact internal Git actions
+ * (plus a provider link when the URL is safe). Absent kind renders the generic
+ * card.
  */
 function ArtifactCard({ artifactRef }: { artifactRef: ArtifactRef }) {
   const providerLink = artifactRef.url ? classifyUrl(artifactRef.url, NO_AUTHORITY) : null;
   return (
     <li className="artifact-card">
-      <span className="micro-label">Artifact ref</span>
+      {artifactRef.kind !== undefined ? (
+        <span className="micro-label artifact-kind" data-kind={artifactRef.kind}>
+          {KIND_LABEL[artifactRef.kind]}
+        </span>
+      ) : (
+        <span className="micro-label">Artifact ref</span>
+      )}
       <div className="artifact-path">{artifactRef.path}</div>
       <div className="artifact-meta">{`Executed at ${artifactRef.commit}`}</div>
       <StatusBadge
@@ -171,6 +210,7 @@ export function TaskHistoryView({ projection, promptSet }: TaskHistoryViewProps)
     0,
   );
   const identities = collectIdentities(iterations);
+  const governingRefs = collectGoverningRefs(iterations);
   const latestOutcome = iterations.at(-1)?.outcome;
 
   return (
@@ -212,6 +252,18 @@ export function TaskHistoryView({ projection, promptSet }: TaskHistoryViewProps)
       </div>
       <div className="workspace-layout">
         <div className="workspace-stack">
+          {governingRefs.length > 0 ? (
+            <Panel title="Governing files" meta="References only · exact historical revisions preserved" flush>
+              <ul className="artifact-cards">
+                {governingRefs.map((artifactRef) => (
+                  <ArtifactCard
+                    key={`${artifactRef.kind}-${artifactRef.path}#${artifactRef.commit}`}
+                    artifactRef={artifactRef}
+                  />
+                ))}
+              </ul>
+            </Panel>
+          ) : null}
           <Panel
             title="Iteration history"
             meta="Append-only summaries · detailed events remain in campaign journals"

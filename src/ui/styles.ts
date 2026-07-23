@@ -187,6 +187,8 @@ export const UI_CSS = [
   /* Task history (v5): artifact cards, iteration timeline, provenance rail. */
   ".artifact-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding: 10px 13px; margin: 0; list-style: none; }",
   ".artifact-card { border: 1px solid var(--ui-line); border-radius: 8px; padding: 9px; min-width: 0; font-size: 11.5px; }",
+  /* v5 typed file-card kind chip (.file-type: blue bold uppercase micro-label). */
+  ".artifact-kind { color: var(--ui-link); }",
   ".artifact-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; color: #475467; overflow-wrap: anywhere; margin: 3px 0; }",
   ".artifact-meta { font-size: 10.5px; color: var(--ui-muted); margin: 5px 0; }",
   ".artifact-actions { display: flex; gap: 5px; flex-wrap: wrap; margin: 7px 0 0; padding: 0; list-style: none; }",

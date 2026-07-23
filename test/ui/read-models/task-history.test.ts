@@ -24,6 +24,15 @@ test("marks the executed artifact available and preserves distinct identities", 
   assert.ok(labels.includes("bot:merge-queue"));
 });
 
+test("carries the provenance artifact kind into the projection", async () => {
+  const fixture = await createHistoryFixture();
+  const history = await buildTaskHistoryProjection(fixture);
+  const executed = history.iterations.find((it) => it.id === "iter-1");
+  assert.equal(executed?.artifactRefs[0]?.kind, "spec");
+  const missing = history.iterations.find((it) => it.id === "iter-missing");
+  assert.equal(missing?.artifactRefs[0]?.kind, "plan");
+});
+
 test("distinguishes signed from unsigned git identities across iterations", async () => {
   const fixture = await createHistoryFixture();
   const history = await buildTaskHistoryProjection(fixture);

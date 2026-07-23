@@ -212,6 +212,7 @@ function taskHistoryProjection(): UiTaskHistoryV1 {
         outcome: "completed",
         artifactRefs: [
           {
+            kind: "plan",
             path: "docs/superpowers/plans/plan.md",
             commit: "207c92e",
             sha: "207c92e",
@@ -221,6 +222,41 @@ function taskHistoryProjection(): UiTaskHistoryV1 {
             identities: [{ label: "Operator", evidence: "git-signature", verified: true }],
           },
         ],
+      },
+    ],
+  };
+}
+
+/** Projection whose refs carry every provenance kind plus one legacy ref without a kind. */
+function typedTaskHistoryProjection(): UiTaskHistoryV1 {
+  const base = {
+    commit: "207c92e",
+    sha: "207c92e",
+    url: null,
+    availability: "available" as const,
+    actions: ["open-as-executed", "open-current", "compare"] as UiTaskHistoryV1["iterations"][number]["artifactRefs"][number]["actions"],
+    identities: [],
+  };
+  return {
+    schemaVersion: 1,
+    taskId: "QK-1",
+    iterations: [
+      {
+        id: "iteration-1",
+        outcome: "completed",
+        artifactRefs: [
+          { ...base, kind: "spec", path: "docs/superpowers/specs/spec.md" },
+          { ...base, kind: "plan", path: "docs/superpowers/plans/plan.md" },
+          { ...base, kind: "review", path: "docs/reviews/review.md" },
+          { ...base, kind: "other", path: "docs/notes/context.md" },
+          { ...base, path: "docs/legacy/no-kind.md" },
+        ],
+      },
+      {
+        id: "iteration-2",
+        outcome: "completed",
+        // Same governed spec at the same revision: the governing panel dedupes it.
+        artifactRefs: [{ ...base, kind: "spec", path: "docs/superpowers/specs/spec.md" }],
       },
     ],
   };
@@ -384,4 +420,35 @@ test("task history composes header stats, artifact cards, iteration timeline, an
   assert.match(html, /Journal id iteration-1/);
   // Exact internal Git actions survive the recomposition.
   assert.match(html, /href="\/git\/open\?path=docs%2Fsuperpowers%2Fplans%2Fplan\.md&amp;commit=207c92e"/);
+});
+
+test("task history renders v5 typed file cards with a governing-files grouping", () => {
+  const html = renderToStaticMarkup(createElement(TaskHistoryView, { projection: typedTaskHistoryProjection() }));
+  // Governing files panel groups refs of kind spec/plan/review (v5 §2.5).
+  assert.match(html, /Governing files/);
+  assert.match(html, /References only · exact historical revisions preserved/);
+  // Typed kind chips per card, from real provenance kinds only.
+  assert.match(html, /data-kind="spec"[^>]*>Superpowers spec</);
+  assert.match(html, /data-kind="plan"[^>]*>Implementation plan</);
+  assert.match(html, /data-kind="review"[^>]*>Independent review</);
+  // "other" and absent kinds render the generic card and never join the governing group.
+  assert.match(html, /Artifact ref/);
+  assert.doesNotMatch(html, /data-kind="other"[^>]*>(?:Superpowers spec|Implementation plan|Independent review)</);
+  const governing = html.slice(html.indexOf("Governing files"), html.indexOf("Iteration history"));
+  assert.doesNotMatch(governing, /docs\/notes\/context\.md/);
+  assert.doesNotMatch(governing, /docs\/legacy\/no-kind\.md/);
+  // The duplicate spec ref (same kind, path, revision) appears once in the governing panel.
+  assert.equal(governing.split("docs/superpowers/specs/spec.md").length - 1, 1);
+});
+
+test("task history without kind data renders generic cards and no governing panel", () => {
+  const projection = taskHistoryProjection();
+  for (const iteration of projection.iterations) {
+    for (const artifactRef of iteration.artifactRefs) {
+      delete (artifactRef as { kind?: string }).kind;
+    }
+  }
+  const html = renderToStaticMarkup(createElement(TaskHistoryView, { projection }));
+  assert.doesNotMatch(html, /Governing files/);
+  assert.match(html, /Artifact ref/);
 });
