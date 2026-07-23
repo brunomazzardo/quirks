@@ -1,8 +1,11 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { CampaignStatus } from "../campaign/types.js";
+import { hasDurableApproval } from "../campaign/approval.js";
+import { CampaignStore } from "../campaign/store.js";
+import type { CampaignEnvelope, CampaignStatus } from "../campaign/types.js";
 import { QuirksError } from "../core/errors.js";
 import { loadProjectContext } from "../project/config.js";
 import type { ProjectContext } from "../project/types.js";
@@ -19,12 +22,14 @@ import { createLoopbackAuthority } from "./authority.js";
 import { InMemoryViewerSessionStore } from "./auth/viewer-session-store.js";
 import type { ApprovalWritePort } from "./ports/approval-write.js";
 import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem, UiCampaignTask } from "./ports/campaign-read.js";
+import type { PreflightReadPort } from "./ports/preflight-read.js";
 import {
   createPromptReadPort,
   type CampaignPromptFacts,
   type PromptReadPort,
 } from "./ports/prompt-read.js";
 import type { ViewerSessionPort } from "./ports/viewer-session.js";
+import type { UiPreflightProposalV1 } from "./types/preflight-proposal.js";
 import { loadClientBundle } from "./shell.js";
 import { createUiServer } from "./server.js";
 import { type CampaignRecord, type UiRouterOptions } from "./router.js";
@@ -155,7 +160,9 @@ export function createFakeWorkspacePorts(
 
 async function createProductionPorts(stateDir: string): Promise<WorkspacePorts> {
   const viewerSession = new InMemoryViewerSessionStore();
-  const approval = createInMemoryApprovalPort(new InMemoryApprovalTokenStore());
+  // Production approvals must survive the workspace process: the durable port
+  // records consumed approvals in the campaign's approvals.jsonl.
+  const approval = createDurableApprovalWritePort(stateDir);
   return {
     viewerSession,
     approval,
@@ -436,11 +443,228 @@ export function createWorkspacePromptReadPort(options: {
   };
 }
 
+const PROPOSAL_TITLE_MAX_LENGTH = 256;
+
+function clampProposalTitle(title: string): string {
+  return title.length > PROPOSAL_TITLE_MAX_LENGTH ? title.slice(0, PROPOSAL_TITLE_MAX_LENGTH) : title;
+}
+
+async function openScopedCampaignStore(
+  stateDir: string,
+  repositoryId: string,
+  campaignId: string,
+): Promise<CampaignStore> {
+  // CampaignStore.open validates the envelope schema, the identity binding, and
+  // the recomputed envelope digest, and its path is scoped to the workspace's
+  // own repository — another repository's campaigns are unreachable by design.
+  try {
+    return await CampaignStore.open(stateDir, repositoryId, campaignId);
+  } catch {
+    throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${campaignId} has no durable envelope`);
+  }
+}
+
+/**
+ * Builds the preflight proposal projection from durable campaign state only:
+ * campaign.json (envelope), state.json, and approvals.jsonl, plus task titles
+ * from the real task ledger. Scheduling projections (waves, lanes, estimates,
+ * confidence, inspector rationale) are recomputed at execution time and are
+ * NOT persisted in the envelope, so they are reported as explicitly
+ * unavailable — never fabricated.
+ */
+function buildDurablePreflightProposal(options: {
+  campaignId: string;
+  envelope: CampaignEnvelope;
+  approvedDigestRecorded: boolean;
+  titles: ReadonlyMap<string, string>;
+}): UiPreflightProposalV1 {
+  const { campaignId, envelope } = options;
+  const tasks = envelope.taskIds.map((taskId) => {
+    const routing = envelope.routing[taskId];
+    if (!routing) {
+      throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${campaignId} envelope has no routing for task ${taskId}`);
+    }
+    const fallback = routing.fallbacks[0];
+    return {
+      taskId,
+      title: clampProposalTitle(options.titles.get(taskId) ?? taskId),
+      waveId: null,
+      laneId: null,
+      route: {
+        profileId: routing.primary.profileId,
+        tier: routing.primary.tier,
+        effort: routing.primary.effort,
+      },
+      fallback: fallback
+        ? { profileId: fallback.profileId, tier: fallback.tier, effort: fallback.effort }
+        : null,
+      confidence: "unavailable" as const,
+    };
+  });
+  const humanGates = envelope.taskIds
+    .filter((taskId) => envelope.designModes[taskId]?.mode === "human")
+    .map((taskId) => `Human design approval required for task ${taskId}`);
+  return {
+    schemaVersion: 1,
+    campaignId,
+    state: "awaiting_approval",
+    envelopeDigest: envelope.digest,
+    summary: {
+      taskCount: envelope.taskIds.length,
+      waveCount: null,
+      estimatedMinutes: null,
+      confidence: "unavailable",
+      budget: {
+        maxWallClockMs: envelope.budgets.maxWallClockMs,
+        maxConcurrency: envelope.budgets.maxConcurrency,
+      },
+      landing: {
+        baseCommit: envelope.git.baseCommit,
+        campaignBranch: envelope.git.campaignBranch,
+        targetBranch: envelope.git.targetBranch,
+      },
+      push: {
+        enabled: envelope.git.push.enabled,
+        remote: envelope.git.push.remote ?? null,
+        branch: envelope.git.push.branch ?? null,
+      },
+    },
+    waves: [],
+    lanes: [],
+    tasks,
+    inspector: null,
+    residuals: [
+      "Wave, lane, schedule, and confidence projections are recomputed at execution time and are not persisted in the campaign envelope",
+      ...(options.approvedDigestRecorded
+        ? ["A durable approval is already recorded for this envelope digest"]
+        : []),
+    ],
+    humanGates,
+    unsupportedCapabilities: [
+      ...(envelope.git.push.enabled ? [] : ["remote-git-push"]),
+      ...(envelope.externalRoutingEnabled ? [] : ["external-routing"]),
+    ],
+    approval: { campaignId, envelopeDigest: envelope.digest },
+  };
+}
+
+/**
+ * Production preflight read port for `ui open`: serves the proposal for an
+ * awaiting_approval campaign from durable state only (campaign.json envelope,
+ * state.json status, approvals.jsonl), following the same durable-state
+ * pattern as createWorkspacePromptReadPort. Task titles come from the real
+ * task ledger; a missing ledger degrades to task ids, never invented titles.
+ */
+export function createDurablePreflightReadPort(options: {
+  stateDir: string;
+  getProjectContext: () => Promise<ProjectContext>;
+  repositoryId?: string;
+}): PreflightReadPort {
+  const boundRepositoryId = async (): Promise<string> =>
+    options.repositoryId ?? (await options.getProjectContext()).repositoryId;
+  const resolveLedgerTitles = async (
+    repositoryId: string,
+    taskIds: readonly string[],
+  ): Promise<Map<string, string>> => {
+    const titles = new Map<string, string>();
+    try {
+      const context = await options.getProjectContext();
+      if (context.repositoryId !== repositoryId) return titles;
+      await withTaskSource(context, async (source) => {
+        for (const taskId of taskIds) {
+          const shown = await showLedgerTask(source, taskId);
+          if (shown) titles.set(taskId, shown.title);
+        }
+      });
+    } catch {
+      // Ledger unavailable: fall back to task ids rather than invented titles.
+    }
+    return titles;
+  };
+  return {
+    getProposal: async (campaignId) => {
+      const repositoryId = await boundRepositoryId();
+      const store = await openScopedCampaignStore(options.stateDir, repositoryId, campaignId);
+      const envelope = await store.readEnvelope();
+      const state = await store.readState();
+      if (state.status !== "awaiting_approval") {
+        throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${campaignId} is not awaiting approval`);
+      }
+      if (state.digest !== envelope.digest) {
+        throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${campaignId} state digest does not match its envelope`);
+      }
+      const approvedDigestRecorded = await hasDurableApproval(store, envelope.digest);
+      const titles = await resolveLedgerTitles(repositoryId, envelope.taskIds);
+      return buildDurablePreflightProposal({ campaignId, envelope, approvedDigestRecorded, titles });
+    },
+  };
+}
+
+/**
+ * Production approval write port for `ui open`: token lifecycle stays
+ * in-memory (approval tokens are ephemeral, session-scoped credentials), but a
+ * consumed approval is recorded durably in the campaign's approvals.jsonl and
+ * events.jsonl so `quirks-campaign start` can honor it after the workspace
+ * closes. Mirrors the digest and replay checks of consumeApprovalToken.
+ */
+export function createDurableApprovalWritePort(
+  stateDir: string,
+  getNow: () => string = () => new Date().toISOString(),
+): ApprovalWritePort {
+  const tokens = new InMemoryApprovalTokenStore();
+  return {
+    issueToken: (input) => tokens.issue({ ...input, now: input.now ?? getNow() }),
+    approve: async (input) => {
+      const consumed = await tokens.consume({
+        campaignId: input.campaignId,
+        envelopeDigest: input.envelopeDigest,
+        approvalToken: input.approvalToken,
+        now: getNow(),
+      });
+      if (consumed !== "ok") return { result: consumed };
+      const resolved = await resolveCampaignFromState(stateDir, input.campaignId);
+      if (!resolved) return { result: "invalid" };
+      try {
+        const store = await CampaignStore.open(stateDir, resolved.repositoryId, input.campaignId);
+        const envelope = await store.readEnvelope();
+        if (envelope.digest !== input.envelopeDigest) return { result: "stale" };
+        if (await hasDurableApproval(store, envelope.digest)) return { result: "replay" };
+        const tokenId = createHash("sha256").update(input.approvalToken).digest("hex");
+        const approvedAt = getNow();
+        await store.appendApproval({
+          schemaVersion: 1,
+          campaignId: input.campaignId,
+          digest: envelope.digest,
+          approvedAt,
+          operator: { kind: "self-asserted", id: input.operator.label },
+          tokenId,
+          evidence: { channel: "loopback-ui", operator: input.operator.evidence },
+        });
+        await store.appendEvent({
+          schemaVersion: 1,
+          id: `approval:${tokenId}`,
+          type: "approval.recorded",
+          at: approvedAt,
+          actor: input.operator.label,
+          from: "awaiting_approval",
+          to: "running",
+          reason: "operator_approved",
+          evidence: { digest: envelope.digest, tokenId },
+        });
+        return { result: "approved", approvalEventId: `approval:${tokenId}` };
+      } catch {
+        return { result: "invalid" };
+      }
+    },
+  };
+}
+
 export type StandaloneWorkspacePorts = {
   getProjectContext: () => Promise<ProjectContext>;
   campaignRead: CampaignReadPort;
   taskHistory: TaskHistorySource;
   promptRead: PromptReadPort;
+  preflightRead: PreflightReadPort;
 };
 
 export function createStandaloneWorkspacePorts(options: {
@@ -454,6 +678,10 @@ export function createStandaloneWorkspacePorts(options: {
     taskHistory: createLedgerTaskHistorySource(options.repositoryRoot, getProjectContext),
     promptRead: createWorkspacePromptReadPort({
       repositoryRoot: options.repositoryRoot,
+      stateDir: options.stateDir,
+      getProjectContext,
+    }),
+    preflightRead: createDurablePreflightReadPort({
       stateDir: options.stateDir,
       getProjectContext,
     }),
@@ -478,6 +706,7 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
   let campaign: ResolvedCampaign | undefined;
   let standalonePorts: StandaloneWorkspacePorts | undefined;
   let promptRead: PromptReadPort | undefined;
+  let preflightRead: PreflightReadPort | undefined;
   if (input.campaignId === undefined) {
     const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
     repositoryId = context.repositoryId;
@@ -488,12 +717,17 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
       throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${input.campaignId} was not found`);
     }
     repositoryId = campaign.repositoryId;
+    const getProjectContext = () => loadProjectContext(repositoryRoot, { mode: "inspection" });
     // Campaign-bound workspaces expose the same contextual copy prompts as
     // the standalone read-only mode, from the same durable state.
-    promptRead = createWorkspacePromptReadPort({
-      repositoryRoot,
+    promptRead = createWorkspacePromptReadPort({ repositoryRoot, stateDir, getProjectContext });
+    // The preflight proposal view (the only place the approval form renders)
+    // is served from the durable campaign store, bound to the campaign's own
+    // repository id.
+    preflightRead = createDurablePreflightReadPort({
       stateDir,
-      getProjectContext: () => loadProjectContext(repositoryRoot, { mode: "inspection" }),
+      getProjectContext,
+      repositoryId: campaign.repositoryId,
     });
   }
 
@@ -515,7 +749,14 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
   const clientScript = await loadClientBundle();
   const campaigns = new Map<string, CampaignRecord>(
     input.campaignId !== undefined && campaign
-      ? [[input.campaignId, { repositoryId: campaign.repositoryId, envelopeDigest: campaign.envelopeDigest }]]
+      ? [[
+          input.campaignId,
+          {
+            repositoryId: campaign.repositoryId,
+            envelopeDigest: campaign.envelopeDigest,
+            status: campaign.status,
+          },
+        ]]
       : [],
   );
   const routerOptions: UiRouterOptions = {
@@ -528,6 +769,7 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
     clientScript,
     ...(readOnly ? { readOnly: true } : {}),
     ...(promptRead ? { promptRead } : {}),
+    ...(preflightRead ? { preflightRead } : {}),
     ...standalonePorts,
   };
   const server = await createUiServer(routerOptions);

@@ -108,8 +108,8 @@ function TaskTable({
               <td>
                 <span>{task.taskId}</span> — {task.title}
               </td>
-              <td>{wave?.label ?? task.waveId}</td>
-              <td>{lane?.label ?? task.laneId}</td>
+              <td>{wave?.label ?? task.waveId ?? "Unavailable"}</td>
+              <td>{lane?.label ?? task.laneId ?? "Unavailable"}</td>
               <td>
                 {task.route.profileId} ({routeTierLabel(task.route.tier)}, {task.route.effort})
               </td>
@@ -156,6 +156,11 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
   const { apiClient, queryClient } = useRouteContext({ strict: false }) as RouterRuntime;
   const [approvalSettled, setApprovalSettled] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  // Captured once at mount: read-only workspaces never receive an approval
+  // credential, so the approval affordance is suppressed rather than rendered
+  // as a dead form. Only the capability (a boolean) is captured — the
+  // credential itself stays in the closure-backed vault.
+  const [approvalCapable] = useState(() => vault.withApprovalToken(() => true) === true);
 
   const preflightQuery = useQuery(preflightQueryOptions(apiClient, campaignId));
   const promptQuery = useQuery({
@@ -220,6 +225,7 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
     <PreflightProposalView
       proposal={proposal}
       approvalMessage={approvalMessage}
+      approvalAvailable={approvalCapable}
       approvalDisabled={approvalSettled || approvalMutation.isSuccess}
       approvalSubmitting={approvalMutation.isPending}
       digestVisible={digestVisible}
@@ -238,6 +244,7 @@ export function PreflightView({ campaignId }: { campaignId: string }) {
 export function PreflightProposalView({
   proposal,
   approvalMessage = null,
+  approvalAvailable = true,
   approvalDisabled = true,
   approvalSubmitting = false,
   digestVisible = proposal.envelopeDigest.length > 0 &&
@@ -248,6 +255,7 @@ export function PreflightProposalView({
 }: {
   proposal: UiPreflightProposalV1;
   approvalMessage?: string | null;
+  approvalAvailable?: boolean;
   approvalDisabled?: boolean;
   approvalSubmitting?: boolean;
   digestVisible?: boolean;
@@ -272,8 +280,18 @@ export function PreflightProposalView({
 
       <Section title="What will run">
         <ReadOnlyField label="Tasks" value={String(proposal.summary.taskCount)} />
-        <ReadOnlyField label="Waves" value={String(proposal.summary.waveCount)} />
-        <ReadOnlyField label="Estimated duration" value={`${proposal.summary.estimatedMinutes} min`} />
+        <ReadOnlyField
+          label="Waves"
+          value={proposal.summary.waveCount === null ? "Unavailable" : String(proposal.summary.waveCount)}
+        />
+        <ReadOnlyField
+          label="Estimated duration"
+          value={
+            proposal.summary.estimatedMinutes === null
+              ? "Unavailable"
+              : `${proposal.summary.estimatedMinutes} min`
+          }
+        />
         <p>
           <label htmlFor="preflight-task-filter">Filter tasks</label>
           <input
@@ -290,13 +308,17 @@ export function PreflightProposalView({
         <p>
           <strong>Execution map:</strong>
         </p>
-        <ul>
-          {proposal.waves.map((wave) => (
-            <li key={wave.id}>
-              {wave.label}: {wave.taskIds.join(", ")}
-            </li>
-          ))}
-        </ul>
+        {proposal.waves.length === 0 ? (
+          <p>Wave assignments are not recorded in the durable campaign envelope.</p>
+        ) : (
+          <ul>
+            {proposal.waves.map((wave) => (
+              <li key={wave.id}>
+                {wave.label}: {wave.taskIds.join(", ")}
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       <Section title="Delegated judgment">
@@ -346,13 +368,17 @@ export function PreflightProposalView({
         <p>
           <strong>Agent lanes:</strong>
         </p>
-        <ul>
-          {proposal.lanes.map((lane) => (
-            <li key={lane.id}>
-              {lane.label}: runner {lane.runner}, model {lane.model}, tasks {lane.taskIds.join(", ")}
-            </li>
-          ))}
-        </ul>
+        {proposal.lanes.length === 0 ? (
+          <p>Agent lane details are not recorded in the durable campaign envelope.</p>
+        ) : (
+          <ul>
+            {proposal.lanes.map((lane) => (
+              <li key={lane.id}>
+                {lane.label}: runner {lane.runner}, model {lane.model}, tasks {lane.taskIds.join(", ")}
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       <Section title="Verification">
@@ -399,12 +425,19 @@ export function PreflightProposalView({
 
       <Section title="Approve">
         {approvalMessage ? <p role="status">{approvalMessage}</p> : null}
-        <ApprovalForm
-          digestVisible={digestVisible}
-          disabled={approvalDisabled}
-          isSubmitting={approvalSubmitting}
-          onApprove={onApprove}
-        />
+        {approvalAvailable ? (
+          <ApprovalForm
+            digestVisible={digestVisible}
+            disabled={approvalDisabled}
+            isSubmitting={approvalSubmitting}
+            onApprove={onApprove}
+          />
+        ) : (
+          <p>
+            This workspace is read-only and holds no approval credential. To approve, open the
+            campaign-bound workspace for this campaign.
+          </p>
+        )}
       </Section>
     </article>
   );
