@@ -143,6 +143,24 @@ function existingTasksProjection(): UiExistingTasksV1 {
         dependsOn: ["QK-1"],
         coordination: null,
       },
+      {
+        id: "QK-3",
+        title: "Design gate task",
+        kind: "design",
+        priority: "P2",
+        status: "ready",
+        readiness: "blocked",
+        blockers: ["Design gate approval required"],
+        workflowPhase: "brainstorm",
+        designGate: { required: true, mode: "human", delegable: false },
+        risk: [],
+        effort: "standard",
+        suggestedRoute: { tier: "standard", label: "Composer 2.5" },
+        source: { driver: "json", nativeId: "QK-3", webUrl: null },
+        nativeRevision: "sha256:ghi",
+        dependsOn: [],
+        coordination: null,
+      },
     ],
   };
 }
@@ -256,7 +274,8 @@ test("preflight composes header, summary metrics, wave map, inspector, and bound
   assert.match(html, /workspace-layout/);
   assert.match(html, /wave-map/);
   assert.match(html, /workspace-inspector/);
-  assert.match(html, /approval-footer/);
+  // Exact class match: the child .approval-footer-inner cannot satisfy this.
+  assert.match(html, /class="approval-footer"/);
   assert.match(html, /PREFLIGHT · PROPOSAL ONLY/);
   assert.match(html, /Nothing has started/);
   // The map never repeats task titles; the complete list is the single title authority.
@@ -274,6 +293,12 @@ test("existing tasks compose stats, toolbar, frontier map, table, and inspector 
   assert.match(html, /frontier-map/);
   assert.match(html, /workspace-inspector/);
   assert.match(html, /data-table-wrapper/);
+  // v4 amber design tint: design-gate work is distinguishable from dependency blocks.
+  assert.match(html, /mini-card--design/);
+  assert.match(html, /QK-3 · Needs design/);
+  assert.doesNotMatch(html, /QK-2 · Needs design/);
+  // v4 toolbar chips include the design-gate filter.
+  assert.match(html, /Needs design<\/button>/);
   // No dead selection controls from the mock (no proposal-build server capability).
   assert.doesNotMatch(html, /Build campaign proposal/);
   // Table stays the single exact-id and title authority for strict locators.
@@ -306,6 +331,10 @@ test("task history composes header stats, artifact cards, iteration timeline, an
   assert.match(html, /iteration-card/);
   assert.match(html, /provenance-rail/);
   assert.match(html, /Local coordination only/);
+  // The eyebrow shows the ordinal, not the raw journal id; the id stays visible elsewhere.
+  assert.match(html, />Iteration 1</);
+  assert.doesNotMatch(html, />Iteration iteration-1</);
+  assert.match(html, /Journal id iteration-1/);
   // Exact internal Git actions survive the recomposition.
   assert.match(html, /href="\/git\/open\?path=docs%2Fsuperpowers%2Fplans%2Fplan\.md&amp;commit=207c92e"/);
 });

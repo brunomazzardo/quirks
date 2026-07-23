@@ -112,14 +112,15 @@ function ArtifactCard({ artifactRef }: { artifactRef: ArtifactRef }) {
   );
 }
 
-/** v5 iteration card: append-only eyebrow, outcome, and governed artifacts. */
-function IterationCard({ iteration }: { iteration: Iteration }) {
+/** v5 iteration card: append-only ordinal eyebrow, outcome, and governed artifacts. */
+function IterationCard({ iteration, ordinal }: { iteration: Iteration; ordinal: number }) {
   return (
     <div className="iteration-card">
       <div className="iteration-top">
         <div>
-          <span className="micro-label">{`Iteration ${iteration.id}`}</span>
+          <span className="micro-label">{`Iteration ${ordinal}`}</span>
           <div className="iteration-outcome">{iteration.outcome}</div>
+          <p className="cell-note">{`Journal id ${iteration.id}`}</p>
         </div>
       </div>
       {iteration.artifactRefs.length === 0 ? (
@@ -219,7 +220,9 @@ export function TaskHistoryView({ projection, promptSet }: TaskHistoryViewProps)
             {iterations.length === 0 ? (
               <p className="data-table-empty">No recorded history.</p>
             ) : (
-              iterations.map((iteration) => <IterationCard key={iteration.id} iteration={iteration} />)
+              iterations.map((iteration, index) => (
+                <IterationCard key={iteration.id} iteration={iteration} ordinal={index + 1} />
+              ))
             )}
           </Panel>
         </div>

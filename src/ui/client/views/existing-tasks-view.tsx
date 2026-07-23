@@ -41,15 +41,37 @@ const FRONTIER_CARD_CLASS: Record<ExistingTask["readiness"], string> = {
   conflict: "mini-card mini-card--conflict",
 };
 
-const READINESS_FILTERS = ["all", "ready", "blocked", "claimed"] as const;
+const READINESS_FILTERS = ["all", "ready", "blocked", "design", "claimed"] as const;
 type ReadinessFilter = (typeof READINESS_FILTERS)[number];
 
 const FILTER_LABEL: Record<ReadinessFilter, string> = {
   all: "All states",
   ready: "Ready",
   blocked: "Blocked",
+  design: "Needs design",
   claimed: "Claimed",
 };
+
+function matchesFilter(task: ExistingTask, filter: ReadinessFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "design") return task.designGate.required;
+  return task.readiness === filter;
+}
+
+/** v4 tint precedence: a design gate is amber, not just another gray block. */
+function needsDesign(task: ExistingTask): boolean {
+  return task.designGate.required && task.readiness === "blocked";
+}
+
+function frontierCardClass(task: ExistingTask): string {
+  if (needsDesign(task)) return "mini-card mini-card--design";
+  return FRONTIER_CARD_CLASS[task.readiness];
+}
+
+function frontierCardLabel(task: ExistingTask): string {
+  if (needsDesign(task)) return "Needs design";
+  return READINESS_LABEL[task.readiness];
+}
 
 const FRONTIER_CARD_LIMIT = 5;
 
@@ -95,8 +117,8 @@ function FrontierColumn({ label, tasks }: { label: string; tasks: readonly Exist
       <div className="wave-col-label">{label}</div>
       {visible.length === 0 ? <p className="cell-note">None</p> : null}
       {visible.map((task) => (
-        <div key={task.id} className={FRONTIER_CARD_CLASS[task.readiness]}>
-          {`${task.id} · ${READINESS_LABEL[task.readiness]}`}
+        <div key={task.id} className={frontierCardClass(task)}>
+          {`${task.id} · ${frontierCardLabel(task)}`}
         </div>
       ))}
       {tasks.length > visible.length ? <p className="cell-note">{`+${tasks.length - visible.length} more`}</p> : null}
@@ -244,7 +266,7 @@ export function ExistingTasksView({ projection, promptSet }: ExistingTasksViewPr
   const normalizedSearch = search.trim().toLowerCase();
   const visibleTasks = useMemo(() => {
     return tasks.filter((task) => {
-      if (readinessFilter !== "all" && task.readiness !== readinessFilter) return false;
+      if (!matchesFilter(task, readinessFilter)) return false;
       if (normalizedSearch.length === 0) return true;
       return `${task.id} ${task.title}`.toLowerCase().includes(normalizedSearch);
     });
