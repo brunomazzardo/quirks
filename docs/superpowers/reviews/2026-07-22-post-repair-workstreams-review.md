@@ -43,6 +43,10 @@ Date: 2026-07-22. Process: each branch was implemented TDD-first by a dedicated 
 - Review: ACCEPT after one fix round — explicit `runQuirksCampaignCli()` wrapper invocation with byte-parity tests on stdout/stderr/exit codes including nonzero paths; `ui open --stay` with clean SIGINT/SIGTERM shutdown; entry guard realpaths both sides (macOS `/var → /private/var`), verified end-to-end through a real bin symlink. Branch gate: 657 tests, 652 pass, 0 fail, 5 known skips.
 - Ledgered debt from the same session's live campaign staging: production `ui open` wires no PreflightReadPort so browser approval 503s (QK-UI-007); preflight is create-once and silently keeps a stale envelope on re-staging (QK-CTL-006); claude `--effort` verbatim passthrough (QK-RUN-004).
 
+## Aggregate parent reconciliation (2026-07-23)
+
+Staging the first real campaign surfaced that preflight's dependency closure includes the v1-suite aggregate parents left `proposed` while every child completed (the stale-parent pattern the 2026-07-22 evaluation flagged), which fail-closed the supervisor's claim step. Reconciled by completing, through the `quirks-tasks` lifecycle: QK-CTL-003, QK-CTL-004, QK-RUN-001, QK-RUN-002, QK-UI-003, QK-UI-004, QK-SKL-005 (children verified completed per task before each completion), and QK-UI-002 (implementation landed and gate-verified long since). Evidence: children's completed provenance plus the landed tree at merge `a16a108` (contains all child implementations), gates re-verified repeatedly on descendants of that commit (latest 652/657 + Playwright 31/31). Carried honestly: QK-UI-004D remains an open proposed follow-up of QK-UI-004 (test-inventory isolation); noted rather than blocking. Design question ledgered separately: preflight should arguably treat non-target closure members as frozen facts instead of claimable work.
+
 ## Merged-main verification
 
 - After QK-RUN-003 + QK-CTL-005: `pnpm check` on `main` — 535 tests, 531 pass, 0 fail, 4 gated skips.
