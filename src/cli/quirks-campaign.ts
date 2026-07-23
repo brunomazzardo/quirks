@@ -12,6 +12,7 @@ export { CliParseError, CampaignCliParseError, parseCampaignArgs };
 export type ParsedUiOpenArgs = {
   campaignId?: string;
   json: boolean;
+  stay: boolean;
 };
 
 export function parseUiOpenArgs(argv: readonly string[]): ParsedUiOpenArgs {
@@ -21,12 +22,18 @@ export function parseUiOpenArgs(argv: readonly string[]): ParsedUiOpenArgs {
 
   let campaignId: string | undefined;
   let json = false;
+  let stay = false;
 
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index]!;
     if (token === "--json") {
       if (json) throw new CliParseError("Duplicate flag --json");
       json = true;
+      continue;
+    }
+    if (token === "--stay") {
+      if (stay) throw new CliParseError("Duplicate flag --stay");
+      stay = true;
       continue;
     }
     if (token === "--campaign") {
@@ -43,7 +50,7 @@ export function parseUiOpenArgs(argv: readonly string[]): ParsedUiOpenArgs {
     throw new CliParseError(`Unexpected argument ${token}`);
   }
 
-  return { ...(campaignId !== undefined ? { campaignId } : {}), json };
+  return { ...(campaignId !== undefined ? { campaignId } : {}), json, stay };
 }
 
 export function publicOpenPayload(result: Awaited<ReturnType<typeof openWorkspace>>) {
@@ -87,12 +94,16 @@ async function runUiOpen(parsed: ParsedUiOpenArgs): Promise<number> {
     ]);
   }
 
-  if (!parsed.json && process.stdout.isTTY) {
+  // --stay keeps the workspace serving until SIGINT/SIGTERM regardless of
+  // TTY or --json, so scripted callers can hold it open after reading the
+  // payload. Without it, the interactive TTY wait is preserved unchanged.
+  if (parsed.stay || (!parsed.json && process.stdout.isTTY)) {
     await new Promise<void>((resolve) => {
       const stop = () => resolve();
       process.once("SIGINT", stop);
       process.once("SIGTERM", stop);
     });
+    if (parsed.stay) await result.close?.();
   }
   return 0;
 }
