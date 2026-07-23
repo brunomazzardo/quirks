@@ -5,5 +5,6 @@ coverage/
 *.log
 .worktrees/
 .claude/worktrees/
+.quirks/briefs/
 .idea/
 test-results/
