@@ -21,7 +21,8 @@ Owner decision: approvals must work end-to-end in the UI; the founding spec §12
 - **Pairing (once per browser):** first `quirks ui` prints/opens a one-time pairing link; the server sets an HttpOnly, SameSite=Strict, Secure-equivalent (loopback) session cookie with a rotating secret persisted (hashed) in the state dir. `quirks ui unpair` revokes all sessions.
 - **Viewing:** any paired browser sees everything. No URL tokens.
 - **Approving:** a paired session may approve an `awaiting_approval` campaign directly. Kept, unconditionally: the envelope summary rendering, the explicit digest acknowledgment control naming the digest, the durable digest-bound `approvals.jsonl` write through the existing approval write port, stored-envelope re-read at consume time, replay protection, and journaling. Removed: the separate per-open approval credential and its vault plumbing.
-- **Accepted risk (recorded, not hidden):** on this single-user machine, anything that can drive a paired browser can approve. Mitigations retained: loopback-only bind, HttpOnly+SameSite cookie (no JS/CSRF exposure), explicit digest acknowledgment, durable journal of every approval with session identity, `unpair` kill-switch. This supersedes the founding spec's §12 ceremony by owner decision; the CLI paths (`run` y/N, `approve --digest`) remain for scripting and recovery.
+- **Accepted risk (recorded, not hidden):** on this single-user machine, anything that can drive a paired browser can approve. Mitigations retained: loopback-only bind, HttpOnly+SameSite cookie, explicit digest acknowledgment, durable journal of every approval with session identity, `unpair` kill-switch. This supersedes the founding spec's §12 ceremony by owner decision; the CLI paths (`run` y/N, `approve --digest`) remain for scripting and recovery.
+- **Simplicity posture (owner, 2026-07-23):** one auth moment, then the client trusts the local API. No per-request credentials, no dual auth modes, no vault plumbing anywhere. The digest acknowledgment stays because it is UX (know what you approve), not a credential. Anything resembling a second credential system in implementation review is a design violation, not caution.
 
 ## Out of scope (v1)
 
@@ -30,7 +31,7 @@ Remote/non-loopback access, multi-user auth, TanStack Start/SSR adoption, write 
 ## Implementation breakdown (to propose after design review)
 
 - **QK-SRV-002** — daemon lifecycle: start-or-attach, detached spawn, daemon record, status/stop/restart, stable port config, bundle mtime reload, log file. (CLI + server plumbing; no UI change.)
-- **QK-SRV-003** — pairing + session auth replacing URL viewer tokens in daemon mode: pairing link flow, cookie sessions, unpair; ephemeral `ui open` mode retained for compatibility until removal is decided.
+- **QK-SRV-003** — pairing + trusted local session, replacing the token system OUTRIGHT: pairing link flow, cookie sessions, unpair; the per-open URL viewer tokens, approval-token vault, and ephemeral `ui open` token mode are DELETED, not retained (owner amendment 2026-07-23: "the per-URL token thing is overengineered… set up some kind of auth, then the client should be trusting the local API"). `ui open` becomes an alias that attaches to the daemon.
 - **QK-SRV-004** — global multi-repo registry, repo switcher nav, server-side repo scoping generalization with cross-repo leak tests, unified active-campaigns strip.
 - **QK-SRV-005** — UI approvals via paired session (retire the approval-token ceremony in daemon mode) + the approval UX from the wireframes' fixed footer.
 - **QK-SRV-006** — launchd install/uninstall + upgrade behavior (record schema version; `restart` on version mismatch).
