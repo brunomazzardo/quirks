@@ -206,7 +206,10 @@ export const UI_CSS = [
   ".identity-list li { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid #eef1f5; font-size: 11.5px; flex-wrap: wrap; }",
   ".identity-list li:first-child { border-top: 0; }",
   /* Preflight approval footer (v3): digest + the one irreversible action. */
-  ".preflight-view { padding-bottom: 110px; }",
+  /* The shell child rule (`.ui-shell > :not(nav)`) outranks a lone class, so the
+     reservation carries the shell scope too — it must win for the fixed footer
+     to never occlude end-of-page content (QK-VIS-003 conformance gate). */
+  ".preflight-view, .ui-shell .preflight-view { padding-bottom: 110px; }",
   ".approval-footer { position: fixed; z-index: var(--z-footer); bottom: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.97); border-top: 1px solid #cbd5e1; box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08); }",
   ".approval-footer-inner { max-width: 1280px; margin: 0 auto; padding: 12px 22px; display: flex; gap: 10px 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }",
   ".approval-digest { min-width: 0; flex: 1 1 320px; }",
@@ -249,7 +252,11 @@ export const UI_CSS = [
   "  .workspace-toolbar input[type='search'] { flex-basis: 100%; }",
   "  .toolbar-note { margin-left: 0; }",
   "  .approval-footer-inner { flex-direction: column; align-items: stretch; }",
+  /* In the stacked footer the main axis is vertical: the digest's 320px flex
+     basis would become 320px of height, so it collapses to content size. */
+  "  .approval-digest { flex: 0 0 auto; }",
   "  .approval-actions, .approval-actions form { align-items: stretch; width: 100%; }",
   "  .approval-actions button[type='submit'] { width: 100%; }",
+  "  .preflight-view, .ui-shell .preflight-view { padding-bottom: 200px; }",
   "}",
 ].join("\n");

@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "protocol": "quirks-ui-visual-conformance-v1",
+  "theme": "light",
+  "animations": "disabled",
+  "baselinePlatform": "darwin",
+  "baselineDirectory": "test/visual-references/baselines",
+  "maxDiffPixelRatio": 0.01,
+  "determinism": [
+    "Fixed viewports only: desktop 1280x800 and compact 390x844, set before navigation.",
+    "Animations and caret are disabled through Playwright's toHaveScreenshot options.",
+    "The test server clock is frozen (2026-07-21T12:00:00.000Z), so every rendered timestamp is a fixture constant.",
+    "All projection data comes from committed fixture files and in-test constants — no live task source, journal, or network data.",
+    "Font rendering uses the local system stack (Inter falls back to ui-sans-serif); baselines are captured and compared on the platform recorded in baselinePlatform and are not portable across OS font rasterizers.",
+    "QUIRKS_STATE_DIR is pointed at a throwaway temp directory so sync-outbox state never leaks between runs."
+  ],
+  "viewports": {
+    "desktop": { "width": 1280, "height": 800 },
+    "compact": { "width": 390, "height": 844 }
+  },
+  "surfaces": [
+    {
+      "id": "preflight",
+      "route": "/preflight/C-1",
+      "reference": "approval-workspace-v3",
+      "state": "awaiting-approval-four-waves",
+      "rules": ["shell", "header-identity", "immutability-notice", "summary-grid", "wave-map", "inspector", "complete-task-list", "approval-footer", "responsive-workspace"]
+    },
+    {
+      "id": "tasks",
+      "route": "/",
+      "reference": "tasks-and-campaign-history-v4",
+      "state": "mixed-readiness-frontier",
+      "rules": ["shell", "stat-strip", "toolbar", "frontier-map", "table-inspector-composition", "responsive-workspace"]
+    },
+    {
+      "id": "campaigns",
+      "route": "/campaigns",
+      "reference": "tasks-and-campaign-history-v4",
+      "state": "active-promoted-history",
+      "rules": ["shell", "stat-strip", "active-campaign-promotion", "table-inspector-composition", "immutability-note", "responsive-workspace"]
+    },
+    {
+      "id": "campaign-detail",
+      "route": "/campaigns/C-1",
+      "reference": null,
+      "state": "running-with-progress",
+      "rules": ["shell", "shared-primitives", "wave-steps", "responsive-workspace"]
+    },
+    {
+      "id": "task-history",
+      "route": "/tasks/QK-1/history",
+      "reference": "task-provenance-history-v5",
+      "state": "completed-two-iterations",
+      "rules": ["shell", "history-header", "coordination-notice", "header-stats", "governing-file-cards", "iteration-timeline", "provenance-rail", "responsive-workspace"]
+    }
+  ],
+  "promptSurfaces": "context-only",
+  "acceptedDivergences": [
+    {
+      "id": "preflight-topbar-identity",
+      "summary": "v3 draws the preflight identity block inside a dark topbar; the shipped UI renders it in the light WorkspaceHeader under the shared five-view nav shell. The governed hierarchy (identity first, safety second, metrics third) is preserved; only the surface diverges. The v3 runner-health badges require data no projection provides and are not rendered.",
+      "pointer": "docs/superpowers/design/2026-07-23-preflight-topbar-divergence.md"
+    },
+    {
+      "id": "compact-nav-strategy",
+      "summary": "The mocks hide the nav below 900px as a mock shortcut; the shipped shell keeps navigation visible with a wrapping row. The implementation deliberately exceeds the reference here.",
+      "pointer": "docs/superpowers/design/2026-07-23-quirks-ui-design-handoff.md#3.1"
+    },
+    {
+      "id": "runner-health-nav-absent",
+      "summary": "v4/v5 show a 'Runner health' nav item and v4 a 'New campaign' primary; the founding spec fixes five views and no server capability backs either, so the shipped nav is Existing tasks / Campaigns only, with Task history breadcrumb-only per v5's crumb.",
+      "pointer": "docs/superpowers/design/2026-07-23-quirks-ui-design-handoff.md#6.C"
+    },
+    {
+      "id": "no-dead-controls",
+      "summary": "v3's 'Edit routing' / 'Use current agent only' buttons, v3's tab row, and v4's selection checkboxes + 'Build campaign proposal' footer require server capabilities that do not exist; rendering them would ship dead controls, so they are deliberately absent.",
+      "pointer": "docs/superpowers/design/2026-07-23-quirks-ui-design-handoff.md#6.D"
+    },
+    {
+      "id": "cards-defer-titles-to-table",
+      "summary": "v3's map task cards repeat task titles; the shipped map renders id/owner/score only and defers titles to the complete task list, keeping one title authority for strict locators and honest density.",
+      "pointer": "test/ui/client/visual-composition.test.ts"
+    },
+    {
+      "id": "recorded-stat-not-spend",
+      "summary": "v4's fifth campaign stat is '30-DAY SPEND'; the summary projection has no aggregate spend window, so the shipped fifth stat is 'Recorded' (campaigns in scope). Recorded spend renders in the inspector only when the projection carries it — spend is never invented.",
+      "pointer": "docs/superpowers/design/2026-07-23-quirks-ui-design-handoff.md#3.3"
+    },
+    {
+      "id": "ink-token-drift",
+      "summary": "v3 uses --ink:#172033 while v4/v5 use #182230; the plan resolves the drift to #182230, so v3 comparisons tolerate this one-step difference.",
+      "pointer": "docs/superpowers/design/2026-07-23-quirks-ui-design-handoff.md#6.G"
+    },
+    {
+      "id": "history-stats-not-invented",
+      "summary": "v5 shows six header stats including duration, usage dollars, and landed commit; the shipped projection carries none of those facts, so the header renders four projection-backed stats (iterations, artifact refs, availability, latest outcome) instead of inventing evidence.",
+      "pointer": "docs/superpowers/design/2026-07-23-quirks-ui-design-handoff.md#3.6"
+    }
+  ]
+}

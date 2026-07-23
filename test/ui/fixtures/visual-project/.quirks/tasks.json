@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "id": "QK-201",
+      "title": "Finalize runner contract",
+      "kind": "design",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "brainstorm",
+        "designGate": {
+          "required": true,
+          "defaultApproval": "human",
+          "delegable": false,
+          "judgmentTier": "high",
+          "decisionEnvelope": ["runner contract shape"]
+        }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": ["architecture"],
+        "capabilities": ["repository-read"],
+        "parallelismKeys": [],
+        "humanGates": ["design approval"],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["approved design"],
+      "acceptanceCriteria": ["design approved"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": null
+    },
+    {
+      "id": "QK-202",
+      "title": "Runner profile schema",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": [],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["schema"],
+      "acceptanceCriteria": ["schema fixtures pass"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": null
+    },
+    {
+      "id": "QK-203",
+      "title": "Claude process adapter",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "ready",
+      "dependsOn": ["QK-201"],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": ["protocol"],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": [],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["adapter"],
+      "acceptanceCriteria": ["runner contract tests pass"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": null
+    },
+    {
+      "id": "QK-204",
+      "title": "Dispatcher lifecycle",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "blocked",
+      "dependsOn": ["QK-202", "QK-203"],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "high",
+        "risk": ["protocol", "architecture"],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": [],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["dispatcher"],
+      "acceptanceCriteria": ["lifecycle tests pass"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": {
+        "reason": "Depends on unfinished adapter work",
+        "unblockCondition": "QK-202 and QK-203 land their accepted commits"
+      }
+    },
+    {
+      "id": "QK-205",
+      "title": "Nine-cell runner smoke",
+      "kind": "verification",
+      "priority": "P2",
+      "status": "blocked",
+      "dependsOn": ["QK-204"],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "verification",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-read"],
+        "parallelismKeys": [],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["smoke report"],
+      "acceptanceCriteria": ["all cells recorded"],
+      "verification": ["pnpm smoke:matrix"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": null
+    },
+    {
+      "id": "QK-206",
+      "title": "Campaign journal export",
+      "kind": "implementation",
+      "priority": "P2",
+      "status": "claimed",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": [],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["export command"],
+      "acceptanceCriteria": ["export round-trips"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": {
+        "scope": "local-clone",
+        "campaignId": "C-1",
+        "owner": "operator:local",
+        "claimedAt": "2026-07-21T11:00:00.000Z"
+      },
+      "statusDetail": null
+    },
+    {
+      "id": "QK-207",
+      "title": "Bootstrap task source",
+      "kind": "implementation",
+      "priority": "P1",
+      "status": "completed",
+      "dependsOn": [],
+      "workflow": {
+        "family": "superpowers",
+        "phase": "execute",
+        "designGate": { "required": false }
+      },
+      "execution": {
+        "effort": "standard",
+        "risk": [],
+        "capabilities": ["repository-write"],
+        "parallelismKeys": [],
+        "humanGates": [],
+        "completionBoundary": "accepted-commit"
+      },
+      "sourceRefs": [],
+      "deliverables": ["task source"],
+      "acceptanceCriteria": ["source list round-trips"],
+      "verification": ["pnpm test"],
+      "provenance": { "schemaVersion": 1, "iterations": [] },
+      "coordination": null,
+      "statusDetail": null
+    }
+  ]
+}
