@@ -5,9 +5,13 @@ import { PlanProgressLedger, PlanProgressUnavailable } from "../components/plan-
 import { classifyUrl } from "../../security/url-policy.js";
 import type { UiPromptSetV1 } from "../../../prompt/types.js";
 import { DataTable } from "../components/data-table.js";
+import { Panel } from "../components/panel.js";
 import { PromptActions } from "../components/prompt-actions.js";
 import { StatusBadge, type StatusTone } from "../components/status-badge.js";
+import { SummaryStat } from "../components/summary-stat.js";
 import { SyncBanner } from "../components/sync-banner.js";
+import { WorkspaceHeader } from "../components/workspace-header.js";
+import { STATE_LABEL, STATE_TONE } from "./campaigns-view.js";
 
 // classifyUrl only needs a real authority to validate loopback-http links; pull request
 // links here are either https or absent, so a placeholder authority never matters.
@@ -79,6 +83,13 @@ const verificationColumns = [
   verificationColumnHelper.accessor("outcome", { header: "Outcome", cell: (info) => <span>{info.getValue()}</span> }),
 ];
 
+function timingValue(detail: UiCampaignDetail): { value: string; detail?: string } {
+  if (!detail.startedAt) return { value: "Not started" };
+  return detail.finishedAt
+    ? { value: detail.startedAt, detail: `Finished ${detail.finishedAt}` }
+    : { value: detail.startedAt, detail: "In progress" };
+}
+
 export interface CampaignDetailViewProps {
   detail: UiCampaignDetail;
   planProgress?: UiPlanProgressV1;
@@ -87,6 +98,12 @@ export interface CampaignDetailViewProps {
   promptSet?: UiPromptSetV1;
 }
 
+/**
+ * Campaign detail has no governing wireframe (handoff §6.B); it reuses the
+ * shared shell, summary, panel, table, and progress-ledger primitives, with
+ * the v4 wave-step grammar for the wave rail and the v4 immutability framing
+ * around "Run again".
+ */
 export function CampaignDetailView({
   detail,
   planProgress,
@@ -94,79 +111,111 @@ export function CampaignDetailView({
   planProgressUnavailable,
   promptSet,
 }: CampaignDetailViewProps) {
+  const timing = timingValue(detail);
   return (
     <section aria-labelledby="campaign-detail-heading">
-      <h1 id="campaign-detail-heading">Campaign {detail.campaignId}</h1>
-      <p>
-        Repository {detail.repositoryId} — state {detail.state} — {detail.taskCount} tasks
-        {detail.outcome ? ` — outcome ${detail.outcome}` : ""}
-      </p>
+      <WorkspaceHeader
+        eyebrow="CAMPAIGN"
+        title={`Campaign ${detail.campaignId}`}
+        headingId="campaign-detail-heading"
+        description={`Repository ${detail.repositoryId}`}
+        badges={[{ label: STATE_LABEL[detail.state], tone: STATE_TONE[detail.state] }]}
+        {...(promptSet ? { actions: <PromptActions promptSet={promptSet} /> } : {})}
+      />
       <SyncBanner pending={detail.sync.pending} conflicts={detail.sync.conflicts} />
-      {promptSet ? <PromptActions promptSet={promptSet} /> : null}
-      <p>
-        <Link to="/">Run again</Link>
-      </p>
-      {detail.reportPath ? <p>Report: {detail.reportPath}</p> : null}
+      <div className="summary-grid" data-columns="4">
+        <SummaryStat label="Tasks" value={String(detail.taskCount)} detail="In this campaign" />
+        <SummaryStat label="State" value={STATE_LABEL[detail.state]} detail="Journal-reported" />
+        <SummaryStat label="Timing" value={timing.value} {...(timing.detail ? { detail: timing.detail } : {})} />
+        <SummaryStat label="Outcome" value={detail.outcome ?? "Pending"} />
+      </div>
+      <div className="workspace-notice">
+        <div>
+          <strong>A past campaign is immutable.</strong>
+          <span>
+            “Run again” creates a fresh preflight against current task revisions, runner health,
+            target branch, and a new approval digest.
+          </span>
+        </div>
+        <span className="workspace-notice-aside">
+          <Link to="/">Run again</Link>
+        </span>
+      </div>
+      {detail.reportPath ? <p className="cell-note">Report: {detail.reportPath}</p> : null}
 
-      <h2>Tasks</h2>
-      <DataTable
-        caption="Campaign tasks"
-        columns={taskColumns}
-        data={detail.tasks}
-        emptyMessage="No tasks."
-        getRowId={(task) => task.taskId}
-      />
+      <div className="workspace-layout">
+        <div className="workspace-stack">
+          <Panel title="Tasks" meta="Task history is one click away" flush>
+            <DataTable
+              caption="Campaign tasks"
+              columns={taskColumns}
+              data={detail.tasks}
+              emptyMessage="No tasks."
+              getRowId={(task) => task.taskId}
+            />
+          </Panel>
 
-      {planProgressPending ? <p role="status">Loading plan progress…</p> : null}
-      {planProgress ? <PlanProgressLedger projection={planProgress} /> : null}
-      {!planProgress && !planProgressPending && planProgressUnavailable ? <PlanProgressUnavailable /> : null}
+          {planProgressPending ? <p role="status">Loading plan progress…</p> : null}
+          {planProgress ? <PlanProgressLedger projection={planProgress} /> : null}
+          {!planProgress && !planProgressPending && planProgressUnavailable ? <PlanProgressUnavailable /> : null}
 
-      <h2>Waves</h2>
-      {detail.waves.length === 0 ? (
-        <p>No waves.</p>
-      ) : (
-        <ul>
-          {detail.waves.map((wave) => (
-            <li key={wave.id}>{wave.label}</li>
-          ))}
-        </ul>
-      )}
+          <Panel title="Commits" meta="Exact accepted references" flush>
+            <DataTable
+              caption="Commits"
+              columns={commitColumns}
+              data={detail.commits}
+              emptyMessage="No commits."
+              getRowId={(commit) => commit.sha}
+            />
+          </Panel>
 
-      <h2>Runners</h2>
-      <DataTable
-        caption="Runners"
-        columns={runnerColumns}
-        data={detail.runners}
-        emptyMessage="No runners."
-        getRowId={(runner) => runner.id}
-      />
+          <Panel title="Pull requests" meta="Provider links validated" flush>
+            <DataTable
+              caption="Pull requests"
+              columns={pullRequestColumns}
+              data={detail.pullRequests}
+              emptyMessage="No pull requests."
+              getRowId={(pullRequest) => String(pullRequest.number)}
+            />
+          </Panel>
 
-      <h2>Commits</h2>
-      <DataTable
-        caption="Commits"
-        columns={commitColumns}
-        data={detail.commits}
-        emptyMessage="No commits."
-        getRowId={(commit) => commit.sha}
-      />
+          <Panel title="Verification" meta="Recorded checks" flush>
+            <DataTable
+              caption="Verification"
+              columns={verificationColumns}
+              data={detail.verification}
+              emptyMessage="No verification results."
+              getRowId={(item, index) => `${item.label}-${index}`}
+            />
+          </Panel>
+        </div>
 
-      <h2>Pull requests</h2>
-      <DataTable
-        caption="Pull requests"
-        columns={pullRequestColumns}
-        data={detail.pullRequests}
-        emptyMessage="No pull requests."
-        getRowId={(pullRequest) => String(pullRequest.number)}
-      />
-
-      <h2>Verification</h2>
-      <DataTable
-        caption="Verification"
-        columns={verificationColumns}
-        data={detail.verification}
-        emptyMessage="No verification results."
-        getRowId={(item, index) => `${item.label}-${index}`}
-      />
+        <aside className="workspace-stack workspace-rail">
+          <Panel title="Waves" meta="Execution order">
+            {detail.waves.length === 0 ? (
+              <p>No waves.</p>
+            ) : (
+              <ul className="wave-steps">
+                {detail.waves.map((wave) => (
+                  <li key={wave.id}>
+                    <i className="step-dot" aria-hidden="true" />
+                    <span>{wave.label}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+          <Panel title="Runners" meta="Configured profiles" flush>
+            <DataTable
+              caption="Runners"
+              columns={runnerColumns}
+              data={detail.runners}
+              emptyMessage="No runners."
+              getRowId={(runner) => runner.id}
+            />
+          </Panel>
+        </aside>
+      </div>
     </section>
   );
 }

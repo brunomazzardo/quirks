@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ApiClient } from "../api-client.js";
 import { ApprovalForm } from "../components/approval-form.js";
 import { isAuthHttpError } from "../http-errors.js";
@@ -9,38 +9,22 @@ import { preflightQueryOptions, promptQueryOptions, queryKeys } from "../query-o
 import { useTokenVault } from "../app.js";
 import type { UiPreflightProposalV1 } from "../../types/preflight-proposal.js";
 import type { UiPromptSetV1 } from "../../../prompt/types.js";
+import { Panel } from "../components/panel.js";
 import { PromptActions } from "../components/prompt-actions.js";
-import { confidenceBadge, routeTierLabel, type BadgeDescriptor } from "../visual-states.js";
+import { StatusBadge } from "../components/status-badge.js";
+import { SummaryStat } from "../components/summary-stat.js";
+import { WorkspaceHeader } from "../components/workspace-header.js";
+import { confidenceBadge, routeTierLabel } from "../visual-states.js";
 
 type RouterRuntime = {
   queryClient: typeof sharedQueryClient;
   apiClient: ApiClient;
 };
 
-function StatusBadge({ label, tone }: BadgeDescriptor) {
-  return (
-    <span className="status-badge" data-tone={tone}>
-      {label}
-    </span>
-  );
-}
+type PreflightTask = UiPreflightProposalV1["tasks"][number];
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="preflight-section">
-      <h2>{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
-  return (
-    <p>
-      <strong>{label}:</strong> {value}
-    </p>
-  );
-}
+/** v3 map density guard: the map is an overview; the complete list is exhaustive. */
+const MAX_MAP_CARDS_PER_WAVE = 12;
 
 function ListItems({ items, emptyLabel }: { items: readonly string[]; emptyLabel: string }) {
   if (items.length === 0) {
@@ -60,13 +44,96 @@ function formatDuration(ms: number): string {
   return `${minutes} min wall clock`;
 }
 
-function TaskTable({
-  proposal,
-  filter,
-}: {
-  proposal: UiPreflightProposalV1;
-  filter: string;
-}) {
+/** Agent identity tint from the routed profile (approved identity colors). */
+function agentCardClass(profileId: string): string {
+  const normalized = profileId.toLowerCase();
+  if (normalized.includes("claude")) return "task-card task-card--claude";
+  if (normalized.includes("codex")) return "task-card task-card--codex";
+  if (normalized.includes("cursor")) return "task-card task-card--cursor";
+  return "task-card";
+}
+
+/**
+ * v3 "Dependency and execution map": one column per wave, left → right is
+ * execution order, agent-tinted cards. Task titles stay exclusive to the
+ * complete task list below.
+ */
+function ExecutionMap({ proposal }: { proposal: UiPreflightProposalV1 }) {
+  const tasksById = useMemo(
+    () => new Map(proposal.tasks.map((task) => [task.taskId, task])),
+    [proposal.tasks],
+  );
+  if (proposal.waves.length === 0) {
+    // Durable envelopes persist no scheduling projection — say so, honestly.
+    return (
+      <Panel title="Dependency and execution map" meta="Left → right is execution order" flush>
+        <p className="data-table-empty">
+          Wave assignments are not recorded in the durable campaign envelope.
+        </p>
+      </Panel>
+    );
+  }
+  return (
+    <Panel title="Dependency and execution map" meta="Left → right is execution order" flush>
+      <div className="wave-map-scroll">
+        <div className="wave-map">
+          {proposal.waves.map((wave, index) => {
+            const waveTasks = wave.taskIds
+              .map((taskId) => tasksById.get(taskId))
+              .filter((task): task is PreflightTask => task !== undefined);
+            const visible = waveTasks.slice(0, MAX_MAP_CARDS_PER_WAVE);
+            return (
+              <div key={wave.id} className="wave-col-group">
+                {index > 0 ? (
+                  <span className="wave-arrow" aria-hidden="true">
+                    →
+                  </span>
+                ) : null}
+                <div className="wave-col">
+                  <div className="wave-col-label">{wave.label}</div>
+                  {visible.map((task) => {
+                    const lane = proposal.lanes.find((entry) => entry.id === task.laneId);
+                    return (
+                      <div key={task.taskId} className={agentCardClass(task.route.profileId)}>
+                        <div className="task-card-id">
+                          {lane && proposal.lanes.length > 1 ? `${task.taskId} · ${lane.label}` : task.taskId}
+                        </div>
+                        <div className="task-card-owner">{task.route.profileId}</div>
+                        <div className="task-card-score">
+                          {`${routeTierLabel(task.route.tier)} / ${task.route.effort} · ${task.confidence} confidence`}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {waveTasks.length > visible.length ? (
+                    <p className="cell-note">{`+${waveTasks.length - visible.length} more in the complete task list`}</p>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="wave-legend">
+        <span>
+          <i className="legend-dot legend-dot--claude" aria-hidden="true" />
+          Claude
+        </span>
+        <span>
+          <i className="legend-dot legend-dot--codex" aria-hidden="true" />
+          Codex
+        </span>
+        <span>
+          <i className="legend-dot legend-dot--cursor" aria-hidden="true" />
+          Cursor
+        </span>
+        <span>Tier / effort · planning confidence</span>
+      </div>
+    </Panel>
+  );
+}
+
+function TaskTable({ proposal, filter }: { proposal: UiPreflightProposalV1; filter: string }) {
   const normalizedFilter = filter.trim().toLowerCase();
   const tasks = useMemo(() => {
     const ordered = [...proposal.tasks].toSorted((left, right) => {
@@ -77,16 +144,16 @@ function TaskTable({
     });
     if (!normalizedFilter) return ordered;
     return ordered.filter((task) => {
-      const haystack = `${task.taskId} ${task.title} ${task.waveId} ${task.laneId}`.toLowerCase();
+      const haystack = `${task.taskId} ${task.title} ${task.waveId ?? ""} ${task.laneId ?? ""}`.toLowerCase();
       return haystack.includes(normalizedFilter);
     });
   }, [normalizedFilter, proposal.tasks, proposal.waves]);
 
   if (tasks.length === 0) {
-    return <p>No tasks match the current filter.</p>;
+    return <p className="data-table-empty">No tasks match the current filter.</p>;
   }
 
-    return (
+  return (
     <table className="data-table">
       <thead>
         <tr>
@@ -129,25 +196,101 @@ function TaskTable({
   );
 }
 
-function InspectorPanel({ proposal }: { proposal: UiPreflightProposalV1 }) {
-  const inspector = proposal.inspector;
-  if (!inspector) {
-    return <p>No selected-task inspector is available for this proposal.</p>;
-  }
+/**
+ * The complete list owns its filter state so keystrokes re-render only this
+ * panel — the execution map and inspector stay static (Task-18 budget).
+ */
+function TaskListPanel({ proposal }: { proposal: UiPreflightProposalV1 }) {
+  const [taskFilter, setTaskFilter] = useState("");
   return (
-    <div>
-      <ReadOnlyField label="Task" value={inspector.taskId} />
-      <p>
-        <strong>Routing rationale:</strong> {inspector.routingRationale}
-      </p>
-      <p>
-        <strong>Acceptance proof:</strong> {inspector.acceptanceProof}
-      </p>
-      <p>
-        <strong>Verification tests:</strong>
-      </p>
+    <Panel title="Complete task list" meta="Nothing hidden by the visual map" flush>
+      <div className="workspace-toolbar workspace-toolbar--embedded">
+        <label htmlFor="preflight-task-filter">Filter tasks</label>
+        <input
+          id="preflight-task-filter"
+          type="search"
+          value={taskFilter}
+          onChange={(event) => setTaskFilter(event.target.value)}
+          placeholder="Filter by task id, title, wave, or lane"
+        />
+      </div>
+      <div className="data-table-wrapper">
+        <TaskTable proposal={proposal} filter={taskFilter} />
+      </div>
+    </Panel>
+  );
+}
+
+/**
+ * v3 selected-task inspector aside: proposed owner with rationale, score
+ * triplet, acceptance proof, verification tests, and fallback. Renders the
+ * task id, never the title — the complete list is the single title authority.
+ */
+function InspectorAside({ proposal }: { proposal: UiPreflightProposalV1 }) {
+  const inspector = proposal.inspector;
+  return (
+    <aside className="workspace-panel">
+      <div className="workspace-inspector">
+        {inspector ? (
+          <InspectorContent proposal={proposal} inspector={inspector} />
+        ) : (
+          <>
+            <span className="micro-label">Selected task</span>
+            <p className="inspector-empty">No selected-task inspector is available for this proposal.</p>
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function InspectorContent({
+  proposal,
+  inspector,
+}: {
+  proposal: UiPreflightProposalV1;
+  inspector: NonNullable<UiPreflightProposalV1["inspector"]>;
+}) {
+  const task = proposal.tasks.find((entry) => entry.taskId === inspector.taskId);
+  return (
+    <>
+      <span className="micro-label">{`SELECTED TASK · ${inspector.taskId}`}</span>
+      <h2>{inspector.taskId}</h2>
+      <span className="detail-label">Proposed owner</span>
+      <div className="reason-box">
+        {task ? <strong>{`${task.route.profileId} · ${routeTierLabel(task.route.tier)} tier`}</strong> : null}
+        {inspector.routingRationale}
+      </div>
+      {task ? (
+        <div className="score-row">
+          <div className="score-cell">
+            <span>Tier</span>
+            <strong>{routeTierLabel(task.route.tier)}</strong>
+          </div>
+          <div className="score-cell">
+            <span>Effort</span>
+            <strong>{task.route.effort}</strong>
+          </div>
+          <div className="score-cell">
+            <span>Confidence</span>
+            <strong>{task.confidence}</strong>
+          </div>
+        </div>
+      ) : null}
+      <span className="detail-label">Acceptance proof</span>
+      <p>{inspector.acceptanceProof}</p>
+      <span className="detail-label">Verification tests</span>
       <ListItems items={inspector.tests} emptyLabel="No verification tests listed." />
-    </div>
+      <span className="detail-label">Fallback</span>
+      {task?.fallback ? (
+        <p>
+          <strong>{`${task.fallback.profileId} · ${routeTierLabel(task.fallback.tier)} tier`}</strong>
+          {" — switching before launch produces a new proposal digest."}
+        </p>
+      ) : (
+        <p>No fallback route proposed.</p>
+      )}
+    </>
   );
 }
 
@@ -262,184 +405,190 @@ export function PreflightProposalView({
   promptSet?: UiPromptSetV1;
   onApprove?: () => Promise<void>;
 }) {
-  const [taskFilter, setTaskFilter] = useState("");
   const summaryConfidence = confidenceBadge(proposal.summary.confidence);
+  const push = proposal.summary.push;
 
   return (
     <article className="preflight-view">
-      <header>
-        <h1>Preflight proposal</h1>
-        <p>
-          Campaign <strong>{proposal.campaignId}</strong> is awaiting approval.
-        </p>
-        <p>
-          <StatusBadge label={summaryConfidence.label} tone={summaryConfidence.tone} />
-        </p>
-        {promptSet ? <PromptActions promptSet={promptSet} /> : null}
-      </header>
+      <WorkspaceHeader
+        eyebrow="PREFLIGHT · PROPOSAL ONLY"
+        title={`Preflight proposal · ${proposal.campaignId}`}
+        badges={[
+          { label: "Awaiting approval", tone: "warning" },
+          { label: summaryConfidence.label, tone: summaryConfidence.tone },
+        ]}
+        {...(promptSet ? { actions: <PromptActions promptSet={promptSet} /> } : {})}
+      />
 
-      <Section title="What will run">
-        <ReadOnlyField label="Tasks" value={String(proposal.summary.taskCount)} />
-        <ReadOnlyField
-          label="Waves"
-          value={proposal.summary.waveCount === null ? "Unavailable" : String(proposal.summary.waveCount)}
+      <div className="workspace-notice workspace-notice--info">
+        <div>
+          <strong>Nothing has started.</strong>
+          <span>
+            This page is generated from the immutable candidate envelope. Changing anything produces
+            a new digest.
+          </span>
+        </div>
+        <span className="workspace-notice-aside">Envelope state: awaiting approval</span>
+      </div>
+
+      <section className="summary-grid" aria-label="Campaign summary">
+        <SummaryStat
+          label="Scope"
+          value={`${proposal.summary.taskCount} exact ${proposal.summary.taskCount === 1 ? "task" : "tasks"}`}
+          detail="No inferred backlog work"
         />
-        <ReadOnlyField
-          label="Estimated duration"
+        <SummaryStat
+          label="Execution"
+          value={
+            proposal.summary.waveCount === null
+              ? "Unavailable"
+              : `${proposal.summary.waveCount} ${proposal.summary.waveCount === 1 ? "wave" : "waves"}`
+          }
+          detail={
+            proposal.lanes.length > 0
+              ? `${proposal.lanes.length} agent ${proposal.lanes.length === 1 ? "lane" : "lanes"}`
+              : "Lane detail unavailable"
+          }
+        />
+        <SummaryStat
+          label="Estimate"
           value={
             proposal.summary.estimatedMinutes === null
               ? "Unavailable"
               : `${proposal.summary.estimatedMinutes} min`
           }
+          detail={summaryConfidence.label}
         />
-        <p>
-          <label htmlFor="preflight-task-filter">Filter tasks</label>
-          <input
-            id="preflight-task-filter"
-            type="search"
-            value={taskFilter}
-            onChange={(event) => setTaskFilter(event.target.value)}
-            placeholder="Filter by task id, title, wave, or lane"
-          />
-        </p>
-        <div className="data-table-wrapper">
-        <TaskTable proposal={proposal} filter={taskFilter} />
-        </div>
-        <p>
-          <strong>Execution map:</strong>
-        </p>
-        {proposal.waves.length === 0 ? (
-          <p>Wave assignments are not recorded in the durable campaign envelope.</p>
-        ) : (
-          <ul>
-            {proposal.waves.map((wave) => (
-              <li key={wave.id}>
-                {wave.label}: {wave.taskIds.join(", ")}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      <Section title="Delegated judgment">
-        <InspectorPanel proposal={proposal} />
-        <p>
-          <strong>Human gates:</strong>
-        </p>
-        <ListItems items={proposal.humanGates} emptyLabel="No delegated human gates." />
-      </Section>
-
-      <Section title="Where work lands">
-        <ReadOnlyField label="Base commit" value={proposal.summary.landing.baseCommit} />
-        <ReadOnlyField label="Campaign branch" value={proposal.summary.landing.campaignBranch} />
-        <ReadOnlyField label="Target branch" value={proposal.summary.landing.targetBranch} />
-        <ReadOnlyField label="Merge strategy" value="Campaign branch into target after verification" />
-      </Section>
-
-      <Section title="Push">
-        <ReadOnlyField
-          label="Push enabled"
-          value={proposal.summary.push.enabled ? "Yes" : "No"}
+        <SummaryStat
+          label="Budget"
+          value={formatDuration(proposal.summary.budget.maxWallClockMs)}
+          detail={`Max concurrency ${proposal.summary.budget.maxConcurrency}`}
         />
-        {proposal.summary.push.enabled ? (
-          <>
-            <ReadOnlyField label="Remote" value={proposal.summary.push.remote ?? "Unavailable"} />
-            <ReadOnlyField label="Branch" value={proposal.summary.push.branch ?? "Unavailable"} />
-          </>
-        ) : (
-          <p>Push is disabled for this campaign envelope.</p>
-        )}
-      </Section>
-
-      <Section title="Authority">
-        <ListItems
-          items={proposal.unsupportedCapabilities}
-          emptyLabel="No restricted capabilities are listed."
+        <SummaryStat
+          label="Landing"
+          value={proposal.summary.landing.targetBranch}
+          detail={push.enabled ? `Push to ${push.remote ?? "remote"}` : "Remote push disabled"}
         />
-        <p>Repository-bound local coordination only. No shared lease is implied.</p>
-      </Section>
+      </section>
 
-      <Section title="Models and spend">
-        <ReadOnlyField label="Budget" value={formatDuration(proposal.summary.budget.maxWallClockMs)} />
-        <ReadOnlyField
-          label="Concurrency"
-          value={String(proposal.summary.budget.maxConcurrency)}
-        />
-        <p>
-          <strong>Agent lanes:</strong>
-        </p>
-        {proposal.lanes.length === 0 ? (
-          <p>Agent lane details are not recorded in the durable campaign envelope.</p>
-        ) : (
-          <ul>
-            {proposal.lanes.map((lane) => (
-              <li key={lane.id}>
-                {lane.label}: runner {lane.runner}, model {lane.model}, tasks {lane.taskIds.join(", ")}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      <div className="workspace-layout">
+        <ExecutionMap proposal={proposal} />
+        <InspectorAside proposal={proposal} />
+      </div>
 
-      <Section title="Verification">
-        {proposal.inspector ? (
-          <>
-            <ReadOnlyField label="Task" value={proposal.inspector.taskId} />
-            <p>
-              <strong>Acceptance proof:</strong> {proposal.inspector.acceptanceProof}
-            </p>
-            <p>
-              <strong>Verification tests:</strong>
-            </p>
-            <ListItems items={proposal.inspector.tests} emptyLabel="No verification tests listed." />
-          </>
-        ) : (
-          <p>No verification gates are available for the selected task.</p>
-        )}
-      </Section>
-
-      <Section title="Stop conditions and residuals">
-        <p>
-          <strong>Residuals:</strong>
-        </p>
-        <ListItems items={proposal.residuals} emptyLabel="No residuals listed." />
-        <p>
-          <strong>Unsupported capabilities:</strong>
-        </p>
-        <ListItems
-          items={proposal.unsupportedCapabilities}
-          emptyLabel="No unsupported capabilities listed."
-        />
-      </Section>
-
-      <Section title="Approval digest binding">
-        <ReadOnlyField label="Campaign ID" value={proposal.approval.campaignId} />
-        <p id="envelope-digest">
-          <strong>Envelope digest:</strong> {proposal.approval.envelopeDigest}
-        </p>
-        <p role="status">
-          Approval is bound to the displayed campaign ID and envelope digest. Envelope fields are
-          read-only.
-        </p>
-      </Section>
-
-      <Section title="Approve">
-        {approvalMessage ? <p role="status">{approvalMessage}</p> : null}
-        {approvalAvailable ? (
-          <ApprovalForm
-            digestVisible={digestVisible}
-            disabled={approvalDisabled}
-            isSubmitting={approvalSubmitting}
-            onApprove={onApprove}
-          />
-        ) : (
+      <div className="panel-grid">
+        <TaskListPanelWide proposal={proposal} />
+        <Panel title="Where work lands" meta="Merge boundary">
           <p>
-            This workspace is read-only and holds no approval credential. To approve, open the
-            campaign-bound workspace for this campaign.
+            <strong>Base commit:</strong> {proposal.summary.landing.baseCommit}
           </p>
-        )}
-      </Section>
+          <p>
+            <strong>Campaign branch:</strong> {proposal.summary.landing.campaignBranch}
+          </p>
+          <p>
+            <strong>Target branch:</strong> {proposal.summary.landing.targetBranch}
+          </p>
+          <p>Campaign branch merges into target after verification.</p>
+        </Panel>
+        <Panel title="Push" meta={push.enabled ? "Enabled" : "Disabled"}>
+          {push.enabled ? (
+            <>
+              <p>
+                <strong>Remote:</strong> {push.remote ?? "Unavailable"}
+              </p>
+              <p>
+                <strong>Branch:</strong> {push.branch ?? "Unavailable"}
+              </p>
+            </>
+          ) : (
+            <p>Push is disabled for this campaign envelope.</p>
+          )}
+        </Panel>
+        <Panel title="Authority" meta="Local coordination only">
+          <p>
+            <strong>Human gates:</strong>
+          </p>
+          <ListItems items={proposal.humanGates} emptyLabel="No delegated human gates." />
+          <p>
+            <strong>Restricted capabilities:</strong>
+          </p>
+          <ListItems
+            items={proposal.unsupportedCapabilities}
+            emptyLabel="No restricted capabilities are listed."
+          />
+          <p>Repository-bound local coordination only. No shared lease is implied.</p>
+        </Panel>
+        <Panel title="Models and spend" meta="Proposed lanes">
+          <p>
+            <strong>Budget:</strong> {formatDuration(proposal.summary.budget.maxWallClockMs)}
+          </p>
+          <p>
+            <strong>Concurrency:</strong> {String(proposal.summary.budget.maxConcurrency)}
+          </p>
+          {proposal.lanes.length === 0 ? (
+            <p>Agent lane details are not recorded in the durable campaign envelope.</p>
+          ) : (
+            <ul>
+              {proposal.lanes.map((lane) => (
+                <li key={lane.id}>
+                  {lane.label}: runner {lane.runner}, model {lane.model}, tasks {lane.taskIds.join(", ")}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+        <Panel title="Stop conditions and residuals" meta="Known before launch">
+          <p>
+            <strong>Residuals:</strong>
+          </p>
+          <ListItems items={proposal.residuals} emptyLabel="No residuals listed." />
+        </Panel>
+      </div>
+
+      <footer className="approval-footer">
+        <div className="approval-footer-inner">
+          <div className="approval-digest">
+            <span className="micro-label">Approval binds this exact campaign envelope</span>
+            <span id="envelope-digest" className="digest-code">
+              {`Campaign ${proposal.approval.campaignId} · ${proposal.approval.envelopeDigest}`}
+            </span>
+            <p role="status">
+              Approval is bound to the displayed campaign ID and envelope digest. Envelope fields
+              are read-only.
+            </p>
+          </div>
+          <div className="approval-actions">
+            {approvalMessage ? (
+              <p role="status" className="approval-message">
+                {approvalMessage}
+              </p>
+            ) : null}
+            {approvalAvailable ? (
+              <ApprovalForm
+                digestVisible={digestVisible}
+                disabled={approvalDisabled}
+                isSubmitting={approvalSubmitting}
+                onApprove={onApprove}
+              />
+            ) : (
+              <p className="approval-message">
+                This workspace is read-only and holds no approval credential. To approve, open the
+                campaign-bound workspace for this campaign.
+              </p>
+            )}
+          </div>
+        </div>
+      </footer>
     </article>
+  );
+}
+
+/** Full-width slot in the panel grid for the complete task list. */
+function TaskListPanelWide({ proposal }: { proposal: UiPreflightProposalV1 }) {
+  return (
+    <div className="panel-grid-wide">
+      <TaskListPanel proposal={proposal} />
+    </div>
   );
 }
 
