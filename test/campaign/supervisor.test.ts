@@ -9,6 +9,7 @@ import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.
 import { CampaignSupervisor, type CampaignSupervisorContext } from "../../src/campaign/supervisor.js";
 import { CampaignStore } from "../../src/campaign/store.js";
 import { computeInstructionsHash } from "../../src/campaign/task-brief.js";
+import { cursorResultPath } from "../../src/runner/cursor.js";
 import { SessionRegistry } from "../../src/runner/sessions.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 import { RepositoryLock } from "../../src/state/repository-lock.js";
@@ -922,6 +923,66 @@ test("reviewer gets a distinct read-only brief bound to the candidate commit", a
   assert.match(reviewerBrief, new RegExp(candidateCommit));
   assert.match(reviewerBrief, /executing-tasks/);
   assert.notEqual(implementerBrief, reviewerBrief);
+
+  // Codex enforces its envelope mechanically via --output-schema/-o; only
+  // cursor briefs carry the brief-guided result contract.
+  assert.doesNotMatch(implementerBrief, /Runner result contract:/);
+  assert.doesNotMatch(reviewerBrief, /Runner result contract:/);
+});
+
+test("cursor briefs state the job-unique result envelope path for each role", async () => {
+  const candidateCommit = "b".repeat(40);
+  const source = new FakeTaskSource();
+  const runner = new FakeRunnerPort();
+  const worktree = new FakeWorktreePort();
+  worktree.seed("QK-1", {
+    path: "/tmp/quirks-worktree/QK-1",
+    branch: "quirks/task/QK-1",
+    modifiedFiles: [],
+    commit: candidateCommit,
+  });
+  const context = await testContext({
+    source,
+    runner,
+    worktree,
+    workflowSkills: { execute: "executing-tasks" },
+    profiles: [
+      supervisorProfile("cursor-implementer", "cursor", "composer-2.5"),
+      supervisorProfile("cursor-reviewer", "cursor", "composer-2.5-review"),
+    ],
+    routing: {
+      "QK-1": {
+        primary: { profileId: "cursor-implementer", tier: "standard", effort: "standard" },
+        fallbacks: [{ profileId: "cursor-reviewer", tier: "high", effort: "standard" }],
+      },
+    },
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.startApproved();
+
+  const [implementer, reviewer] = runner.dispatches;
+  assert.ok(implementer && reviewer, "expected implementer and reviewer dispatches");
+
+  const briefsDir = path.dirname(implementer.briefPath);
+  const implementerBrief = await readFile(implementer.briefPath, "utf8");
+  assert.match(implementerBrief, /Runner result contract:/);
+  assert.ok(
+    implementerBrief.includes(cursorResultPath(briefsDir, implementer.jobId)),
+    "implementer brief must state its own job-unique result path",
+  );
+
+  const reviewerBrief = await readFile(reviewer.briefPath, "utf8");
+  assert.match(reviewerBrief, /Runner result contract:/);
+  assert.ok(
+    reviewerBrief.includes(cursorResultPath(path.dirname(reviewer.briefPath), reviewer.jobId)),
+    "reviewer brief must state its own job-unique result path",
+  );
+  assert.notEqual(
+    cursorResultPath(briefsDir, implementer.jobId),
+    cursorResultPath(path.dirname(reviewer.briefPath), reviewer.jobId),
+    "roles must never share a result envelope path",
+  );
 });
 
 test("rejects instructions drift between the envelope and configured workflow skills", async () => {

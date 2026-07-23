@@ -7,6 +7,7 @@ import {
   buildClaudeArgv,
   buildClaudeEnv,
   buildClaudeResumeArgv,
+  claudeEffort,
   parseClaudeResult,
 } from "../../src/runner/claude.js";
 
@@ -36,6 +37,40 @@ test("claude argv includes model and effort from input", () => {
   assert.equal(effortIndex >= 0, true);
   assert.equal(argv[modelIndex + 1], "fable");
   assert.equal(argv[effortIndex + 1], "high");
+});
+
+// Profile effort tiers are quirks judgment tiers; the claude CLI (verified
+// against 2.1.218) accepts only low|medium|high|xhigh|max, so verbatim
+// mechanical/standard/principal would be rejected at spawn.
+const effortCases = [
+  ["mechanical", "low"],
+  ["standard", "medium"],
+  ["high", "high"],
+  ["principal", "xhigh"],
+  ["low", "low"],
+  ["medium", "medium"],
+  ["xhigh", "xhigh"],
+  ["max", "max"],
+] as const;
+
+test("claudeEffort maps profile tiers onto claude CLI effort values and passes native values through", () => {
+  for (const [effort, expected] of effortCases) {
+    assert.equal(claudeEffort(effort), expected, `claudeEffort(${effort})`);
+  }
+});
+
+test("claude fresh argv maps profile effort tiers onto claude CLI effort values", () => {
+  for (const [effort, expected] of effortCases) {
+    const argv = buildClaudeArgv({ ...baseInput, effort });
+    assert.equal(argv[argv.indexOf("--effort") + 1], expected, `fresh --effort for ${effort}`);
+  }
+});
+
+test("claude resume argv maps profile effort tiers onto claude CLI effort values", () => {
+  for (const [effort, expected] of effortCases) {
+    const argv = buildClaudeResumeArgv(baseInput.sessionId, { ...baseInput, effort });
+    assert.equal(argv[argv.indexOf("--effort") + 1], expected, `resume --effort for ${effort}`);
+  }
 });
 
 test("claude argv passes brief as a file path only", () => {
