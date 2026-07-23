@@ -18,7 +18,7 @@ import { disposeTaskSource } from "../task-source/task-source.js";
 import type { ParsedCampaignArgs } from "./campaign-args.js";
 import { consumeApprovalToken, createApprovalChallenge, hasDurableApproval } from "../campaign/approval.js";
 
-function stateDirFor(repositoryId: string): string {
+export function stateDirFor(repositoryId: string): string {
   return process.env.QUIRKS_STATE_DIR ?? resolveAppPaths(repositoryId).root;
 }
 

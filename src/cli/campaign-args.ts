@@ -1,4 +1,5 @@
 export type CampaignCommand =
+  | "run"
   | "preflight"
   | "approve"
   | "start"
@@ -14,6 +15,7 @@ export class CampaignCliParseError extends Error {
 }
 
 export type ParsedCampaignArgs =
+  | { command: "run"; taskIds: string[]; campaignId?: string; externalRouting: boolean; maxConcurrency?: number; approval: "inline" | "browser"; json: boolean }
   | { command: "preflight"; taskIds: string[]; campaignId?: string; configPath?: string; externalRouting: boolean; maxConcurrency?: number; json: boolean }
   | { command: "approve"; campaignId: string; digest: string; json: boolean }
   | { command: "start"; campaignId: string; singleWave: boolean; json: boolean }
@@ -25,6 +27,7 @@ export type ParsedCampaignArgs =
   | { command: "ui"; uiArgv: string[] };
 
 const COMMANDS = new Set<CampaignCommand>([
+  "run",
   "preflight",
   "approve",
   "start",
@@ -125,6 +128,87 @@ function parsePreflight(argv: readonly string[]): Extract<ParsedCampaignArgs, { 
     ...(configPath ? { configPath } : {}),
     externalRouting,
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
+    json,
+  };
+}
+
+// `run` is the one-command happy path: preflight, a single approval decision,
+// start, and streamed status. It accepts the preflight staging flags plus the
+// approval-mode pair --browser/--inline (mutually exclusive; inline default).
+function parseRun(argv: readonly string[]): Extract<ParsedCampaignArgs, { command: "run" }> {
+  const taskIds: string[] = [];
+  let campaignId: string | undefined;
+  let externalRouting = false;
+  let maxConcurrency: number | undefined;
+  let approval: "inline" | "browser" | undefined;
+  let json = false;
+  let sawExternalRouting = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]!;
+    if (token === "--json") {
+      if (json) throw new CampaignCliParseError("Duplicate flag --json");
+      json = true;
+      continue;
+    }
+    if (token === "--task") {
+      taskIds.push(takeValue(argv, index, "--task"));
+      index += 1;
+      continue;
+    }
+    if (token === "--campaign") {
+      if (campaignId !== undefined) throw new CampaignCliParseError("Duplicate flag --campaign");
+      campaignId = takeValue(argv, index, "--campaign");
+      if (!CAMPAIGN_ID_PATTERN.test(campaignId)) {
+        throw new CampaignCliParseError(
+          "--campaign requires an id matching [A-Za-z0-9][A-Za-z0-9._-]{0,127}",
+        );
+      }
+      index += 1;
+      continue;
+    }
+    if (token === "--max-concurrency") {
+      if (maxConcurrency !== undefined) throw new CampaignCliParseError("Duplicate flag --max-concurrency");
+      const raw = takeValue(argv, index, "--max-concurrency");
+      const value = Number(raw);
+      if (!Number.isInteger(value) || value < 1) {
+        throw new CampaignCliParseError("--max-concurrency requires an integer >= 1");
+      }
+      maxConcurrency = value;
+      index += 1;
+      continue;
+    }
+    if (token === "--external-routing") {
+      if (sawExternalRouting) throw new CampaignCliParseError("Duplicate external routing flag");
+      externalRouting = true;
+      sawExternalRouting = true;
+      continue;
+    }
+    if (token === "--no-external-routing") {
+      if (sawExternalRouting) throw new CampaignCliParseError("Duplicate external routing flag");
+      externalRouting = false;
+      sawExternalRouting = true;
+      continue;
+    }
+    if (token === "--browser" || token === "--inline") {
+      if (approval !== undefined) {
+        throw new CampaignCliParseError("--browser and --inline are mutually exclusive and may appear once");
+      }
+      approval = token === "--browser" ? "browser" : "inline";
+      continue;
+    }
+    if (token.startsWith("--")) throw new CampaignCliParseError(`Unknown option ${token}`);
+    throw new CampaignCliParseError(`Unexpected argument ${token}`);
+  }
+
+  if (taskIds.length === 0) throw new CampaignCliParseError("run requires at least one --task");
+  return {
+    command: "run",
+    taskIds,
+    ...(campaignId ? { campaignId } : {}),
+    externalRouting,
+    ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
+    approval: approval ?? "inline",
     json,
   };
 }
@@ -242,6 +326,7 @@ export function parseCampaignArgs(argv: readonly string[]): ParsedCampaignArgs {
   if (!COMMANDS.has(command)) throw new CampaignCliParseError(`Unknown command ${argv[0]}`);
   const rest = argv.slice(1);
   if (command === "ui") return { command: "ui", uiArgv: rest };
+  if (command === "run") return parseRun(rest);
   if (command === "preflight") return parsePreflight(rest);
   if (command === "start") return parseStart(rest);
   if (command === "resume-candidate") return parseResumeCandidate(rest);
