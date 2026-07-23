@@ -71,6 +71,12 @@ Carried notes for QK-VIS-003/QK-UI-006: artifact-ref `kind` projection gap (type
 - **QK-UI-006** (`merge dfffb1d`): typed artifact-kind provenance cards + Governing-files panel; `buildPlanProgressProjection` fully de-fabricated (derives from real journal events, honest nulls for unjournaled facts, mutation-verified at source and compiled layers); preflight topbar divergence documented for the VIS-003 record. Review ACCEPT, minors only (per-step timestamp attribution and reviewed-status inference noted for follow-up).
 - Animation opportunity sweep recorded (`docs/superpowers/design/2026-07-23-animation-opportunities.md`): four gated recipes, six explicit rejections; ledgered as QK-UI-008 (motion tokens + press feedback) and QK-UI-009 (occasional-surface entrances).
 
+## QK-VIS-003 — visual conformance verification (`merge 2fbf7a1`)
+
+- Structural conformance gates + 10 deterministic screenshot baselines (Playwright toHaveScreenshot, darwin-suffixed, fixture ledger in its own git toplevel closing the live-ledger leak class) + baseline-presence guard in `pnpm check` + the per-decision conformance record (`docs/superpowers/reviews/2026-07-23-qk-vis-003-conformance.md`: 8 conforms, 9 accepted divergences each with a resolving pointer, 0 open gaps).
+- Building the gates found and fixed two real layout bugs: the preflight footer's padding reservation was specificity-dead (fixed footer could occlude content) and the compact footer inherited a 433px vertical flex basis. Both falsified-verified in review.
+- Review ACCEPT, minors only (prompt-surface masking not yet mechanical; one hash typo in the record; a pre-existing load flake; QUIRKS_STATE_DIR env hygiene). Branch gate: 775 tests, 770 pass, 0 fail, 5 known skips.
+
 ## Merged-main verification
 
 - After QK-RUN-003 + QK-CTL-005: `pnpm check` on `main` — 535 tests, 531 pass, 0 fail, 4 gated skips.
