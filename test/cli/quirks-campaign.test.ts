@@ -228,6 +228,81 @@ test("runCampaignCommand preflight approve start status flow uses real runtime w
   }
 });
 
+test("preflight re-staging lets a config-fix-and-retry loop reach an approvable envelope", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    // First staging attempt: placeholder routing lands in the store.
+    const placeholderRun = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: false,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string } };
+    assert.equal(placeholderRun.ok, true);
+
+    // Operator fixes routing config and retries: same campaign, fresh envelope.
+    const realRun = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string } };
+    assert.equal(realRun.ok, true);
+    assert.equal(realRun.campaignId, placeholderRun.campaignId);
+    assert.notEqual(realRun.envelope.digest, placeholderRun.envelope.digest);
+
+    // Approving the stale digest must fail loudly, naming the stored digest.
+    await assert.rejects(
+      () => runCampaignCommand({
+        command: "approve",
+        campaignId: placeholderRun.campaignId,
+        digest: placeholderRun.envelope.digest,
+        json: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /DIGEST_MISMATCH/);
+        assert.ok(
+          error.message.includes(realRun.envelope.digest),
+          "approve failure must surface the stored envelope digest",
+        );
+        return true;
+      },
+    );
+
+    // Approving the stored (fresh) digest succeeds without state-dir surgery.
+    const approve = (await runCampaignCommand({
+      command: "approve",
+      campaignId: realRun.campaignId,
+      digest: realRun.envelope.digest,
+      json: true,
+    })) as { ok: boolean };
+    assert.equal(approve.ok, true);
+
+    const status = (await runCampaignCommand({
+      command: "status",
+      campaignId: realRun.campaignId,
+      json: true,
+    })) as { envelopeDigest: string; digest: string };
+    assert.equal(status.envelopeDigest, realRun.envelope.digest);
+    assert.equal(status.digest, realRun.envelope.digest);
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
+
 test("runCampaignCommand start --single-wave preserves the single-dispatch behavior", async () => {
   const { root, stateDir } = await freshAcceptanceRepo();
   const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));

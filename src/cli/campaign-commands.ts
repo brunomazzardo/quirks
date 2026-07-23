@@ -4,6 +4,7 @@ import { recoverCampaignOrThrow } from "../campaign/recovery.js";
 import { runPreflight } from "../campaign/preflight.js";
 import { createCampaignRuntime, lockPathFor } from "../campaign/runtime-context.js";
 import { isTerminalCampaignStatus } from "../campaign/state-machine.js";
+import { stageCampaignEnvelope, type StagingOutcome } from "../campaign/staging.js";
 import { CampaignSupervisor } from "../campaign/supervisor.js";
 import { CampaignStore } from "../campaign/store.js";
 import type { CampaignEnvelope, CampaignSnapshot, CampaignStatus } from "../campaign/types.js";
@@ -60,21 +61,12 @@ async function supervisorContext(store: CampaignStore, repositoryRoot: string) {
   };
 }
 
-async function persistPreflightStore(envelope: CampaignEnvelope): Promise<CampaignStore> {
-  const stateDir = stateDirFor(envelope.repositoryId);
-  try {
-    return await CampaignStore.create({
-      stateDir,
-      repositoryId: envelope.repositoryId,
-      campaignId: envelope.campaignId,
-      envelope,
-    });
-  } catch (error) {
-    if (error instanceof QuirksError && error.message.includes("already exists")) {
-      return CampaignStore.open(stateDir, envelope.repositoryId, envelope.campaignId);
-    }
-    throw error;
-  }
+async function persistPreflightStore(envelope: CampaignEnvelope): Promise<StagingOutcome> {
+  const { outcome } = await stageCampaignEnvelope({
+    stateDir: stateDirFor(envelope.repositoryId),
+    envelope,
+  });
+  return outcome;
 }
 
 type ResumeCandidatePayload =
@@ -156,8 +148,9 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
         ...(parsed.maxConcurrency !== undefined ? { maxConcurrency: parsed.maxConcurrency } : {}),
         ...(parsed.configPath ? {} : {}),
       });
+      let staging: StagingOutcome | undefined;
       if (result.blockers.length === 0) {
-        await persistPreflightStore(result.envelope);
+        staging = await persistPreflightStore(result.envelope);
       }
       return {
         ok: result.blockers.length === 0,
@@ -165,6 +158,7 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
         envelope: result.envelope,
         blockers: result.blockers,
         proposal: result.proposal,
+        ...(staging ? { staging } : {}),
         localCoordinationOnly: true,
       };
     }
