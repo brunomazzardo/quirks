@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import type { UiPlanProgressV1 } from "../../src/ui/ports/campaign-read.js";
+import { FIXTURE_PLAN_COMMIT, FIXTURE_PLAN_PATH } from "../ui/support/plan-progress-fixture.js";
 import { attachLoopbackNetworkGuard, launchUiFixture } from "./support/launch-ui.js";
 
 test("campaign detail renders controller-observed plan progress ledger", async ({ page }) => {
@@ -14,10 +15,20 @@ test("campaign detail renders controller-observed plan progress ledger", async (
   await page.goto(ui.campaignDetailUrl);
   await expect(page.getByRole("heading", { name: "Campaign C-1" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Plan progress" })).toBeVisible();
-  await expect(page.getByText("Campaign supervisor orchestration and crash recovery")).toBeVisible();
+  // Every rendered plan fact derives from the journal-shaped fixture event:
+  // the plan binding path/commit and the journaled step keys.
+  await expect(page.getByText(FIXTURE_PLAN_PATH)).toBeVisible();
+  await expect(page.getByText(`Plan task 14 at ${FIXTURE_PLAN_COMMIT}`)).toBeVisible();
+  await expect(page.getByText("Plan task 14 · step 1")).toBeVisible();
+  await expect(page.getByText("Plan task 14 · step 3")).toBeVisible();
   await expect(page.getByText("Worker reported").first()).toBeVisible();
   await expect(page.getByText("Controller reviewed")).toHaveCount(0);
   await expect(page.getByText("Completion authority: controller")).toBeVisible();
+  // The formerly fabricated constants must never resurface in the ledger.
+  const ledger = page.locator(".plan-progress-ledger");
+  await expect(ledger.getByText("Campaign supervisor orchestration and crash recovery")).toHaveCount(0);
+  await expect(ledger.getByText("2026-07-21-quirks-campaign-control-plane")).toHaveCount(0);
+  await expect(ledger.getByText("a".repeat(40))).toHaveCount(0);
 
   network.assertLoopbackOnly();
   await ui.close();

@@ -1,6 +1,6 @@
 import type { CampaignReadPort, UiCampaignDetail, UiCampaignSummaryItem } from "../../../src/ui/ports/campaign-read.js";
 import { buildPlanProgressProjection } from "../../../src/ui/read-models/plan-progress.js";
-import { fixtureWithReportedCompletion } from "../../../src/ui/api/plan-progress.js";
+import { fixtureWithReportedCompletion } from "./plan-progress-fixture.js";
 
 const SUMMARIES: UiCampaignSummaryItem[] = [
   {
@@ -72,10 +72,13 @@ export function fakeCampaignReadPort(overrides?: {
       return detail;
     },
     getPlanProgress: async ({ taskId, campaignId }) => {
+      // Only C-1/QK-1 has a journal-shaped progress fixture; every other task
+      // honestly has no recorded plan progress and 404s like production.
       if (campaignId === "C-1" && taskId === "QK-1") {
-        return buildPlanProgressProjection(fixtureWithReportedCompletion());
+        const result = buildPlanProgressProjection(fixtureWithReportedCompletion());
+        if (result.available) return result.projection;
       }
-      return buildPlanProgressProjection({ campaignId, taskId, refreshedAt: new Date().toISOString() });
+      throw new Error(`No recorded plan progress for task ${taskId} in campaign ${campaignId}`);
     },
   };
 }
