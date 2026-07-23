@@ -45,8 +45,10 @@ function recommendRecipeId(context: PromptContext, rendered: readonly RenderedPr
 /**
  * Filter state-valid recipes, render each independently, and select the
  * recommended recipe by context state. A recipe whose required authority is
- * absent is dropped (unavailable, never disabled); a context with no
- * applicable, renderable recipe is a protocol error.
+ * absent is dropped (unavailable, never disabled). A context with no
+ * applicable, renderable recipe — e.g. a RUNNING campaign, whose catalog
+ * guards allow no copy prompt while execution is in flight — projects an
+ * explicit empty set the client renders as "no actions", never an error.
  */
 export function buildPromptSet(context: PromptContext): UiPromptSetV1 {
   const applicable = getApplicableRecipes(context);
@@ -59,12 +61,6 @@ export function buildPromptSet(context: PromptContext): UiPromptSetV1 {
       throw error;
     }
   }
-  if (rendered.length === 0) {
-    throw new QuirksError(
-      "PROTOCOL_VIOLATION",
-      `No applicable prompt recipe for ${context.contextKind} context in state ${contextState(context)}`,
-    );
-  }
 
   const set: UiPromptSetV1 = {
     schemaVersion: 1,
@@ -74,7 +70,7 @@ export function buildPromptSet(context: PromptContext): UiPromptSetV1 {
       taskId: context.task?.id ?? null,
       state: contextState(context),
     },
-    recommendedRecipeId: recommendRecipeId(context, rendered),
+    recommendedRecipeId: rendered.length === 0 ? null : recommendRecipeId(context, rendered),
     recipes: rendered,
   };
   return validateSchema<UiPromptSetV1>("ui-prompt-set-v1", set);

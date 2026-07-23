@@ -45,6 +45,13 @@ export async function createUiServer(options: LegacyHandlerOptions | UiRouterOpt
   });
   return {
     address: () => server.address() as AddressInfo | null,
-    close: () => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        // Force idle and in-flight connections shut so close() resolves even
+        // while a browser holds a keep-alive socket open — an always-on daemon
+        // (and stop/restart) must shut down cleanly regardless of open tabs.
+        server.closeAllConnections();
+      }),
   };
 }

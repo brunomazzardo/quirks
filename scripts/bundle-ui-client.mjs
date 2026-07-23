@@ -20,6 +20,12 @@ const result = await esbuild.build({
   define: {
     "process.env.NODE_ENV": '"production"',
   },
+  // Dead-code elimination: the NODE_ENV define alone leaves statically-false
+  // development branches (React's `^_^` checkDCE marker) in the output, which
+  // makes React DevTools warn "production mode but dead code elimination has
+  // not been applied". Syntax minification folds those branches away without
+  // renaming identifiers.
+  minifySyntax: true,
 });
 
 const outputFiles = result.outputFiles ?? [];

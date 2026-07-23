@@ -716,29 +716,29 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
   const repositoryRoot = input.repositoryRoot ?? process.cwd();
   let repositoryId: string;
   let campaign: ResolvedCampaign | undefined;
-  let standalonePorts: StandaloneWorkspacePorts | undefined;
-  let promptRead: PromptReadPort | undefined;
   let preflightRead: PreflightReadPort | undefined;
+  // Both workspace modes project the same durable state: campaign details,
+  // task history, existing tasks, and contextual prompts all read from the
+  // stored campaign files and the real task ledger. A campaign-bound
+  // workspace without these ports used to leave the campaign detail route
+  // unanswered, which crashed the client for any non-awaiting campaign
+  // (a RUNNING campaign lands directly on the detail view).
+  const standalonePorts = createStandaloneWorkspacePorts({ repositoryRoot, stateDir });
   if (input.campaignId === undefined) {
-    const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
+    const context = await standalonePorts.getProjectContext();
     repositoryId = context.repositoryId;
-    standalonePorts = createStandaloneWorkspacePorts({ repositoryRoot, stateDir });
   } else {
     campaign = await ports.resolveCampaign(input.campaignId);
     if (!campaign) {
       throw new QuirksError("PROTOCOL_VIOLATION", `Campaign ${input.campaignId} was not found`);
     }
     repositoryId = campaign.repositoryId;
-    const getProjectContext = () => loadProjectContext(repositoryRoot, { mode: "inspection" });
-    // Campaign-bound workspaces expose the same contextual copy prompts as
-    // the standalone read-only mode, from the same durable state.
-    promptRead = createWorkspacePromptReadPort({ repositoryRoot, stateDir, getProjectContext });
     // The preflight proposal view (the only place the approval form renders)
     // is served from the durable campaign store, bound to the campaign's own
     // repository id.
     preflightRead = createDurablePreflightReadPort({
       stateDir,
-      getProjectContext,
+      getProjectContext: standalonePorts.getProjectContext,
       repositoryId: campaign.repositoryId,
     });
   }
@@ -780,9 +780,10 @@ export async function openWorkspace(input: OpenWorkspaceInput): Promise<OpenWork
     now: getNow,
     clientScript,
     ...(readOnly ? { readOnly: true } : {}),
-    ...(promptRead ? { promptRead } : {}),
-    ...(preflightRead ? { preflightRead } : {}),
     ...standalonePorts,
+    // Campaign-bound mode narrows the preflight port to the campaign's own
+    // repository id; every other durable port is shared with standalone mode.
+    ...(preflightRead ? { preflightRead } : {}),
   };
   const server = await createUiServer(routerOptions);
 

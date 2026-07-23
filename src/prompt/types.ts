@@ -135,10 +135,15 @@ export interface UiPromptSetContextV1 {
   state: string;
 }
 
-/** Wire projection returned by the loopback prompt API. */
+/**
+ * Wire projection returned by the loopback prompt API. A context with no
+ * state-valid recipe (for example a running campaign) is an explicit empty
+ * set: `recipes` is empty and `recommendedRecipeId` is null — never a
+ * fabricated recipe and never an error dressed as one.
+ */
 export interface UiPromptSetV1 {
   schemaVersion: 1;
   context: UiPromptSetContextV1;
-  recommendedRecipeId: string;
+  recommendedRecipeId: string | null;
   recipes: RenderedPrompt[];
 }
