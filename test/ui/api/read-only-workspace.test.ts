@@ -362,6 +362,131 @@ test("production openWorkspace serves contextual prompts in both workspace modes
   }
 });
 
+/**
+ * Mirrors the durable store of a live RUNNING campaign (shapes copied from a
+ * real execution): state.json with status "running" and activeLanes, no spend
+ * and no outcome, an approvals.jsonl entry bound to the state digest, empty
+ * sessions.json and progress.jsonl, and an envelope with taskIds/createdAt.
+ */
+async function seedRunningCampaign(
+  stateDir: string,
+  repositoryId: string,
+  campaignId: string,
+): Promise<void> {
+  const campaignDir = path.join(
+    stateDir,
+    "repositories",
+    repositoryId.replaceAll(":", "-"),
+    "campaigns",
+    campaignId,
+  );
+  await mkdir(campaignDir, { recursive: true });
+  const digest = `sha256:${"1b".repeat(32)}`;
+  await writeFile(
+    path.join(campaignDir, "campaign.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      campaignId,
+      repositoryId,
+      createdAt: "2026-07-23T20:01:29.237Z",
+      taskIds: ["QK-1"],
+      git: { baseCommit: "5a73ab834e39870ae19fd02c798f75fd977d0144" },
+    }),
+  );
+  await writeFile(
+    path.join(campaignDir, "state.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      campaignId,
+      status: "running",
+      digest,
+      activeLanes: ["lane-a", "lane-b"],
+      updatedAt: "2026-07-23T20:04:13.715Z",
+    }),
+  );
+  await writeFile(
+    path.join(campaignDir, "approvals.jsonl"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      campaignId,
+      digest,
+      approvedAt: "2026-07-23T20:01:59.987Z",
+      operator: { kind: "self-asserted", id: "quirks-campaign-cli" },
+      tokenId: "9".repeat(64),
+      evidence: { channel: "headless" },
+    })}\n`,
+  );
+  await writeFile(path.join(campaignDir, "sessions.json"), JSON.stringify({ schemaVersion: 1, sessions: [] }));
+  await writeFile(path.join(campaignDir, "progress.jsonl"), "");
+}
+
+test("campaign-bound openWorkspace serves the RUNNING campaign detail and an explicit empty prompt set", async () => {
+  const repositoryRoot = await createFixtureProject();
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-running-open-"));
+  const context = await loadProjectContext(repositoryRoot, { mode: "inspection" });
+  await seedRunningCampaign(stateDir, context.repositoryId, "C-run");
+
+  const campaignBound = await openWorkspace({
+    campaignId: "C-run",
+    repositoryRoot,
+    stateDir,
+    ports: "production",
+    deps: { json: true, isTty: false },
+  });
+  try {
+    assert.equal(campaignBound.readOnly, false);
+    // A running campaign lands on the campaign detail route, not preflight.
+    assert.match(campaignBound.launchUrl, /\/campaigns\/C-run#/);
+    const viewerToken = /viewToken=([^&]+)/.exec(campaignBound.launchUrl)?.[1];
+    assert.ok(viewerToken);
+    const headers = {
+      Authorization: `Bearer ${decodeURIComponent(viewerToken)}`,
+      Origin: campaignBound.authority,
+      "Sec-Fetch-Site": "same-origin",
+    };
+
+    // The detail read must serve the durable live truth, never a fabricated
+    // generic body without campaign fields (the tasks[0] crash escape hatch).
+    const detail = await fetch(`${campaignBound.authority}/api/v1/campaigns/C-run`, { headers });
+    assert.equal(detail.status, 200);
+    const detailBody = (await detail.json()) as {
+      campaignId: string;
+      state: string;
+      tasks: Array<{ taskId: string }>;
+      waves: unknown[];
+      sync: { pending: number; conflicts: number };
+      outcome?: string;
+      route?: string;
+    };
+    assert.equal(detailBody.route, undefined, "no generic route fallback body");
+    assert.equal(detailBody.campaignId, "C-run");
+    assert.equal(detailBody.state, "running");
+    assert.deepEqual(detailBody.tasks.map((task) => task.taskId), ["QK-1"]);
+    assert.deepEqual(detailBody.waves, []);
+    assert.deepEqual(detailBody.sync, { pending: 0, conflicts: 0 });
+    assert.equal(detailBody.outcome, undefined, "no invented outcome while running");
+
+    // A running campaign has no state-valid copy prompt; the projection is an
+    // explicit empty set (HTTP 200), never a 404 that looks like a failure.
+    const prompts = await fetch(
+      `${campaignBound.authority}/api/v1/prompts?contextKind=campaign&campaignId=C-run`,
+      { headers },
+    );
+    assert.equal(prompts.status, 200);
+    const promptBody = (await prompts.json()) as {
+      recommendedRecipeId: string | null;
+      recipes: unknown[];
+      context: { kind: string; state: string };
+    };
+    assert.equal(promptBody.recommendedRecipeId, null);
+    assert.deepEqual(promptBody.recipes, []);
+    assert.equal(promptBody.context.kind, "campaign");
+    assert.equal(promptBody.context.state, "running");
+  } finally {
+    await campaignBound.close?.();
+  }
+});
+
 test("standalone openWorkspace wires read-only projections end to end", async () => {
   const repositoryRoot = await createFixtureProject();
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-read-only-open-"));

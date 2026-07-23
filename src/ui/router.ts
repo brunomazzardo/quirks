@@ -114,22 +114,34 @@ async function routeApiRequest(req: IncomingMessage, res: ServerResponse, option
       preflightRead: options.preflightRead,
     });
   }
-  if (options.campaignRead && matchesCampaignsRoute(url.pathname)) {
+  if (matchesCampaignsRoute(url.pathname)) {
+    if (!options.campaignRead) {
+      return sendJson(res, 503, { schemaVersion: 1, result: "invalid" });
+    }
     return handleCampaigns(req, res, { url, port: options.campaignRead });
   }
   const taskId = matchTaskHistoryRoute(url.pathname);
-  if (options.taskHistory && taskId) {
+  if (taskId) {
+    if (!options.taskHistory) {
+      return sendJson(res, 503, { schemaVersion: 1, result: "invalid" });
+    }
     return handleTaskHistory(req, res, { taskId, source: options.taskHistory });
   }
   const progressTaskId = matchPlanProgressRoute(url.pathname);
-  if (options.campaignRead && progressTaskId) {
+  if (progressTaskId) {
+    if (!options.campaignRead) {
+      return sendJson(res, 503, { schemaVersion: 1, result: "invalid" });
+    }
     return handlePlanProgress(req, res, {
       taskId: progressTaskId,
       port: options.campaignRead,
       ...(options.now ? { now: options.now } : {}),
     });
   }
-  return sendJson(res, 200, { schemaVersion: 1, route: url.pathname, refreshedAt: options.now?.() ?? new Date().toISOString() });
+  // Every read route enumerated by isReadRoute is handled above; a missing
+  // port is an explicit 503, never a fabricated 200 body without projection
+  // fields (that fabrication is what crashed the campaign detail client).
+  return sendJson(res, 404, { schemaVersion: 1, result: "invalid" });
 }
 
 function routeShellRequest(req: IncomingMessage, res: ServerResponse, options: UiRouterOptions, url: URL): void {

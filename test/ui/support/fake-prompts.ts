@@ -68,6 +68,27 @@ export function awaitingApprovalPromptContext(): PromptContext {
   });
 }
 
+/**
+ * Campaign context for a RUNNING campaign: no task/plan/git bindings exist at
+ * the campaign scope, and no catalog recipe is state-valid while executing —
+ * the honest projection is an explicit empty prompt set.
+ */
+export function runningCampaignPromptContext(): PromptContext {
+  const context = reviewPromptContext({
+    contextKind: "campaign",
+    campaign: {
+      campaignId: "C-running",
+      state: "running",
+      approved: true,
+      envelopeDigest: `sha256:${"c".repeat(64)}`,
+    },
+  });
+  delete context.task;
+  delete context.plan;
+  delete context.git;
+  return context;
+}
+
 export function activeTaskPromptContext(taskId: string): PromptContext {
   return reviewPromptContext({
     contextKind: "task",
@@ -99,6 +120,9 @@ export function fakePromptReadPort(): PromptReadPort {
       }
       if (request.contextKind === "campaign" && request.campaignId === "C-approved") {
         return approvedCampaignPromptContext();
+      }
+      if (request.contextKind === "campaign" && request.campaignId === "C-running") {
+        return runningCampaignPromptContext();
       }
       throw new Error(`No prompt context for ${request.contextKind}`);
     },

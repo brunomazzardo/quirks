@@ -22,7 +22,33 @@ const SUMMARIES: UiCampaignSummaryItem[] = [
   },
 ];
 
+/**
+ * RUNNING campaign detail mirroring the durable store of a live campaign
+ * (state.json status "running", claimed tasks, no outcome/spend, and no
+ * recorded waves/runners/commits/PRs/verification yet). Campaign-bound
+ * workspaces project exactly this sparse shape while execution is in flight,
+ * so every campaign-facing view must render it without invented data.
+ */
+export const RUNNING_CAMPAIGN_DETAIL: UiCampaignDetail = {
+  campaignId: "C-running",
+  repositoryId: "sha256:repo-1",
+  state: "running",
+  taskCount: 2,
+  startedAt: "2026-07-23T20:01:29.237Z",
+  tasks: [
+    { taskId: "QK-1", title: "Contract task", status: "claimed" },
+    { taskId: "QK-2", title: "Follow-up task", status: "claimed" },
+  ],
+  waves: [],
+  runners: [],
+  commits: [],
+  pullRequests: [],
+  verification: [],
+  sync: { pending: 0, conflicts: 0 },
+};
+
 const DETAILS: Record<string, UiCampaignDetail> = {
+  "C-running": RUNNING_CAMPAIGN_DETAIL,
   "C-approved": {
     campaignId: "C-approved",
     repositoryId: "sha256:repo-1",

@@ -79,9 +79,16 @@ test("bounds prompt text, warnings, and binding values", () => {
   assert.throws(() => validateSchema("ui-prompt-set-v1", badAuthority));
 });
 
-test("requires at least one rendered recipe and a recommended recipe id", () => {
+test("allows an explicit empty recipe set with a null recommendation, keeping the recommendedRecipeId key required", () => {
   const valid = promptSetFixture();
-  assert.throws(() => validateSchema("ui-prompt-set-v1", { ...valid, recipes: [] }));
+  // A context with no state-valid recipe (e.g. a RUNNING campaign) projects an
+  // explicit empty set rather than erroring — empty recipes plus a null
+  // recommendation is valid.
+  assert.doesNotThrow(() =>
+    validateSchema("ui-prompt-set-v1", { ...valid, recipes: [], recommendedRecipeId: null }),
+  );
+  // recommendedRecipeId stays a required (but nullable) key, so dropping it
+  // entirely still fails closed.
   const { recommendedRecipeId: _dropped, ...withoutRecommendation } = valid;
   assert.throws(() => validateSchema("ui-prompt-set-v1", withoutRecommendation));
 });

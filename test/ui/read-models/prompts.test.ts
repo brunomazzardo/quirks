@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildPromptSet } from "../../../src/ui/read-models/prompts.js";
 import { validateSchema } from "../../../src/schema/validate.js";
-import { approvedCampaignPromptContext, reviewPromptContext } from "../support/fake-prompts.js";
+import {
+  approvedCampaignPromptContext,
+  reviewPromptContext,
+  runningCampaignPromptContext,
+} from "../support/fake-prompts.js";
 
 test("review context recommends code review and exposes state-valid alternatives", () => {
   const set = buildPromptSet(reviewPromptContext());
@@ -90,7 +94,7 @@ test("projection never contains credential-shaped fields", () => {
   assert.equal(serialized.includes("Bearer "), false);
 });
 
-test("a context with no applicable recipes is a protocol error", () => {
+test("a context with no applicable recipes projects an explicit empty set", () => {
   const context = reviewPromptContext({
     contextKind: "campaign",
     campaign: {
@@ -102,5 +106,19 @@ test("a context with no applicable recipes is a protocol error", () => {
   });
   delete context.task;
   delete context.git;
-  assert.throws(() => buildPromptSet(context), /applicable/i);
+  const set = buildPromptSet(context);
+  assert.equal(set.recommendedRecipeId, null);
+  assert.deepEqual(set.recipes, []);
+  assert.equal(set.context.state, "complete");
+  assert.deepEqual(validateSchema("ui-prompt-set-v1", set), set);
+});
+
+test("a RUNNING campaign context projects an explicit empty set, never a fabricated recipe", () => {
+  const set = buildPromptSet(runningCampaignPromptContext());
+  assert.equal(set.recommendedRecipeId, null);
+  assert.deepEqual(set.recipes, []);
+  assert.equal(set.context.kind, "campaign");
+  assert.equal(set.context.state, "running");
+  assert.equal(set.context.campaignId, "C-running");
+  assert.deepEqual(validateSchema("ui-prompt-set-v1", set), set);
 });
