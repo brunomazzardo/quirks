@@ -1,6 +1,7 @@
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import type { FileHandle } from "node:fs/promises";
-import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { canonicalJson } from "../core/canonical-json.js";
 import { QuirksError } from "../core/errors.js";
@@ -71,26 +72,11 @@ function assertLockRecord(value: unknown): RepositoryLockRecord {
 }
 
 async function readLockRecord(lockPath: string): Promise<RepositoryLockRecord> {
-  let contents: string;
-  try {
-    contents = await readFile(lockPath, "utf8");
-  } catch {
+  const contents = await readRawLock(lockPath);
+  if (contents === undefined) {
     throw new QuirksError("PROTOCOL_VIOLATION", "Lock file is unreadable");
   }
-
-  const line = contents.split("\n").find((entry) => entry.length > 0);
-  if (line === undefined) {
-    throw new QuirksError("PROTOCOL_VIOLATION", "Lock file is empty");
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch {
-    throw new QuirksError("PROTOCOL_VIOLATION", "Lock file contains malformed JSON");
-  }
-
-  return assertLockRecord(parsed);
+  return parseRawLock(contents);
 }
 
 function ownershipMatches(expected: RepositoryLockRecord, actual: RepositoryLockRecord): boolean {
@@ -163,6 +149,111 @@ function createHandle(lockPath: string, record: RepositoryLockRecord): Repositor
   };
 }
 
+/**
+ * Deterministic per-stale-record steal token. Every stealer that judged the
+ * same stale lock content derives the same path, so `open(..., "wx")` on it
+ * is an atomic arbiter: exactly one stealer proceeds, losers back off without
+ * ever mutating the lock. A token leaked by a stealer that crashed after
+ * replacing the lock names a record that no longer exists, so it never blocks
+ * stealing the next dead holder.
+ */
+export function stealTokenPath(lockPath: string, staleContent: string): string {
+  const digest = createHash("sha256").update(staleContent).digest("hex");
+  return `${lockPath}.steal-${digest.slice(0, 16)}`;
+}
+
+async function readRawLock(lockPath: string): Promise<string | undefined> {
+  try {
+    return await readFile(lockPath, "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw new QuirksError("PROTOCOL_VIOLATION", "Lock file is unreadable");
+  }
+}
+
+function parseRawLock(contents: string): RepositoryLockRecord {
+  const line = contents.split("\n").find((entry) => entry.length > 0);
+  if (line === undefined) {
+    throw new QuirksError("PROTOCOL_VIOLATION", "Lock file is empty");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    throw new QuirksError("PROTOCOL_VIOLATION", "Lock file contains malformed JSON");
+  }
+  return assertLockRecord(parsed);
+}
+
+function heldBy(existing: RepositoryLockRecord, extraDetails: Record<string, string> = {}): QuirksError {
+  return new QuirksError(
+    "PROTOCOL_VIOLATION",
+    `LOCAL_LOCK_HELD: repository lock is held by campaign ${existing.campaignId}`,
+    { ...lockDetails(existing), ...extraDetails },
+  );
+}
+
+async function writeExclusive(filePath: string, contents: string): Promise<boolean> {
+  try {
+    const handle = await open(filePath, "wx", 0o600);
+    try {
+      await writeAll(handle, contents);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    return true;
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+    return false;
+  }
+}
+
+/**
+ * Displace a dead holder without the read-judge-rm-create race. The steal is
+ * serialized by an atomic O_EXCL token derived from the stale content: only
+ * the token winner may touch the lock, so a late stealer can never delete a
+ * fresh lock created by an earlier winner. The replacement itself is a
+ * rename, which atomically swaps the stale file for ours with no window in
+ * which the lock path is missing.
+ */
+async function stealDeadHolderLock(
+  lockPath: string,
+  staleContent: string,
+  ourContent: string,
+  record: RepositoryLockRecord,
+): Promise<"stolen" | "vanished"> {
+  const tokenPath = stealTokenPath(lockPath, staleContent);
+  if (!(await writeExclusive(tokenPath, ourContent))) {
+    throw heldBy(parseRawLock(staleContent), { stealToken: tokenPath });
+  }
+  try {
+    // Under the token: the lock must still be exactly the content we judged
+    // dead; anything else means the world moved on and we must not touch it.
+    const current = await readRawLock(lockPath);
+    if (current === undefined) return "vanished";
+    if (current !== staleContent) throw heldBy(parseRawLock(current));
+
+    const replacementPath = `${lockPath}.${record.pid}.${randomUUID()}`;
+    if (!(await writeExclusive(replacementPath, ourContent))) {
+      throw new QuirksError("PROTOCOL_VIOLATION", "Lock replacement path collision");
+    }
+    await rename(replacementPath, lockPath);
+
+    // Defense in depth: our rename must be the surviving lock.
+    const settled = await readRawLock(lockPath);
+    if (settled !== ourContent) {
+      if (settled === undefined) {
+        throw new QuirksError("PROTOCOL_VIOLATION", "LOCK_NOT_OWNED: lock file is missing or unreadable");
+      }
+      throw heldBy(parseRawLock(settled));
+    }
+    return "stolen";
+  } finally {
+    await rm(tokenPath, { force: true });
+  }
+}
+
 // oxlint-disable typescript/no-extraneous-class -- static acquire API required by protocol
 export class RepositoryLock {
   static async acquire(lockPath: string, options: AcquireRepositoryLockOptions): Promise<RepositoryLockHandle> {
@@ -176,47 +267,35 @@ export class RepositoryLock {
       acquiredAt: now,
       heartbeatAt: now,
     };
+    const ourContent = `${canonicalJson(record)}\n`;
 
     await mkdir(path.dirname(lockPath), { recursive: true });
 
-    const tryCreate = async (): Promise<boolean> => {
-      try {
-        const handle = await open(lockPath, "wx", 0o600);
-        try {
-          await writeAll(handle, `${canonicalJson(record)}\n`);
-          await handle.sync();
-        } finally {
-          await handle.close();
-        }
-        return true;
-      } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
-        return false;
+    // Bounded retries cover benign transitions (a holder releasing, or a dead
+    // holder vanishing between phases); every contended outcome still throws.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (await writeExclusive(lockPath, ourContent)) {
+        return createHandle(lockPath, record);
       }
-    };
 
-    const heldBy = (existing: RepositoryLockRecord): QuirksError =>
-      new QuirksError(
-        "PROTOCOL_VIOLATION",
-        `LOCAL_LOCK_HELD: repository lock is held by campaign ${existing.campaignId}`,
-        lockDetails(existing),
-      );
-
-    if (!(await tryCreate())) {
-      const existing = await readLockRecord(lockPath);
+      const staleContent = await readRawLock(lockPath);
+      if (staleContent === undefined) continue; // released between phases: retry create
+      const existing = parseRawLock(staleContent);
       // Liveness can only be judged for pids on this host; a foreign hostname
       // (or an alive pid) keeps the lock with its recorded holder.
       const holderIsDead = existing.hostname === record.hostname && !isProcessAlive(existing.pid);
       if (!holderIsDead) throw heldBy(existing);
 
-      await rm(lockPath, { force: true });
-      if (!(await tryCreate())) {
-        // A concurrent acquirer won the steal race; surface its record.
-        throw heldBy(await readLockRecord(lockPath));
-      }
+      const outcome = await stealDeadHolderLock(lockPath, staleContent, ourContent, record);
+      if (outcome === "vanished") continue; // dead holder gone: plain create, not a steal
       await options.onSteal?.(existing);
+      return createHandle(lockPath, record);
     }
 
-    return createHandle(lockPath, record);
+    const contents = await readRawLock(lockPath);
+    if (contents === undefined) {
+      throw new QuirksError("PROTOCOL_VIOLATION", "LOCAL_LOCK_HELD: repository lock is contended");
+    }
+    throw heldBy(parseRawLock(contents));
   }
 }
