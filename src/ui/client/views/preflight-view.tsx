@@ -416,12 +416,12 @@ export function PreflightProposalView({
       <section className="summary-grid" aria-label="Campaign summary">
         <SummaryStat
           label="Scope"
-          value={`${proposal.summary.taskCount} exact tasks`}
+          value={`${proposal.summary.taskCount} exact ${proposal.summary.taskCount === 1 ? "task" : "tasks"}`}
           detail="No inferred backlog work"
         />
         <SummaryStat
           label="Execution"
-          value={`${proposal.summary.waveCount} waves`}
+          value={`${proposal.summary.waveCount} ${proposal.summary.waveCount === 1 ? "wave" : "waves"}`}
           detail={`${proposal.lanes.length} agent ${proposal.lanes.length === 1 ? "lane" : "lanes"}`}
         />
         <SummaryStat

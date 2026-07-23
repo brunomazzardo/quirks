@@ -101,7 +101,7 @@ export const UI_CSS = [
   ".safety-note { background: #f8fafc; border-radius: 7px; padding: 8px 10px; font-size: 11px; color: var(--ui-muted); }",
   /* Status pills. */
   ".status-badge { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }",
-  ".status-badge--neutral { background: #f2f4f7; color: #475467; }",
+  ".status-badge--neutral { background: #e8edf3; color: #475467; }",
   ".status-badge--info { background: #dbeafe; color: #1d4ed8; }",
   ".status-badge--success { background: #dcfce7; color: var(--ui-success); }",
   ".status-badge--warning { background: #fef3c7; color: #92400e; }",
