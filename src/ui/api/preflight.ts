@@ -4,6 +4,8 @@ import type { PreflightReadPort } from "../ports/preflight-read.js";
 import { buildPreflightResponse } from "../read-models/preflight-proposal.js";
 import { sendJson } from "./errors.js";
 
+const NOT_FOUND_BODY = { schemaVersion: 1, result: "invalid" } as const;
+
 export async function handlePreflight(
   res: ServerResponse,
   options: {
@@ -12,10 +14,22 @@ export async function handlePreflight(
     preflightRead: PreflightReadPort;
   },
 ): Promise<void> {
+  // A campaign record with a known non-awaiting status fails fast. Records
+  // without a status (standalone read-only workspaces resolve campaigns from
+  // durable state, not a static map) defer to the read port, which re-reads
+  // state.json and refuses anything that is not awaiting approval.
+  // Reviewer note (2026-07-23, minor): same-repository campaign ids no longer
+  // 404 before the port runs; the probe surface is acceptable because every
+  // request here is already viewer-authenticated and repository-scoped.
   const campaign = options.getCampaign(options.campaignId);
-  if (!campaign || campaign.status !== "awaiting_approval") {
-    return sendJson(res, 404, { schemaVersion: 1, result: "invalid" });
+  if (campaign?.status !== undefined && campaign.status !== "awaiting_approval") {
+    return sendJson(res, 404, NOT_FOUND_BODY);
   }
-  const proposal = await buildPreflightResponse(options.preflightRead, options.campaignId);
+  let proposal;
+  try {
+    proposal = await buildPreflightResponse(options.preflightRead, options.campaignId);
+  } catch {
+    return sendJson(res, 404, NOT_FOUND_BODY);
+  }
   sendJson(res, 200, proposal);
 }

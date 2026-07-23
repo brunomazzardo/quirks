@@ -19,12 +19,14 @@ export function readinessBadge(readiness: ReadinessState): BadgeDescriptor {
   return READINESS_BADGES[readiness];
 }
 
-export type ConfidenceLevel = "low" | "medium" | "high";
+export type ConfidenceLevel = "low" | "medium" | "high" | "unavailable";
 
 const CONFIDENCE_BADGES: Record<ConfidenceLevel, BadgeDescriptor> = {
   low: { label: "Low confidence", tone: "warning" },
   medium: { label: "Medium confidence", tone: "info" },
   high: { label: "High confidence", tone: "success" },
+  // Honest marker for durable-state projections that persist no confidence.
+  unavailable: { label: "Confidence unavailable", tone: "neutral" },
 };
 
 export function confidenceBadge(confidence: ConfidenceLevel): BadgeDescriptor {
