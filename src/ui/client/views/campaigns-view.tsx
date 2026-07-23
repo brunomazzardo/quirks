@@ -9,7 +9,7 @@ import { StatusBadge, type StatusTone } from "../components/status-badge.js";
 import { SummaryStat } from "../components/summary-stat.js";
 import { WorkspaceHeader } from "../components/workspace-header.js";
 
-const STATE_LABEL: Record<CampaignStatus, string> = {
+export const STATE_LABEL: Record<CampaignStatus, string> = {
   draft: "Draft",
   preflight: "Preflight",
   awaiting_approval: "Awaiting approval",
@@ -23,7 +23,7 @@ const STATE_LABEL: Record<CampaignStatus, string> = {
   cancelled: "Cancelled",
 };
 
-const STATE_TONE: Record<CampaignStatus, StatusTone> = {
+export const STATE_TONE: Record<CampaignStatus, StatusTone> = {
   draft: "neutral",
   preflight: "info",
   awaiting_approval: "warning",

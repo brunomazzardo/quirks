@@ -85,6 +85,7 @@ export const UI_CSS = [
   /* Two-column workspace: primary panel + inspector aside. */
   ".workspace-layout { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(280px, 0.8fr); gap: 12px; align-items: start; }",
   ".workspace-stack { display: grid; gap: 12px; align-content: start; min-width: 0; }",
+  ".workspace-rail .data-table-wrapper .data-table { min-width: 0; }",
   ".panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0 0; }",
   ".panel-grid-wide { grid-column: 1 / -1; min-width: 0; }",
   /* Panels. */
