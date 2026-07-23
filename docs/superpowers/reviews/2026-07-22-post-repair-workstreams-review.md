@@ -54,6 +54,17 @@ Staging the first real campaign surfaced that preflight's dependency closure inc
 - Independent review of the branch: ACCEPT, minors only — byte-faithful wireframe preservation verified (v5 email scrub is plan-mandated and test-enforced), test honesty confirmed against base, no scope creep, no new dependencies. Gates at branch head: 680 tests, 675 pass, 0 fail, 5 known skips.
 - Shakeout findings ledgered: cursor structured-result enforcement; crash-path repository-lock leak (dead holder, no steal path); stale integration branch after failed start; preflight closure treating non-target tasks as claimable work (forced the aggregate-parent reconciliation).
 
+## Shakeout wave + UI alignment (2026-07-23 evening)
+
+Six tasks implemented in four parallel worktrees, each independently reviewed with fix rounds, merged in dependency order:
+
+- **QK-RUN-004 + QK-RUN-005** (`merge bb02314`): claude effort mapping across fresh+resume argv; cursor per-job result paths, field-naming validation (the exact `{"status":"ok"}` campaign failure now yields an actionable message), brief-embedded result contract whose example round-trips the strict validator. Review ACCEPT, mutation-verified, minors only.
+- **QK-CTL-006 + QK-CTL-007** (`merge b2e3e72`): envelope replace-or-refuse with `--campaign` escape and stored-digest guidance; atomic deterministic-token lock steal (mutual exclusion proven, residual window liveness-only with named remediation); integration-branch reset/report; closure members as frozen facts with proposed-target promotion via the claim path. Review NEEDS-FIXES → fix round → ACCEPT.
+- **QK-UI-007** (`merge 0211a45`): durable preflight + approval ports — browser approval now reachable and durably recorded, all seven adversarial approval probes passed, split-credential model mutation-verified, honest-unavailable schema extension additive-only, browser-approval-unlocks-start proven end-to-end after the fix round. Review ACCEPT.
+- **QK-VIS-002** (`merge 4ec5860`): full UI alignment with the approved wireframes — visual system, five recomposed views, copy-prompt placement per the design handoff, no dead controls. Design-fidelity review ACCEPT ("genuinely looks like the wireframes"); polish round added the design-gate tint, Needs-design filter, iteration eyebrows; two merge-forwards reconciled the durable-preflight nullable semantics and read-only approval gating into the v3 composition. Final union gate: 746 tests, 741 pass, 0 fail, 5 known skips; Playwright 33/33.
+
+Carried notes for QK-VIS-003/QK-UI-006: artifact-ref `kind` projection gap (typed v5 file cards), v3 dark-topbar vs shared-shell drift, §6.A prompt-surface plan amendment, leaked-steal-token dead-pid self-heal, run-tests orphan-dist pruning.
+
 ## Merged-main verification
 
 - After QK-RUN-003 + QK-CTL-005: `pnpm check` on `main` — 535 tests, 531 pass, 0 fail, 4 gated skips.
