@@ -8,3 +8,6 @@ coverage/
 .quirks/briefs/
 .idea/
 test-results/
+.claude/skills/
+.agents/skills/
+skills-lock.json
