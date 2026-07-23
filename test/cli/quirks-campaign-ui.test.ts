@@ -189,13 +189,11 @@ test("ui open --json --stay keeps serving until SIGTERM and exits cleanly", asyn
     assert.match(payload.authority, /^http:\/\/127\.0\.0\.1:\d+$/);
 
     // Liveness: the server must still answer after the payload was printed.
-    // The shell (200) or an auth rejection (401) both prove the server is up.
+    // The shell route serves 200 without authentication (projection data and
+    // credentials never live in the shell), so anything else is a regression.
     const response = await fetch(`${payload.authority}/`, { signal: AbortSignal.timeout(10_000) });
     await response.arrayBuffer();
-    assert.ok(
-      response.status === 200 || response.status === 401,
-      `expected the shell or an auth rejection, got ${response.status}`,
-    );
+    assert.equal(response.status, 200, `expected the unauthenticated shell, got ${response.status}`);
 
     const exit = once(child, "exit", { signal: AbortSignal.timeout(15_000) }) as Promise<
       [number | null, NodeJS.Signals | null]

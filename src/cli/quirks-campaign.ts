@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openWorkspace } from "../ui/open-workspace.js";
@@ -208,9 +209,25 @@ export function runQuirksCampaignCli(): Promise<void> {
     });
 }
 
-const isCliEntry =
-  process.argv[1] !== undefined && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+/**
+ * True when argv[1] denotes this module as the process entry point. Compares
+ * real paths so npm-style bin symlinks to this module still count as direct
+ * invocation (Node resolves the main module through symlinks, so a lexical
+ * compare alone is false there — a silent no-op, the worst failure mode).
+ * Falls back to the lexical compare when realpath fails. Exported for tests.
+ */
+export function isCliEntryInvocation(moduleUrl: string, argv1: string | undefined): boolean {
+  if (argv1 === undefined) return false;
+  const modulePath = path.resolve(fileURLToPath(moduleUrl));
+  const argvPath = path.resolve(argv1);
+  if (modulePath === argvPath) return true;
+  try {
+    return realpathSync(modulePath) === realpathSync(argvPath);
+  } catch {
+    return false;
+  }
+}
 
-if (isCliEntry) {
+if (isCliEntryInvocation(import.meta.url, process.argv[1])) {
   void runQuirksCampaignCli();
 }
