@@ -143,6 +143,7 @@ test("refuses to replace once approvals exist and jobs were dispatched, naming t
     (error: unknown) => {
       assert.ok(error instanceof QuirksError);
       assert.ok(error.message.includes(stale.digest), "refusal must name the stored digest");
+      assert.ok(error.message.includes("--campaign"), "refusal must name the real preflight escape hatch");
       assert.equal(error.details["storedDigest"], stale.digest);
       return true;
     },

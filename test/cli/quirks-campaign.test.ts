@@ -107,6 +107,13 @@ test("parseCampaignArgs accepts documented command shapes", () => {
     maxConcurrency: 3,
     json: true,
   });
+  assert.deepEqual(parseCampaignArgs(["preflight", "--task", "QK-1", "--campaign", "cmp-retry-1", "--json"]), {
+    command: "preflight",
+    taskIds: ["QK-1"],
+    campaignId: "cmp-retry-1",
+    externalRouting: false,
+    json: true,
+  });
   assert.deepEqual(parseCampaignArgs(["cancel", "--campaign", "cmp-1", "--scope", "job-1"]), {
     command: "cancel",
     campaignId: "cmp-1",
@@ -140,6 +147,14 @@ test("parseCampaignArgs rejects unknown commands and missing flags", () => {
     () => parseCampaignArgs(["start", "--campaign", "cmp-1", "--single-wave", "--single-wave"]),
     CampaignCliParseError,
   );
+  assert.throws(
+    () => parseCampaignArgs(["preflight", "--task", "QK-1", "--campaign", "cmp-1", "--campaign", "cmp-2"]),
+    CampaignCliParseError,
+  );
+  // Campaign ids become branch names (quirks/<id>/integration): enforce a
+  // git-branch-safe charset at the parser boundary.
+  assert.throws(() => parseCampaignArgs(["preflight", "--task", "QK-1", "--campaign", "cmp:colon"]), CampaignCliParseError);
+  assert.throws(() => parseCampaignArgs(["preflight", "--task", "QK-1", "--campaign", "-leading-dash"]), CampaignCliParseError);
 });
 
 async function freshAcceptanceRepo(): Promise<{ root: string; stateDir: string }> {
@@ -394,6 +409,90 @@ async function seedStoredCampaign(options: {
     updatedAt: options.updatedAt,
   });
 }
+
+test("a refused re-stage can mint a distinct campaign for the same closure via --campaign", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-config-"));
+  await writeCampaignRunnerConfig(configDir);
+  const previousStateDir = process.env.QUIRKS_STATE_DIR;
+  const previousConfigDir = process.env.QUIRKS_CONFIG_DIR;
+  process.env.QUIRKS_STATE_DIR = stateDir;
+  process.env.QUIRKS_CONFIG_DIR = configDir;
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const first = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string } };
+    assert.equal(first.ok, true);
+    await runCampaignCommand({
+      command: "approve",
+      campaignId: first.campaignId,
+      digest: first.envelope.digest,
+      json: true,
+    });
+    const started = (await runCampaignCommand({
+      command: "start",
+      campaignId: first.campaignId,
+      singleWave: false,
+      json: true,
+    })) as { ok: boolean; dispatchedJobs: unknown[] };
+    assert.ok(started.dispatchedJobs.length >= 1);
+    await runCampaignCommand({ command: "cancel", campaignId: first.campaignId, json: true });
+
+    // Same closure, approved work ran: re-staging under the derived id must
+    // refuse and point at the real escape hatch.
+    await assert.rejects(
+      () => runCampaignCommand({
+        command: "preflight",
+        taskIds: ["QK-101"],
+        externalRouting: true,
+        json: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /ENVELOPE_REPLACE_REFUSED/);
+        assert.ok(error.message.includes(first.envelope.digest), "refusal must name the stored digest");
+        assert.ok(error.message.includes("--campaign"), "refusal must name the real preflight flag");
+        return true;
+      },
+    );
+
+    // The flag mints a distinct campaign for the very same task closure.
+    const retry = (await runCampaignCommand({
+      command: "preflight",
+      taskIds: ["QK-101"],
+      campaignId: "cmp-retry-1",
+      externalRouting: true,
+      json: true,
+    })) as { ok: boolean; campaignId: string; envelope: { digest: string }; staging?: string };
+    assert.equal(retry.ok, true);
+    assert.equal(retry.campaignId, "cmp-retry-1");
+    assert.notEqual(retry.campaignId, first.campaignId);
+    assert.equal(retry.staging, "created");
+
+    // The refused campaign store is untouched and the new one is approvable.
+    const context = await loadProjectContext(root, { mode: "inspection" });
+    const oldStore = await CampaignStore.open(stateDir, context.repositoryId, first.campaignId);
+    assert.equal((await oldStore.readEnvelope()).digest, first.envelope.digest);
+    const approve = (await runCampaignCommand({
+      command: "approve",
+      campaignId: retry.campaignId,
+      digest: retry.envelope.digest,
+      json: true,
+    })) as { ok: boolean };
+    assert.equal(approve.ok, true);
+  } finally {
+    process.chdir(previousCwd);
+    if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
+    else process.env.QUIRKS_STATE_DIR = previousStateDir;
+    if (previousConfigDir === undefined) delete process.env.QUIRKS_CONFIG_DIR;
+    else process.env.QUIRKS_CONFIG_DIR = previousConfigDir;
+  }
+});
 
 test("an explicitly targeted proposed task runs end-to-end through preflight, approve, and start", async () => {
   const { root, stateDir } = await freshAcceptanceRepo();

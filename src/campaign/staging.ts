@@ -65,7 +65,8 @@ export async function stageCampaignEnvelope(input: StageCampaignEnvelopeInput): 
       "PROTOCOL_VIOLATION",
       `ENVELOPE_REPLACE_REFUSED: campaign ${envelope.campaignId} is ${state.status} with stored envelope digest ` +
         `${stored.digest}; the fresh preflight envelope (digest ${envelope.digest}) was not persisted. ` +
-        "Approve or cancel the stored envelope, or stage a new campaign with --campaign.",
+        "To run the same tasks again, re-run preflight with an explicit new id: " +
+        "quirks-campaign preflight --campaign <new-id> --task <id> ...",
       {
         campaignId: envelope.campaignId,
         status: state.status,

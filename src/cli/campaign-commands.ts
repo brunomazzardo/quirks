@@ -169,6 +169,7 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
         repositoryRoot,
         selectedTaskIds: parsed.taskIds,
         externalRoutingEnabled: parsed.externalRouting,
+        ...(parsed.campaignId ? { campaignId: parsed.campaignId } : {}),
         ...(parsed.maxConcurrency !== undefined ? { maxConcurrency: parsed.maxConcurrency } : {}),
         ...(parsed.configPath ? {} : {}),
       });
