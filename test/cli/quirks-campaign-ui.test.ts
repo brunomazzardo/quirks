@@ -1,24 +1,39 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
+import { cp, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import test from "node:test";
+import { promisify } from "node:util";
 import { CliParseError, parseUiOpenArgs, publicOpenPayload } from "../../src/cli/quirks-campaign.js";
 import { createFakeWorkspacePorts, openWorkspace } from "../../src/ui/open-workspace.js";
 
 test("parseUiOpenArgs accepts ui open --campaign", () => {
-  assert.deepEqual(parseUiOpenArgs(["open", "--campaign", "C-1"]), { campaignId: "C-1", json: false });
-  assert.deepEqual(parseUiOpenArgs(["open", "--campaign", "C-1", "--json"]), { campaignId: "C-1", json: true });
+  assert.deepEqual(parseUiOpenArgs(["open", "--campaign", "C-1"]), { campaignId: "C-1", json: false, stay: false });
+  assert.deepEqual(parseUiOpenArgs(["open", "--campaign", "C-1", "--json"]), { campaignId: "C-1", json: true, stay: false });
 });
 
 test("parseUiOpenArgs accepts ui open without --campaign as standalone", () => {
-  assert.deepEqual(parseUiOpenArgs(["open"]), { json: false });
-  assert.deepEqual(parseUiOpenArgs(["open", "--json"]), { json: true });
+  assert.deepEqual(parseUiOpenArgs(["open"]), { json: false, stay: false });
+  assert.deepEqual(parseUiOpenArgs(["open", "--json"]), { json: true, stay: false });
+});
+
+test("parseUiOpenArgs accepts --stay for scripted keep-alive", () => {
+  assert.deepEqual(parseUiOpenArgs(["open", "--stay"]), { json: false, stay: true });
+  assert.deepEqual(parseUiOpenArgs(["open", "--json", "--stay"]), { json: true, stay: true });
+  assert.deepEqual(parseUiOpenArgs(["open", "--campaign", "C-1", "--stay"]), {
+    campaignId: "C-1",
+    json: false,
+    stay: true,
+  });
 });
 
 test("parseUiOpenArgs rejects missing values and unknown flags", () => {
   assert.throws(() => parseUiOpenArgs(["open", "--campaign"]), CliParseError);
   assert.throws(() => parseUiOpenArgs(["open", "--campaign", "C-1", "--unknown"]), CliParseError);
+  assert.throws(() => parseUiOpenArgs(["open", "--stay", "--stay"]), CliParseError);
 });
 
 test("openWorkspace without a campaign opens a read-only workspace", async () => {
@@ -115,4 +130,79 @@ test("openWorkspace reports authority without opening a browser on non-tty", asy
   });
   assert.equal(opened.length, 0);
   assert.equal(result.requiresInteractiveRerun, true);
+});
+
+const execFileAsync = promisify(execFile);
+
+async function freshStandaloneCliRepo(): Promise<{ root: string; stateDir: string }> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "quirks-ui-cli-"));
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "quirks-ui-cli-state-"));
+  await cp(path.resolve("test/fixtures/json-project"), root, { recursive: true });
+  await execFileAsync("git", ["init", root]);
+  await execFileAsync("git", ["-C", root, "config", "user.email", "test@example.com"]);
+  await execFileAsync("git", ["-C", root, "config", "user.name", "Quirks Test"]);
+  await execFileAsync("git", ["-C", root, "add", "."]);
+  await execFileAsync("git", ["-C", root, "commit", "-m", "fixture"]);
+  return { root, stateDir };
+}
+
+function readLine(stream: Readable, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let buffered = "";
+    const timer = setTimeout(() => {
+      stream.off("data", onData);
+      reject(new Error(`No stdout line within ${timeoutMs}ms; received ${JSON.stringify(buffered)}`));
+    }, timeoutMs);
+    const onData = (chunk: Buffer): void => {
+      buffered += chunk.toString("utf8");
+      const newline = buffered.indexOf("\n");
+      if (newline === -1) return;
+      clearTimeout(timer);
+      stream.off("data", onData);
+      resolve(buffered.slice(0, newline));
+    };
+    stream.on("data", onData);
+  });
+}
+
+test("ui open --json --stay keeps serving until SIGTERM and exits cleanly", async () => {
+  const { root, stateDir } = await freshStandaloneCliRepo();
+  const child = spawn(
+    process.execPath,
+    [path.resolve("dist/src/cli/quirks-campaign.js"), "ui", "open", "--json", "--stay"],
+    {
+      cwd: root,
+      env: { ...process.env, QUIRKS_STATE_DIR: stateDir },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let stderr = "";
+  child.stderr!.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString("utf8");
+  });
+  try {
+    const line = await readLine(child.stdout!, 15_000);
+    assert.doesNotMatch(line, /viewToken|approvalToken|qkview_|qkapprove_|#/);
+    const payload = JSON.parse(line) as { ok: boolean; authority: string; readOnly: boolean };
+    assert.equal(payload.ok, true);
+    assert.equal(payload.readOnly, true);
+    assert.match(payload.authority, /^http:\/\/127\.0\.0\.1:\d+$/);
+
+    // Liveness: the server must still answer after the payload was printed.
+    // The shell route serves 200 without authentication (projection data and
+    // credentials never live in the shell), so anything else is a regression.
+    const response = await fetch(`${payload.authority}/`, { signal: AbortSignal.timeout(10_000) });
+    await response.arrayBuffer();
+    assert.equal(response.status, 200, `expected the unauthenticated shell, got ${response.status}`);
+
+    const exit = once(child, "exit", { signal: AbortSignal.timeout(15_000) }) as Promise<
+      [number | null, NodeJS.Signals | null]
+    >;
+    child.kill("SIGTERM");
+    const [code, signal] = await exit;
+    assert.equal(signal, null, `expected a handled SIGTERM shutdown, got signal ${signal}; stderr: ${stderr}`);
+    assert.equal(code, 0, `expected exit code 0; stderr: ${stderr}`);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
 });

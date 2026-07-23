@@ -8,10 +8,12 @@ import type { CampaignStatus } from "../../src/campaign/types.js";
 import { loadProjectContext } from "../../src/project/config.js";
 import { campaignEnvelope } from "../campaign/support.js";
 import { execFile } from "node:child_process";
-import { chmod, cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { isCliEntryInvocation } from "../../src/cli/quirks-campaign.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -393,6 +395,79 @@ test("resume-candidate prefers the most recently updated non-terminal campaign",
     if (previousStateDir === undefined) delete process.env.QUIRKS_STATE_DIR;
     else process.env.QUIRKS_STATE_DIR = previousStateDir;
   }
+});
+
+test("isCliEntryInvocation recognizes direct, symlinked, and non-entry argv[1]", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "quirks-entry-guard-"));
+  const modulePath = path.join(dir, "cli.js");
+  await writeFile(modulePath, "export {};\n", "utf8");
+  const moduleUrl = pathToFileURL(modulePath).href;
+
+  // Direct invocation: argv[1] is the module path itself.
+  assert.equal(isCliEntryInvocation(moduleUrl, modulePath), true);
+
+  // npm-style bin shim: argv[1] is a symlink to the module (Node resolves the
+  // main module through symlinks, so the module URL is the real path).
+  const binLink = path.join(dir, "bin-shim");
+  await symlink(modulePath, binLink);
+  assert.equal(isCliEntryInvocation(moduleUrl, binLink), true);
+
+  // Not the entry point: a different file, or no argv[1] at all (node -e, REPL).
+  assert.equal(isCliEntryInvocation(moduleUrl, path.join(dir, "other.js")), false);
+  assert.equal(isCliEntryInvocation(moduleUrl, path.join(dir, "missing-link")), false);
+  assert.equal(isCliEntryInvocation(moduleUrl, undefined), false);
+});
+
+test("scripts/quirks-campaign wrapper produces the same output as the dist CLI entry", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const wrapperPath = path.resolve("scripts/quirks-campaign");
+  const distEntryPath = path.resolve("dist/src/cli/quirks-campaign.js");
+  const env = { ...process.env, QUIRKS_STATE_DIR: stateDir };
+
+  const viaWrapper = await execFileAsync(process.execPath, [wrapperPath, "resume-candidate", "--json"], {
+    cwd: root,
+    env,
+  });
+  const viaDist = await execFileAsync(process.execPath, [distEntryPath, "resume-candidate", "--json"], {
+    cwd: root,
+    env,
+  });
+
+  assert.notEqual(viaWrapper.stdout, "", "wrapper must run the CLI, not silently no-op");
+  assert.deepEqual(JSON.parse(viaWrapper.stdout), { ok: true, available: false, reason: "no_resumable_campaign" });
+  assert.equal(viaWrapper.stdout, viaDist.stdout);
+  assert.equal(viaWrapper.stderr, viaDist.stderr);
+});
+
+async function captureCli(
+  entryPath: string,
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [entryPath, ...args], { cwd, env });
+    return { stdout, stderr, code: 0 };
+  } catch (error) {
+    const failure = error as { stdout: string; stderr: string; code: number };
+    return { stdout: failure.stdout, stderr: failure.stderr, code: failure.code };
+  }
+}
+
+test("scripts/quirks-campaign wrapper matches the dist CLI entry on parse errors", async () => {
+  const { root, stateDir } = await freshAcceptanceRepo();
+  const wrapperPath = path.resolve("scripts/quirks-campaign");
+  const distEntryPath = path.resolve("dist/src/cli/quirks-campaign.js");
+  const env = { ...process.env, QUIRKS_STATE_DIR: stateDir };
+
+  const viaWrapper = await captureCli(wrapperPath, ["resume-candidate", "--bogus"], root, env);
+  const viaDist = await captureCli(distEntryPath, ["resume-candidate", "--bogus"], root, env);
+
+  assert.equal(viaDist.code, 2);
+  assert.notEqual(viaDist.stderr, "");
+  assert.equal(viaWrapper.code, viaDist.code, "wrapper must propagate the CLI exit code");
+  assert.equal(viaWrapper.stdout, viaDist.stdout);
+  assert.equal(viaWrapper.stderr, viaDist.stderr);
 });
 
 test("resume-candidate reports no_resumable_campaign for empty or terminal-only stores", async () => {

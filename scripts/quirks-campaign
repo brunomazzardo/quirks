@@ -1,2 +1,6 @@
 #!/usr/bin/env node
-import "../dist/src/cli/quirks-campaign.js";
+// Invoke the CLI explicitly: the dist module's argv[1] entry guard is false
+// when launched through this script, so a bare import would silently no-op.
+import { runQuirksCampaignCli } from "../dist/src/cli/quirks-campaign.js";
+
+await runQuirksCampaignCli();
