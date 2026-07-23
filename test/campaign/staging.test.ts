@@ -112,6 +112,40 @@ test("a pre-run approval never authorizes the replacement envelope", async () =>
   assert.equal((await store.readEnvelope()).digest, fresh.digest);
 });
 
+test("an A->B->A re-staging cycle surfaces the resurrected approval honestly and re-approves idempotently", async () => {
+  const stateDir = await freshStateDir();
+  const a = finalized();
+  const b = finalized({ verification: ["pnpm check"] });
+
+  const first = await stageCampaignEnvelope({ stateDir, envelope: a });
+  await approve(first.store, a);
+  await stageCampaignEnvelope({ stateDir, envelope: b });
+  const { store, outcome } = await stageCampaignEnvelope({ stateDir, envelope: a });
+  assert.equal(outcome, "replaced");
+
+  // A's durable approval is live again for the current digest: the journal
+  // must say so explicitly instead of leaving a silently-approved campaign.
+  const carried = (await store.readEvents()).filter((event) => event.type === "approval.carried");
+  assert.equal(carried.length, 1, "expected exactly one approval.carried event");
+  assert.equal(carried[0]?.evidence["digest"], a.digest);
+  assert.equal(await hasDurableApproval(store, a.digest), true);
+
+  // Re-approving the already-durably-approved current digest is an operator
+  // retry, not a replay attack: idempotent ok, no duplicate approval frame.
+  const before = await store.readApprovals();
+  const challenge = createApprovalChallenge({ campaignId: a.campaignId, digest: a.digest, ttlMs: 60_000 });
+  const approval = await consumeApprovalToken({
+    store,
+    token: challenge.token,
+    campaignId: a.campaignId,
+    digest: a.digest,
+    operator: { kind: "self-asserted", id: "retry@test" },
+  });
+  assert.equal(approval.digest, a.digest);
+  assert.equal(approval.approvedAt, before[0]?.approvedAt, "the original approval is returned");
+  assert.equal((await store.readApprovals()).length, before.length, "no duplicate approval may be appended");
+});
+
 test("refuses to replace once approvals exist and jobs were dispatched, naming the stored digest", async () => {
   const stateDir = await freshStateDir();
   const stale = finalized();

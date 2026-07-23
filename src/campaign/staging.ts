@@ -91,6 +91,22 @@ export async function stageCampaignEnvelope(input: StageCampaignEnvelopeInput): 
     reason: "preflight_restaged",
     evidence: { oldDigest: stored.digest, newDigest: envelope.digest },
   });
+  if (approvals.some((approval) => approval.digest === envelope.digest)) {
+    // Re-staging a previously approved digest (A -> B -> A) resurrects its
+    // durable approval while the state says awaiting_approval. Journal that
+    // explicitly so the campaign is never silently approved.
+    await store.appendEvent({
+      schemaVersion: 1,
+      id: `approval:carried:${envelope.digest}`,
+      type: "approval.carried",
+      at,
+      actor: "control-plane",
+      from: state.status,
+      to: "awaiting_approval",
+      reason: "durable_approval_predates_restage",
+      evidence: { digest: envelope.digest },
+    });
+  }
   await store.writeState({
     schemaVersion: 1,
     campaignId: envelope.campaignId,

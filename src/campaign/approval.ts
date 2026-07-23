@@ -39,7 +39,15 @@ export async function consumeApprovalToken(input: { store: CampaignStore; token:
   if (Date.parse(record.expiresAt) <= Date.now()) throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_EXPIRED");
   if (envelope.digest !== input.digest) throw digestMismatch(envelope.digest);
   const existing = await input.store.readApprovals();
-  if (existing.some((approval) => approval.digest === input.digest)) throw new QuirksError("PROTOCOL_VIOLATION", "APPROVAL_REPLAY");
+  const durable = existing.find((approval) => approval.digest === input.digest);
+  if (durable) {
+    // A fresh token approving the already-durably-approved current digest is
+    // an operator retry (for example after an A -> B -> A re-stage carried
+    // the approval forward), not a replay attack: return the original
+    // approval idempotently. Reusing a consumed token still fails above.
+    record.consumedAt = new Date().toISOString();
+    return durable;
+  }
   const approvedAt = new Date().toISOString();
   const approval: CampaignApproval = { schemaVersion: 1, campaignId: input.campaignId, digest: input.digest, approvedAt, operator: input.operator, tokenId: record.tokenId, evidence: { channel: "headless" } };
   await input.store.appendApproval(approval);

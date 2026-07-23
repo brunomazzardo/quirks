@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -1062,6 +1062,17 @@ test("a dispatch failure after prepareRun releases the repository lock", async (
   await recordApproval(context);
   await assert.rejects(() => supervisor.startApproved(), /worktree provisioning failed/);
   await assertLockReleased(context.lockPath);
+});
+
+test("stop tolerates an externally removed lock file after a successful run", async () => {
+  const context = await testContext();
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.startApproved();
+  // An operator (or crash cleanup) removed the lock file out from under us:
+  // a successful run's stop() must still resolve instead of LOCK_NOT_OWNED.
+  await rm(context.lockPath, { force: true });
+  await supervisor.stop();
 });
 
 test("steals a dead-holder repository lock on the same host and journals the steal", async () => {

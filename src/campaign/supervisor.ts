@@ -393,8 +393,15 @@ export class CampaignSupervisor {
   }
 
   async stop(): Promise<void> {
-    await this.lockHandle?.release();
+    const handle = this.lockHandle;
     this.lockHandle = undefined;
+    if (!handle) return;
+    try {
+      await handle.release();
+    } catch {
+      // An externally removed or replaced lock file must not fail a run that
+      // already succeeded; the successor (if any) owns the lock now.
+    }
   }
 
   /**

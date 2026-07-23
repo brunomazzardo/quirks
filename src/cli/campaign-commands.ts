@@ -200,7 +200,16 @@ export async function runCampaignCommand(parsed: ParsedCampaignArgs): Promise<un
         digest: parsed.digest,
         operator: { kind: "self-asserted", id: "quirks-campaign-cli" },
       });
-      return { ok: true, campaignId: parsed.campaignId, approval, localCoordinationOnly: true };
+      // An approval minted by an earlier token means this call was an
+      // idempotent retry of an already-durably-approved digest.
+      const alreadyApproved = approval.tokenId !== challenge.tokenId;
+      return {
+        ok: true,
+        campaignId: parsed.campaignId,
+        approval,
+        ...(alreadyApproved ? { note: "already-approved" } : {}),
+        localCoordinationOnly: true,
+      };
     }
     case "start": {
       const { store, repositoryRoot } = await openStore(parsed.campaignId, process.cwd());
