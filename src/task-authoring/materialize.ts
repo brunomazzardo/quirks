@@ -6,9 +6,17 @@ import type {
   MaterializedTask,
   MaterializePlannedTasksInput,
   NativeTaskCandidate,
+  PlannedTaskProposal,
   PlannedTaskRef,
   SourceRef,
 } from "./types.js";
+import {
+  governsAnyPlanTask,
+  isFidelityBearing,
+  validateVisualReferences,
+  visualAcceptanceCriteria,
+  visualSourceRefs,
+} from "./visual-references.js";
 
 /** Revision sentinel used by TaskSource `propose` for tasks that do not exist yet. */
 const NEW_TASK_REVISION = `sha256:${"0".repeat(64)}`;
@@ -88,6 +96,59 @@ function candidateWithPlanRefs(candidate: NativeTaskCandidate, plan: PlannedTask
   return { ...candidate, sourceRefs: [...candidate.sourceRefs, ...planRefsFor(plan)] };
 }
 
+/**
+ * Bind the proposal's optional visual references to the numbered plan tasks it
+ * owns. Governed decisions become bounded acceptance criteria and tracked
+ * artifacts become commit-pinned `other` refs; the task schema is unchanged.
+ */
+function candidateWithVisualReferences(candidate: NativeTaskCandidate, proposal: PlannedTaskProposal): NativeTaskCandidate {
+  const references = validateVisualReferences(proposal.visualReferences ?? []);
+  for (const reference of references) {
+    if (!governsAnyPlanTask(reference, proposal.plan.tasks)) {
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        `Visual reference ${reference.id} governs no plan task owned by proposal ${proposal.task.id}`,
+      );
+    }
+  }
+  if (references.length === 0) return candidate;
+
+  return {
+    ...candidate,
+    acceptanceCriteria: [...candidate.acceptanceCriteria, ...visualAcceptanceCriteria(references, proposal.plan.tasks)],
+    sourceRefs: [...candidate.sourceRefs, ...visualSourceRefs(references)],
+  };
+}
+
+/**
+ * A reproducible fidelity rule is proven by a distinct verification task, never
+ * folded into the implementation task that introduced it.
+ */
+function assertVisualVerificationCoverage(input: MaterializePlannedTasksInput): void {
+  const awaitingVerification = input.proposals
+    .filter((proposal) => proposal.task.kind !== "verification")
+    .filter((proposal) => (proposal.visualReferences ?? []).some(isFidelityBearing))
+    .map((proposal) => proposal.task.id);
+  if (awaitingVerification.length === 0) return;
+
+  const verificationProposals = input.proposals.filter((proposal) => proposal.task.kind === "verification");
+  if (verificationProposals.length === 0) {
+    throw new QuirksError(
+      "PROTOCOL_VIOLATION",
+      `Fidelity-bearing visual references require a distinct verification proposal depending on ${awaitingVerification.join(", ")}`,
+    );
+  }
+  const uncovered = awaitingVerification.filter(
+    (taskId) => !verificationProposals.some((proposal) => proposal.task.dependsOn.includes(taskId)),
+  );
+  if (uncovered.length > 0) {
+    throw new QuirksError(
+      "PROTOCOL_VIOLATION",
+      `Visual verification proposal must depend on every affected implementation task; missing ${uncovered.join(", ")}`,
+    );
+  }
+}
+
 function requireOk<O extends TaskSourceResponse>(response: O, label: string): Extract<O, { ok: true }> {
   if (!response.ok) {
     throw new QuirksError(
@@ -109,12 +170,15 @@ function sameJson(left: unknown, right: unknown): boolean {
  */
 export async function materializePlannedTasks(input: MaterializePlannedTasksInput): Promise<MaterializedTask[]> {
   assertBoundedPartition(input);
+  const candidates = input.proposals.map((proposal) =>
+    candidateWithVisualReferences(candidateWithPlanRefs(proposal.task, proposal.plan), proposal),
+  );
+  assertVisualVerificationCoverage(input);
 
   requireOk(await input.source.execute({ schemaVersion: 1, operation: "validate", input: {} }), "validate");
 
   const materialized: MaterializedTask[] = [];
-  for (const proposal of input.proposals) {
-    const task = candidateWithPlanRefs(proposal.task, proposal.plan);
+  for (const task of candidates) {
     requireOk(
       await input.source.execute({
         schemaVersion: 1,

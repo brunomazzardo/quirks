@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { materializePlannedTasks } from "../../src/task-authoring/materialize.js";
-import type { NativeTaskCandidate } from "../../src/task-authoring/types.js";
+import type { NativeTaskCandidate, VisualReferenceInput } from "../../src/task-authoring/types.js";
 import type { TaskSourceRequest, TaskSourceResponse } from "../../src/task-source/types.js";
 import type { TaskSource } from "../../src/task-source/task-source.js";
 import { FakeTaskSource } from "../task-source/fake-source.js";
@@ -36,6 +36,24 @@ function taskCandidate(id: string, overrides: Partial<NativeTaskCandidate> = {})
     ...overrides,
   };
 }
+
+const REFERENCE_COMMIT = "c".repeat(40);
+
+function trackedVisualReference(overrides: Partial<VisualReferenceInput> = {}): VisualReferenceInput {
+  return {
+    id: "approval-workspace-v3",
+    path: "docs/visual-references/quirks-ui/approval-workspace-v3.html",
+    availability: "tracked",
+    commit: REFERENCE_COMMIT,
+    format: "interactive-html",
+    governs: ["preflight hierarchy", "approval composition"],
+    planTasks: [4],
+    verification: "structural-and-screenshot",
+    ...overrides,
+  };
+}
+
+const UI_PLAN = "docs/superpowers/plans/2026-07-22-visual-reference-materialization.md";
 
 test("one cohesive feature becomes one task with every selected plan task ref", async () => {
   const source = new FakeTaskSource();
@@ -226,5 +244,138 @@ test("verifies the read-back workflow policy matches the approved candidate", as
       }],
     }),
     /workflow/i,
+  );
+});
+
+test("issues one implementation and one dependent verification proposal for a fidelity-bearing reference", async () => {
+  const source = new FakeTaskSource();
+  const result = await materializePlannedTasks({
+    source,
+    idempotencyNamespace: "brainstorm:visual-references",
+    proposals: [
+      {
+        task: taskCandidate("QK-VIS-002"),
+        plan: { path: UI_PLAN, commit: PLAN_COMMIT, tasks: [4] },
+        visualReferences: [trackedVisualReference()],
+      },
+      {
+        task: taskCandidate("QK-VIS-003", { kind: "verification", dependsOn: ["QK-VIS-002"] }),
+        plan: { path: UI_PLAN, commit: PLAN_COMMIT, tasks: [5] },
+      },
+    ],
+  });
+
+  assert.deepEqual(result.map((entry) => entry.id), ["QK-VIS-002", "QK-VIS-003"]);
+  assert.deepEqual(
+    result[0]!.sourceRefs.filter((ref) => ref.kind === "plan"),
+    [{ kind: "plan", path: UI_PLAN, commit: PLAN_COMMIT, task: 4 }],
+  );
+  assert.deepEqual(
+    result[0]!.sourceRefs.filter((ref) => ref.kind === "other"),
+    [{
+      kind: "other",
+      path: "docs/visual-references/quirks-ui/approval-workspace-v3.html",
+      commit: REFERENCE_COMMIT,
+      section: "approval-workspace-v3",
+    }],
+  );
+  assert.deepEqual(
+    result[1]!.sourceRefs.filter((ref) => ref.kind === "plan"),
+    [{ kind: "plan", path: UI_PLAN, commit: PLAN_COMMIT, task: 5 }],
+  );
+
+  const shown = await source.execute({ schemaVersion: 1, operation: "show", taskId: "QK-VIS-002", input: {} });
+  assert.equal(shown.ok, true);
+  const stored = (shown as { data: { acceptanceCriteria: readonly string[] } }).data;
+  assert.deepEqual(stored.acceptanceCriteria, [
+    "Feature passes verification",
+    "Conform to approval-workspace-v3 for preflight hierarchy and approval composition per plan Task 4",
+  ]);
+});
+
+test("rejects fidelity-bearing references without a dependent verification proposal", async () => {
+  const source = new FakeTaskSource();
+  await assert.rejects(
+    () => materializePlannedTasks({
+      source,
+      idempotencyNamespace: "brainstorm:visual-references",
+      proposals: [{
+        task: taskCandidate("QK-VIS-002"),
+        plan: { path: UI_PLAN, commit: PLAN_COMMIT, tasks: [4] },
+        visualReferences: [trackedVisualReference()],
+      }],
+    }),
+    /verification proposal/i,
+  );
+});
+
+test("rejects a verification proposal that skips an affected implementation task", async () => {
+  const source = new FakeTaskSource();
+  await assert.rejects(
+    () => materializePlannedTasks({
+      source,
+      idempotencyNamespace: "brainstorm:visual-references",
+      proposals: [
+        {
+          task: taskCandidate("QK-VIS-002"),
+          plan: { path: UI_PLAN, commit: PLAN_COMMIT, tasks: [4] },
+          visualReferences: [trackedVisualReference()],
+        },
+        {
+          task: taskCandidate("QK-VIS-004"),
+          plan: { path: UI_PLAN, commit: PLAN_COMMIT, tasks: [6] },
+          visualReferences: [trackedVisualReference({ id: "task-provenance-history-v5", path: "docs/visual-references/quirks-ui/task-provenance-history-v5.html", planTasks: [6] })],
+        },
+        {
+          task: taskCandidate("QK-VIS-003", { kind: "verification", dependsOn: ["QK-VIS-002"] }),
+          plan: { path: UI_PLAN, commit: PLAN_COMMIT, tasks: [5] },
+        },
+      ],
+    }),
+    /QK-VIS-004/,
+  );
+});
+
+test("contextual references need no verification proposal and add no source refs", async () => {
+  const source = new FakeTaskSource();
+  const result = await materializePlannedTasks({
+    source,
+    idempotencyNamespace: "brainstorm:visual-references",
+    proposals: [{
+      task: taskCandidate("QK-VIS-002"),
+      plan: { path: UI_PLAN, commit: PLAN_COMMIT, tasks: [4] },
+      visualReferences: [{
+        id: "approval-layout-options",
+        path: ".superpowers/brainstorm/66657-1784583568/content/approval-layout-options.html",
+        availability: "local",
+        format: "interactive-html",
+        governs: ["explored layout alternatives"],
+        planTasks: [4],
+        verification: "context-only",
+      }],
+    }],
+  });
+  assert.deepEqual(result[0]!.sourceRefs.filter((ref) => ref.kind === "other"), []);
+  const shown = await source.execute({ schemaVersion: 1, operation: "show", taskId: "QK-VIS-002", input: {} });
+  const stored = (shown as { data: { acceptanceCriteria: readonly string[] } }).data;
+  assert.deepEqual(stored.acceptanceCriteria, [
+    "Feature passes verification",
+    "Conform to approval-layout-options for explored layout alternatives per plan Task 4",
+  ]);
+});
+
+test("rejects a visual reference that governs no plan task the proposal owns", async () => {
+  const source = new FakeTaskSource();
+  await assert.rejects(
+    () => materializePlannedTasks({
+      source,
+      idempotencyNamespace: "brainstorm:visual-references",
+      proposals: [{
+        task: taskCandidate("QK-VIS-002"),
+        plan: { path: UI_PLAN, commit: PLAN_COMMIT, tasks: [4] },
+        visualReferences: [trackedVisualReference({ planTasks: [9] })],
+      }],
+    }),
+    /plan task/i,
   );
 });
