@@ -1,5 +1,7 @@
 import path from "node:path";
 import type { CampaignStatus } from "../../../src/campaign/types.js";
+import type { TaskHistory } from "../../../src/provenance/types.js";
+import type { UiCampaignSummaryItem } from "../../../src/ui/ports/campaign-read.js";
 import type { UiPreflightProposalV1 } from "../../../src/ui/types/preflight-proposal.js";
 import { loadProjectContext } from "../../../src/project/config.js";
 import { createLoopbackAuthority } from "../../../src/ui/authority.js";
@@ -30,6 +32,12 @@ export async function createTestUiServer(options?: {
   preflightProposals?: Record<string, UiPreflightProposalV1>;
   now?: string;
   clientScript?: string;
+  /** Project fixture served as the existing-tasks read model (default: test/fixtures/json-project). */
+  projectRoot?: string;
+  /** Deterministic task-history source override (default: empty history). */
+  taskHistory?: { getHistory(taskId: string): Promise<TaskHistory> };
+  /** Campaign summary override threaded into the fake campaign read port. */
+  campaignSummaries?: readonly UiCampaignSummaryItem[];
 }): Promise<TestUiServer> {
   const authority = await createLoopbackAuthority();
   const repositoryId = options?.repositoryId ?? "repo-1";
@@ -46,7 +54,7 @@ export async function createTestUiServer(options?: {
       campaigns.set(campaignId, { repositoryId, envelopeDigest, status: "awaiting_approval" });
     }
   };
-  const projectRoot = path.resolve("test/fixtures/json-project");
+  const projectRoot = options?.projectRoot ?? path.resolve("test/fixtures/json-project");
   const clientScript = options?.clientScript ?? (await loadClientBundle());
   // Mirrors production semantics: the durable read port refuses campaigns the
   // workspace does not know, so the test double must 404 for unregistered
@@ -69,9 +77,11 @@ export async function createTestUiServer(options?: {
     getCampaign: (campaignId) => campaigns.get(campaignId),
     getProjectContext: () => loadProjectContext(projectRoot, { mode: "inspection" }),
     preflightRead,
-    campaignRead: fakeCampaignReadPort(),
+    campaignRead: fakeCampaignReadPort(
+      options?.campaignSummaries ? { summaries: options.campaignSummaries } : undefined,
+    ),
     promptRead: fakePromptReadPort(),
-    taskHistory: {
+    taskHistory: options?.taskHistory ?? {
       getHistory: async (taskId: string) => ({
         schemaVersion: 1,
         taskId,

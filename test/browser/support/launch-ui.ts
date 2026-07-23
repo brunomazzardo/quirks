@@ -19,6 +19,8 @@ export type UiFixture = {
   campaignId: string;
   viewerToken: string;
   approvalToken: string;
+  /** Viewer-authenticated URL for any client route (e.g. "/", "/campaigns"). */
+  viewerUrl: (pathname: string) => string;
   setClock: (iso: string) => void;
   clickApprove: (page: Page) => Promise<void>;
   close: () => Promise<void>;
@@ -30,6 +32,9 @@ export type LaunchUiOptions = {
   includeTokens?: boolean;
   campaigns?: Record<string, TestCampaign>;
   preflightProposals?: Record<string, UiPreflightProposalV1>;
+  projectRoot?: string;
+  taskHistory?: NonNullable<Parameters<typeof createTestUiServer>[0]>["taskHistory"];
+  campaignSummaries?: NonNullable<Parameters<typeof createTestUiServer>[0]>["campaignSummaries"];
 };
 
 export function attachLoopbackNetworkGuard(page: Page, allowedOrigin: string): { assertLoopbackOnly: () => void } {
@@ -64,6 +69,9 @@ export async function launchUiFixture(options?: LaunchUiOptions): Promise<UiFixt
       [campaignId]: { repositoryId: "repo-1", envelopeDigest: ISSUED_DIGEST, status: "awaiting_approval" },
     },
     ...(options?.preflightProposals ? { preflightProposals: options.preflightProposals } : {}),
+    ...(options?.projectRoot ? { projectRoot: options.projectRoot } : {}),
+    ...(options?.taskHistory ? { taskHistory: options.taskHistory } : {}),
+    ...(options?.campaignSummaries ? { campaignSummaries: options.campaignSummaries } : {}),
   });
 
   process.env.QUIRKS_UI_TEST_PORT = String(server.authority.port);
@@ -98,6 +106,8 @@ export async function launchUiFixture(options?: LaunchUiOptions): Promise<UiFixt
     campaignId,
     viewerToken: tokens.viewerToken,
     approvalToken: tokens.approvalToken,
+    viewerUrl: (pathname: string) =>
+      `${server.authority.baseUrl}${pathname}${viewerFragment.length > 0 ? `#${viewerFragment}` : ""}`,
     setClock: (iso: string) => server.setNow(iso),
     async clickApprove(page) {
       await page.getByLabel(/reviewed the preflight proposal/i).check();
