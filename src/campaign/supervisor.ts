@@ -157,8 +157,10 @@ async function loadNormalizedTask(
   const approvedRevision = envelope.taskRevisions[taskId];
   const claimedByThisCampaign =
     options.allowClaimedByCampaign === true && facts.coordination?.campaignId === envelope.campaignId;
+  // Completed closure members are frozen facts: they are never claimed, but
+  // their revision is checked exactly like claimable work - a frozen fact
+  // that changed after approval invalidates the approved envelope.
   if (
-    facts.status !== "completed" &&
     !claimedByThisCampaign &&
     approvedRevision !== undefined &&
     nativeRevision !== approvedRevision

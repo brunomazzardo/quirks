@@ -1010,6 +1010,33 @@ test("steals a dead-holder repository lock on the same host and journals the ste
   await supervisor.stop();
 });
 
+test("completed closure members are frozen facts: revision drift refuses dispatch and they are never claimed", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-1", { status: "completed" });
+  source.upsertTask("QK-2", { status: "ready", dependsOn: ["QK-1"] });
+  const context = await testContext({
+    taskIds: ["QK-1", "QK-2"],
+    taskRevisions: {
+      // The completed dependency was frozen at a different revision than the
+      // source now reports: the frozen fact changed, so dispatch must refuse.
+      "QK-1": `sha256:${"6".repeat(64)}`,
+      "QK-2": source.taskRevision("QK-2"),
+    },
+    budgets: { maxTasks: 2, maxConcurrency: 2, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-1", "QK-2"]),
+    source,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await assert.rejects(() => supervisor.startApproved(), /TASK_REVISION_DRIFT.*QK-1/);
+
+  const status = await supervisor.status();
+  assert.deepEqual(status.claimedTaskIds, [], "drift on a frozen fact must refuse before any claim");
+  const shown = await source.execute({ schemaVersion: 1, operation: "show", taskId: "QK-2", input: {} });
+  assert.equal(shown.ok && (shown.data as { status: string }).status, "ready", "the target stays unclaimed at the source");
+  await assertLockReleased(context.lockPath);
+});
+
 test("TASK_REVISION_DRIFT: a stale approved revision refuses dispatch before any claim", async () => {
   const source = new FakeTaskSource();
   const runner = new FakeRunnerPort();
