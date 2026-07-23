@@ -80,9 +80,13 @@ export const UI_CSS = [
   ".toolbar-chip { border-radius: 6px; padding: 7px 9px; font-size: 11px; }",
   ".toolbar-chip[aria-pressed='true'] { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }",
   ".toolbar-note { margin-left: auto; color: var(--ui-muted); font-size: 10.5px; }",
+  ".workspace-toolbar--embedded { border: 0; border-bottom: 1px solid var(--ui-line); border-radius: 0; margin: 0; }",
+  ".workspace-toolbar label { font-size: 12px; font-weight: 600; color: var(--ui-muted); }",
   /* Two-column workspace: primary panel + inspector aside. */
   ".workspace-layout { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(280px, 0.8fr); gap: 12px; align-items: start; }",
   ".workspace-stack { display: grid; gap: 12px; align-content: start; min-width: 0; }",
+  ".panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0 0; }",
+  ".panel-grid-wide { grid-column: 1 / -1; min-width: 0; }",
   /* Panels. */
   ".workspace-panel { background: var(--ui-panel); border: 1px solid var(--ui-line); border-radius: 10px; min-width: 0; overflow: hidden; }",
   ".workspace-panel > header { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 11px 13px; border-bottom: 1px solid var(--ui-line); }",
@@ -124,6 +128,7 @@ export const UI_CSS = [
   /* Execution wave map (v3) and dependency frontier (v4). */
   ".wave-map-scroll { overflow-x: auto; padding: 13px; }",
   ".wave-map { display: flex; gap: 6px; min-width: 700px; align-items: stretch; }",
+  ".wave-col-group { display: flex; gap: 6px; flex: 1; min-width: 0; }",
   ".wave-col { flex: 1; min-width: 150px; }",
   ".wave-col-label { color: var(--ui-muted); font-size: 10px; font-weight: 750; letter-spacing: 0.04em; margin-bottom: 6px; text-transform: uppercase; }",
   ".wave-arrow { align-self: center; color: #94a3b8; font-size: 16px; padding: 0 2px; }",
@@ -224,6 +229,7 @@ export const UI_CSS = [
   "  .summary-grid, .summary-grid[data-columns='4'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }",
   "  .summary-grid[data-columns='6'] { grid-template-columns: repeat(3, minmax(0, 1fr)); }",
   "  .workspace-layout { grid-template-columns: 1fr; }",
+  "  .panel-grid { grid-template-columns: 1fr; }",
   "  .artifact-cards { grid-template-columns: 1fr; }",
   "  .toolbar-note { display: none; }",
   "  .approval-actions { align-items: flex-start; }",
