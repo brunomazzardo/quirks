@@ -540,6 +540,13 @@ test("a reviewer revise verdict withholds acceptance and is recorded as a revise
   assert.notEqual(outcome.status, "completed");
   assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-A"), false);
 
+  // No blind retry: the next implementer brief carries neither the review nor
+  // any provenance of it, so re-dispatching repeats identical work until a lane
+  // threshold or the budget stops it. Until findings can be fed back as
+  // informed rework (QK-RUN-009), one attempt is the honest bound.
+  const reviewerDispatches = runner.dispatches.filter((d) => d.role === "reviewer" && d.taskId === "QK-A");
+  assert.equal(reviewerDispatches.length, 1, "a revise must not be blindly retried");
+
   const iterations = await provenanceIterations(source, "QK-A");
   assert.ok(iterations.length >= 1, "a revise attempt must still be recorded honestly");
   for (const iteration of iterations) {

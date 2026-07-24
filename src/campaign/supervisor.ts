@@ -259,8 +259,16 @@ export class CampaignSupervisor {
     let lastLaneBreaker: CircuitBreakerDecision | undefined;
     let wave = 0;
 
+    // Tasks whose reviewer ran and asked for changes. They are not failures and
+    // not completions; they are waiting on a human. Re-dispatching them would
+    // repeat identical work, because the next implementer brief carries neither
+    // the review nor any record of it — the budget-draining loop QK-RUN-008 set
+    // out to remove. Informed rework arrives with the findings channel
+    // (QK-RUN-009); until then one attempt is the honest bound.
+    const awaitingRevision = new Set<string>();
+
     while (completedTasks.size < run.planTaskIds.length) {
-      const runnable = selectRunnableTasks(run.plan, completedTasks, pausedLanes);
+      const runnable = selectRunnableTasks(run.plan, completedTasks, pausedLanes, awaitingRevision);
       if (runnable.length === 0) {
         // Reachable only when every remaining task is blocked behind a paused
         // lane; NO_RUNNABLE_TASKS is a defensive fallback that never fabricates
@@ -269,7 +277,9 @@ export class CampaignSupervisor {
         return this.haltRun(
           run,
           "paused",
-          stalledByLanes ? "ALL_LANES_PAUSED" : "NO_RUNNABLE_TASKS",
+          awaitingRevision.size > 0 && !stalledByLanes
+            ? "REVIEW_REVISION_REQUIRED"
+            : stalledByLanes ? "ALL_LANES_PAUSED" : "NO_RUNNABLE_TASKS",
           stalledByLanes ? lastLaneBreaker : undefined,
           completedJobs,
           pausedLanes,
@@ -343,6 +353,10 @@ export class CampaignSupervisor {
           await this.journalLanePause(run, taskId, lanes, decision);
         } else if (decision.action !== "continue") {
           halting ??= decision;
+        }
+
+        if (!succeeded && outcome.reviewer?.verdict === "revise") {
+          awaitingRevision.add(taskId);
         }
 
         if (succeeded) {

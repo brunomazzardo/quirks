@@ -183,14 +183,14 @@ child.on("close", async (code) => {
   return shimPath;
 }
 
-async function wrapCodexReviewerWithReviewArtifact(
+export async function wrapCodexReviewerWithReviewArtifact(
   configDir: string,
   realExecutable: string,
 ): Promise<string> {
   const shimPath = path.join(configDir, "bounded-codex-reviewer-shim.mjs");
   const content = `#!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const executable = ${JSON.stringify(realExecutable)};
