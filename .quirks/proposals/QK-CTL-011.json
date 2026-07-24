@@ -1,0 +1,59 @@
+{
+  "acceptanceCriteria": [
+    "An implementer attempt that produces no new commit is treated as a failed attempt, not a reviewable candidate",
+    "No reviewer is ever dispatched against a candidate commit equal to the base commit",
+    "The resulting failure names the real cause, that the implementer reported success while committing nothing, so an operator is not left reading an empty review",
+    "A reviewer brief can never be built with baseCommit equal to candidateCommit; the brief builder fails closed on that pair exactly as it already does on a missing candidate",
+    "Regression coverage drives an implementer that exits success without committing, and asserts no review job is dispatched and no budget is spent on one"
+  ],
+  "coordination": null,
+  "deliverables": [
+    "src/campaign/supervisor.ts around the candidateCommit derivation: stop substituting the base commit for a missing implementer commit, and gate reviewer dispatch on a genuinely new candidate",
+    "Fail-closed guard in buildTaskBrief for a reviewer brief whose base and candidate commits are equal",
+    "Tests covering the silent-no-commit implementer path end to end"
+  ],
+  "dependsOn": [],
+  "execution": {
+    "capabilities": [
+      "repository-write"
+    ],
+    "completionBoundary": "accepted-commit",
+    "effort": "high",
+    "humanGates": [],
+    "parallelismKeys": [
+      "campaign-supervisor"
+    ],
+    "risk": [
+      "protocol",
+      "architecture"
+    ]
+  },
+  "id": "QK-CTL-011",
+  "kind": "implementation",
+  "priority": "P1",
+  "provenance": {
+    "iterations": [],
+    "schemaVersion": 1
+  },
+  "sourceRefs": [
+    {
+      "kind": "review",
+      "path": "docs/smoke/2026-07-24-runner-boundary-probe.md",
+      "commit": "8c58477235f276e7aff96ff79902ecd9f349f413"
+    }
+  ],
+  "status": "proposed",
+  "statusDetail": null,
+  "title": "Never dispatch a reviewer against a candidate commit equal to the base commit",
+  "verification": [
+    "pnpm check",
+    "A campaign whose implementer exits success without committing dispatches no reviewer and reports the missing commit as the failure"
+  ],
+  "workflow": {
+    "designGate": {
+      "required": false
+    },
+    "family": "superpowers",
+    "phase": "execute"
+  }
+}
