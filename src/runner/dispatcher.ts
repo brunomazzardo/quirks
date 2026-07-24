@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import type { Readable } from "node:stream";
-import { parseClaudeResult, claudeArtifactPaths } from "./claude.js";
+import { parseClaudeResult, claudeArtifactPaths, claudeResultPath } from "./claude.js";
 import { parseCodexResult } from "./codex.js";
 import { parseCursorResult, cursorResultPath } from "./cursor.js";
 import { normalizeJobResult } from "./job-result.js";
+import { parseReviewVerdict, type ReviewVerdict } from "./result-contract.js";
 import type { RunnerJobFailure, RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
 
 const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
@@ -27,6 +28,7 @@ interface StreamCollectResult {
 
 interface ParsedDispatch {
   status: RunnerJobStatus;
+  verdict?: ReviewVerdict;
   sessionHandle: string;
   artifactPaths: readonly string[];
   failure?: RunnerJobFailure;
@@ -125,8 +127,12 @@ async function parseRunnerOutputAsync(input: {
         artifactPaths: claudeArtifactPaths(input.artifactDir, input.jobId),
         ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
       });
+      // The claude CLI cannot enforce the envelope, so the verdict is read back
+      // from the brief-declared file the job wrote.
+      const verdict = await readClaudeVerdict(claudeResultPath(input.artifactDir, input.jobId));
       return {
         status: parsed.status,
+        ...(verdict !== undefined ? { verdict } : {}),
         sessionHandle: parsed.sessionHandle || sessionFallback,
         artifactPaths: parsed.artifactPaths,
         ...(parsed.failure !== undefined
@@ -155,6 +161,7 @@ async function parseRunnerOutputAsync(input: {
 
       return {
         status: parsed.status,
+        ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
         sessionHandle: parsed.sessionHandle ?? sessionFallback,
         artifactPaths: parsed.artifactPaths,
         ...(parsed.failure !== undefined
@@ -174,6 +181,7 @@ async function parseRunnerOutputAsync(input: {
       });
       return {
         status: parsed.status,
+        ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
         sessionHandle: parsed.sessionHandle ?? sessionFallback,
         artifactPaths: parsed.artifactPaths,
         ...(parsed.failure !== undefined
@@ -190,6 +198,15 @@ async function parseRunnerOutputAsync(input: {
       const exhaustive: never = input.profile.runnerType;
       return exhaustive;
     }
+  }
+}
+
+async function readClaudeVerdict(envelopePath: string): Promise<ReviewVerdict | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(envelopePath, "utf8")) as { verdict?: unknown };
+    return parseReviewVerdict(parsed.verdict);
+  } catch {
+    return undefined;
   }
 }
 
@@ -295,6 +312,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       resolvedModel: input.profile.model,
       effort: input.profile.effort,
       status: parsed.status,
+      ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
       sessionHandle: parsed.sessionHandle,
       artifactPaths: parsed.artifactPaths,
       ...(parsed.failure !== undefined ? { failure: parsed.failure } : {}),

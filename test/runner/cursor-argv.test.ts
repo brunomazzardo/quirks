@@ -240,13 +240,19 @@ test("parseCursorResult rejects a non-JSON envelope with an actionable detail", 
   assert.match(parsed.failure?.detail ?? "", new RegExp(DECLARED_RESULT_PATH));
 });
 
-test("parseCursorResult downgrades envelope success without artifact evidence", () => {
+// The envelope we just read is itself evidence the job ran, so an empty list
+// resolves to it instead of failing. Requiring the agent to cite the path was
+// measured unreliable on 2026-07-24: two of three codex models wrote an
+// explicit empty array despite the schema asking for it, which would have
+// failed every accepting reviewer that changed no files (QK-RUN-008).
+test("parseCursorResult treats the declared envelope as evidence when the list is empty", () => {
   const parsed = parseCursorResult(
     "",
     artifactsWith({ ...validEnvelope, artifactPaths: [] }),
   );
-  assert.equal(parsed.status, "failure");
-  assert.equal(parsed.failure?.reason, "missing_artifact_evidence");
+  assert.equal(parsed.status, "success");
+  assert.deepEqual(parsed.artifactPaths, [DECLARED_RESULT_PATH]);
+  assert.equal(parsed.failure, undefined);
 });
 
 test("parseCursorResult carries an honest failure envelope through verbatim", () => {

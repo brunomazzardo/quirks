@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { claudeResultPath } from "../../src/runner/claude.js";
 import { cursorResultPath } from "../../src/runner/cursor.js";
-import { resultContractPath } from "../../src/runner/result-contract.js";
+import { resultContractPath, reviewerAcceptedAttempt } from "../../src/runner/result-contract.js";
 
 /**
  * Which runners need the envelope contract stated in the brief, and which get
@@ -31,6 +31,31 @@ test("claude carries a brief-stated, job-unique result contract", () => {
     resultContractPath("claude", "/tmp/artifacts", "job-1"),
     claudeResultPath("/tmp/artifacts", "job-1"),
   );
+});
+
+/**
+ * A reviewer that ran to completion and asked for changes is a completed job
+ * with a revise verdict, never a runner failure. Conflating the two is what
+ * retried cmp-uimotion-1 to BUDGET_EXCEEDED (QK-RUN-008).
+ */
+test("an attempt whose reviewer returns a revise verdict is not accepted", () => {
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "success", verdict: "revise" }),
+    false,
+    "a revise verdict must not accept the attempt",
+  );
+});
+
+test("an attempt whose reviewer returns an accept verdict is accepted", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept" }), true);
+});
+
+test("a reviewer that crashed is not accepted, and stays distinguishable from a revise verdict", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "failure" }), false);
+});
+
+test("a reviewer with no verdict is accepted on transport status alone", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "success" }), true);
 });
 
 test("result contract paths stay distinct per runner and per job", () => {

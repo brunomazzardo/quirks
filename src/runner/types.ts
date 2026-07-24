@@ -1,3 +1,4 @@
+import type { ReviewVerdict } from "./result-contract.js";
 import type { JudgmentTier } from "../campaign/types.js";
 
 export interface RunnerProfile {
@@ -44,6 +45,11 @@ export interface RunnerJobResult {
   resolvedModel: string;
   effort: string;
   status: RunnerJobStatus;
+  /**
+   * Reviewer judgment, separate from `status`. `status` says whether the job
+   * ran; `verdict` says what a reviewer decided. Absent for implementer jobs.
+   */
+  verdict?: ReviewVerdict;
   sessionHandle: string;
   artifactPaths: readonly string[];
   usage: Readonly<Record<string, number>>;

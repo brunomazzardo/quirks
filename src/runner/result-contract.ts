@@ -3,6 +3,33 @@ import { claudeResultPath } from "./claude.js";
 import { cursorResultPath } from "./cursor.js";
 
 /**
+ * A reviewer's judgment, kept separate from the runner's transport status.
+ *
+ * `status` answers "did the job run"; `verdict` answers "what did the reviewer
+ * decide". Overloading one enum for both meant a reviewer recommending changes
+ * could only write status:"failure", which the supervisor read as a crashed
+ * runner and retried. The cmp-uimotion-1 campaign retried exactly that way
+ * until BUDGET_EXCEEDED while holding two complete, well-formed reviews.
+ */
+export type ReviewVerdict = "accept" | "revise";
+
+export function parseReviewVerdict(raw: unknown): ReviewVerdict | undefined {
+  return raw === "accept" || raw === "revise" ? raw : undefined;
+}
+
+/**
+ * Whether a reviewer job accepts the attempt. A reviewer that ran and asked for
+ * changes is a completed job that withholds acceptance — not a runner failure,
+ * and so never a retryable runner error.
+ */
+export function reviewerAcceptedAttempt(
+  reviewer: { status: string; verdict?: ReviewVerdict | undefined },
+): boolean {
+  if (reviewer.status !== "success") return false;
+  return reviewer.verdict !== "revise";
+}
+
+/**
  * Job-bound result envelope path a runner's brief must state, or undefined when
  * the CLI enforces the envelope itself.
  *

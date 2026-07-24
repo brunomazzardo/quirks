@@ -1,5 +1,6 @@
-import type { RunnerJobStatus } from "./types.js";
 import path from "node:path";
+import { parseReviewVerdict, type ReviewVerdict } from "./result-contract.js";
+import type { RunnerJobStatus } from "./types.js";
 
 const FORCE_CAPABILITY = "repository-write";
 
@@ -26,6 +27,7 @@ export const CURSOR_RESULT_PATH_INSTRUCTION =
 export function cursorResultContractSection(resultPath: string): string {
   const example = JSON.stringify({
     status: "success",
+    verdict: "revise",
     sessionHandle: "cursor-session-1",
     artifactPaths: [resultPath],
     failure: null,
@@ -33,8 +35,10 @@ export function cursorResultContractSection(resultPath: string): string {
   return [
     "Runner result contract:",
     `- ${CURSOR_RESULT_PATH_INSTRUCTION}${resultPath}`,
-    '- The envelope is a single JSON object with exactly these fields: "status" (one of "success", "failure", "cancelled", "timeout", "usage_limit", "permission_denied"), "sessionHandle" (your session or thread id as a string, or null), "artifactPaths" (array of file path strings for your evidence; include the envelope path itself), "failure" (string reason for any non-success status, or null).',
-    `- Filled example: ${example}`,
+    '- The envelope is a single JSON object with exactly these fields: "status" (one of "success", "failure", "cancelled", "timeout", "usage_limit", "permission_denied"), "verdict" ("accept" or "revise" if you are reviewing, otherwise null), "sessionHandle" (your session or thread id as a string, or null), "artifactPaths" (array of file path strings for your evidence; include the envelope path itself), "failure" (string reason for any non-success status, or null).',
+    '- "status" reports whether YOUR JOB ran, not whether you approve of the work. If you completed the review and are recommending changes, that is status "success" with verdict "revise" — never status "failure".',
+    '- Put review findings in your final message and evidence files, not in "failure". "failure" is only for the job itself failing.',
+    `- Filled example (a completed review that asks for changes): ${example}`,
     "- A missing or malformed envelope classifies the job as failed regardless of any prose summary.",
   ].join("\n");
 }
@@ -66,6 +70,7 @@ export interface CursorResultFailure {
 
 export interface CursorParsedResult {
   readonly status: RunnerJobStatus;
+  readonly verdict?: ReviewVerdict;
   readonly sessionHandle?: string;
   readonly artifactPaths: readonly string[];
   readonly failure?: CursorResultFailure;
@@ -90,6 +95,7 @@ interface CursorResultEvent {
 
 interface CursorResultEnvelope {
   readonly status?: unknown;
+  readonly verdict?: unknown;
   readonly sessionHandle?: unknown;
   readonly artifactPaths?: unknown;
   readonly failure?: unknown;
@@ -198,6 +204,10 @@ function isCursorStatus(value: unknown): value is RunnerJobStatus {
   return typeof value === "string" && CURSOR_STATUSES.has(value as RunnerJobStatus);
 }
 
+function envelopeArtifactPaths(paths: readonly string[], declaredResultPath: string): readonly string[] {
+  return paths.length > 0 ? paths : [declaredResultPath];
+}
+
 function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string" && entry.length > 0);
 }
@@ -231,6 +241,7 @@ function envelopeFieldIssues(envelope: CursorResultEnvelope): EnvelopeFieldIssue
 
 interface ValidEnvelope {
   status: RunnerJobStatus;
+  verdict: ReviewVerdict | undefined;
   sessionHandle: string | undefined;
   artifactPaths: readonly string[];
   failure: string | undefined;
@@ -280,8 +291,16 @@ function readEnvelope(artifacts: CursorResultArtifacts): EnvelopeOutcome {
     kind: "valid",
     envelope: {
       status: candidate.status as RunnerJobStatus,
+      verdict: parseReviewVerdict(candidate.verdict),
       sessionHandle: typeof candidate.sessionHandle === "string" ? candidate.sessionHandle : undefined,
-      artifactPaths: candidate.artifactPaths as readonly string[],
+      // The envelope we just read is itself evidence the job ran, so an empty
+      // list falls back to it rather than failing an accepting reviewer that
+      // changed no files. Model compliance with "cite the envelope path" was
+      // measured unreliable on 2026-07-24.
+      artifactPaths: envelopeArtifactPaths(
+        candidate.artifactPaths as readonly string[],
+        artifacts.declaredResultPath,
+      ),
       failure: typeof candidate.failure === "string" ? candidate.failure : undefined,
     },
   };
@@ -314,6 +333,7 @@ export function parseCursorResult(
       return {
         status: "success",
         artifactPaths: outcome.envelope.artifactPaths,
+        ...(outcome.envelope.verdict !== undefined ? { verdict: outcome.envelope.verdict } : {}),
         ...(sessionHandle !== undefined ? { sessionHandle } : {}),
       };
     }

@@ -18,7 +18,7 @@ import {
   type NormalizedTaskRecord,
 } from "./task-brief.js";
 import type { CampaignApproval, CampaignEnvelope, CampaignStatus } from "./types.js";
-import { resultContractPath } from "../runner/result-contract.js";
+import { resultContractPath, reviewerAcceptedAttempt } from "../runner/result-contract.js";
 import type { RunnerJobResult, RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
 import { RepositoryLock } from "../state/repository-lock.js";
@@ -99,12 +99,20 @@ interface TaskDispatchOutcome {
 }
 
 // An attempt is accepted only when the implementer job succeeded AND, whenever a
-// reviewer was dispatched for the attempt, the reviewer job succeeded as well.
+// reviewer was dispatched for the attempt, that reviewer both ran and accepted.
+// A reviewer that ran and asked for changes withholds acceptance without being a
+// runner failure (QK-RUN-008).
 function attemptSucceeded(outcome: TaskDispatchOutcome | undefined): boolean {
   if (!outcome || outcome.implementer.status !== "success") return false;
-  return outcome.reviewer === undefined || outcome.reviewer.status === "success";
+  return outcome.reviewer === undefined || reviewerAcceptedAttempt(outcome.reviewer);
 }
 
+/**
+ * The job whose *failure* explains a rejected attempt, for circuit-breaker and
+ * budget classification. A revise verdict is deliberately absent here: the
+ * reviewer ran fine, so classifying it as a runner error would retry a
+ * completed review — the loop that drained cmp-uimotion-1 to BUDGET_EXCEEDED.
+ */
 function attemptFailingResult(outcome: TaskDispatchOutcome): RunnerJobResult | undefined {
   if (outcome.implementer.status !== "success") return outcome.implementer;
   if (outcome.reviewer && outcome.reviewer.status !== "success") return outcome.reviewer;

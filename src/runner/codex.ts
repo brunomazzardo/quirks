@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseReviewVerdict, type ReviewVerdict } from "./result-contract.js";
 
 export interface BuildCodexArgvInput {
   executable: string;
@@ -34,6 +35,7 @@ export type CodexResultStatus =
 
 export interface CodexResult {
   status: CodexResultStatus;
+  verdict: ReviewVerdict | undefined;
   sessionHandle: string | undefined;
   artifactPaths: readonly string[];
   failure: string | undefined;
@@ -47,6 +49,7 @@ export interface CodexResultArtifacts {
 
 interface CodexResultArtifact {
   status?: unknown;
+  verdict?: unknown;
   sessionHandle?: unknown;
   artifactPaths?: unknown;
   failure?: unknown;
@@ -245,6 +248,7 @@ export function parseCodexResult(stdout: string, artifacts: CodexResultArtifacts
 
   return {
     status: parsed.status,
+    verdict: parseReviewVerdict(parsed.verdict),
     sessionHandle: streamHandle ?? envelopeHandle,
     artifactPaths,
     failure: typeof parsed.failure === "string" ? parsed.failure : undefined,
@@ -261,6 +265,7 @@ function missingEnvelopeResult(
   if (failure !== undefined) {
     return {
       status: failure.status,
+      verdict: undefined,
       sessionHandle,
       artifactPaths: [],
       failure: failure.failure,
@@ -273,6 +278,7 @@ function missingEnvelopeResult(
 function failureResult(failure: string, sessionHandle?: string): CodexResult {
   return {
     status: "failure",
+    verdict: undefined,
     sessionHandle,
     artifactPaths: [],
     failure,
@@ -284,8 +290,18 @@ function isCodexResultStatus(value: unknown): value is CodexResultStatus {
   return typeof value === "string" && CODEX_STATUSES.has(value as CodexResultStatus);
 }
 
+/**
+ * Evidence paths for a job, defaulting to the declared envelope.
+ *
+ * The envelope we just read is itself proof the job ran, so an omitted or empty
+ * artifactPaths falls back to it rather than failing the job. Requiring the
+ * model to cite it was not reliable: the 2026-07-24 probe caught two of three
+ * codex models writing an explicit empty array despite the schema asking for
+ * the path, which would have failed every accepting reviewer.
+ */
 function parseArtifactPaths(value: unknown, declaredResultPath: string): readonly string[] {
   if (value === undefined) return [declaredResultPath];
   if (!Array.isArray(value)) return [];
-  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+  const paths = value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+  return paths.length > 0 ? paths : [declaredResultPath];
 }
