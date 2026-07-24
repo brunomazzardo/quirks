@@ -28,7 +28,8 @@ async function main() {
   }
   await writeCodexResult(resultPath, {
     status: "success",
-    verdict: verdictForEnvelopePath(resultPath),
+    // Allows a test to drive a withheld approval through the real acceptance path.
+    verdict: process.env.QUIRKS_BOUNDED_REVIEWER_VERDICT ?? verdictForEnvelopePath(resultPath),
     sessionHandle: sessionId,
     artifactPaths: [reviewPath],
   });

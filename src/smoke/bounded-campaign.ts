@@ -19,7 +19,7 @@ import { canonicalRepository } from "../project/repository.js";
 import { loadRunnerProfiles } from "../runner/profiles.js";
 import type { RunnerProfile } from "../runner/types.js";
 import { cursorResultContractSection } from "../runner/cursor.js";
-import { resultContractPath } from "../runner/result-contract.js";
+import { resultContractPath, reviewerAcceptedAttempt } from "../runner/result-contract.js";
 import { SessionRegistry } from "../runner/sessions.js";
 import { reconcileMutation } from "../sync/reconciler.js";
 import { SyncOutbox } from "../sync/outbox.js";
@@ -213,10 +213,22 @@ child.on("close", async (code) => {
   await writeFile(reviewPath, "# Bounded review\\n\\nApproved.\\n", "utf8");
   if (resultPath) {
     await mkdir(path.dirname(resultPath), { recursive: true });
+    // Preserve what the real reviewer decided. Overwriting its envelope with a
+    // synthetic success discarded the verdict entirely, so a real revise could
+    // never reach the acceptance check above.
+    let existing;
+    try {
+      existing = JSON.parse(await readFile(resultPath, "utf8"));
+    } catch {
+      existing = undefined;
+    }
+    const artifactPaths = Array.from(new Set([...(existing?.artifactPaths ?? []), reviewPath]));
     await writeFile(resultPath, JSON.stringify({
-      status: code === 0 ? "success" : "failure",
-      sessionHandle: "bounded-codex-reviewer",
-      artifactPaths: [reviewPath],
+      status: existing?.status ?? (code === 0 ? "success" : "failure"),
+      verdict: existing?.verdict ?? null,
+      sessionHandle: existing?.sessionHandle ?? "bounded-codex-reviewer",
+      artifactPaths,
+      failure: existing?.failure ?? null,
     }) + "\\n", "utf8");
   }
   process.exit(code ?? 1);
@@ -632,6 +644,15 @@ export async function runBoundedCampaign(options: BoundedCampaignOptions = {}): 
     });
     if (reviewerResult.status !== "success") {
       throw new QuirksError("PROTOCOL_VIOLATION", "Reviewer runner failed");
+    }
+    // Transport success is not approval. A reviewer that ran and asked for
+    // changes must stop the campaign before it lands, exactly as the supervisor
+    // now does: this is the one path that pushes to a real remote.
+    if (!reviewerAcceptedAttempt(reviewerResult)) {
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        `Reviewer withheld approval (verdict ${reviewerResult.verdict ?? "unstated"}); refusing to land`,
+      );
     }
 
     const sessions = await SessionRegistry.open(store);

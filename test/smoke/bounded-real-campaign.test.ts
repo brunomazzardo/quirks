@@ -42,6 +42,34 @@ test("bounded campaign cannot land before approval, review, and provenance ackno
   process.stdout.write(`bounded-real-campaign.test: ok in ${(elapsedMs / 1000).toFixed(2)}s\n`);
 });
 
+/**
+ * The bounded campaign has its own acceptance path, separate from the
+ * supervisor's. It gated on reviewer transport status alone, so a reviewer that
+ * ran and asked for changes still landed and pushed — a review bypass on the
+ * one path that touches a real remote. Raised by the independent codex review
+ * of b72362a (QK-RUN-008).
+ */
+test("bounded campaign refuses to land when the reviewer withholds approval", async () => {
+  const fixtureRoot = await prepareBoundedFixtureRoot();
+  const { bareRemote } = await createBoundedBareRemote(fixtureRoot, "quirks-smoke");
+  process.env.QUIRKS_BOUNDED_REVIEWER_VERDICT = "revise";
+  try {
+    await assert.rejects(
+      () => runBoundedCampaign({
+        fixtureRoot,
+        bareRemote,
+        branch: "quirks-smoke",
+        approved: true,
+        useFakeRunners: true,
+      }),
+      /review|approval|verdict/i,
+      "a revise verdict must stop the campaign before it lands",
+    );
+  } finally {
+    delete process.env.QUIRKS_BOUNDED_REVIEWER_VERDICT;
+  }
+});
+
 test("bounded campaign wires supplied bare remote without pre-setup", async () => {
   const fixtureRoot = await prepareBoundedFixtureRoot();
   const bareRemote = await mkdtemp(path.join(os.tmpdir(), "quirks-bounded-remote-"));

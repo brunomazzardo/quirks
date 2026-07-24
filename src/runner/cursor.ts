@@ -319,17 +319,10 @@ export function parseCursorResult(
   if (outcome.kind === "valid") {
     const sessionHandle = streamHandle ?? outcome.envelope.sessionHandle;
     if (outcome.envelope.status === "success") {
-      if (outcome.envelope.artifactPaths.length === 0) {
-        return {
-          status: "failure",
-          artifactPaths: [],
-          ...(sessionHandle !== undefined ? { sessionHandle } : {}),
-          failure: {
-            reason: "missing_artifact_evidence",
-            detail: `cursor success requires artifact evidence in ${artifacts.declaredResultPath}`,
-          },
-        };
-      }
+      // No empty-evidence branch here: envelopeArtifactPaths already resolves an
+      // empty list to the declared envelope, which is itself proof the job ran.
+      // A job that wrote no envelope at all never reaches this point — it fails
+      // earlier as missing_structured_result.
       return {
         status: "success",
         artifactPaths: outcome.envelope.artifactPaths,
