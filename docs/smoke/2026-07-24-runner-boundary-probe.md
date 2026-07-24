@@ -120,6 +120,53 @@ argv defects above.
 The `QK-UI-008` reviewer brief records base and candidate commit as the same SHA
 (`419347a`), so there was no diff to review. Not diagnosed here; worth a separate look.
 
+## Resolution — all six defects fixed and re-probed
+
+`QK-RUN-007` (commit `f4d31e3`) and `QK-RUN-008` (commit `1223902`) fix all of the
+above. Re-probed against the real CLIs using the production `buildRunnerArgv` and the
+production result contract:
+
+| Profile | Runner | Model | Dispatch | Envelope |
+|---|---|---|---|---|
+| `personal-claude-sonnet-impl` | claude | sonnet | PASS | written |
+| `personal-claude-opus-review` | claude | opus | PASS | written |
+| `work-claude-sonnet-impl` | claude | sonnet | PASS | written |
+| `work-claude-opus-review` | claude | opus | PASS | written |
+| `personal-codex-gpt55-impl` | codex | gpt-5.5 | PASS | written |
+| `personal-codex-terra-review` | codex | gpt-5.6-terra | PASS | written |
+| `personal-codex-sol-review` | codex | gpt-5.6-sol | PASS | written |
+| `personal-cursor-composer-impl` | cursor | composer-2.5 | PASS | written |
+| `personal-cursor-grok-review` | cursor | cursor-grok-4.5-high | PASS | written |
+
+**9/9**, up from 4/9. `pnpm check`: 796 pass, 0 fail.
+
+### Verdict round-trip, verified against real reviewers
+
+Four reviewer profiles across all three vendors were given a file with an obvious
+off-by-one and asked for an accept/revise recommendation. Every one returned
+`status: "success"` with `verdict: "revise"` — read back through the production
+parsers — and none modified the workspace:
+
+| Profile | Model | status | verdict |
+|---|---|---|---|
+| `personal-claude-opus-review` | opus | success | revise |
+| `personal-codex-terra-review` | gpt-5.6-terra | success | revise |
+| `personal-codex-sol-review` | gpt-5.6-sol | success | revise |
+| `personal-cursor-grok-review` | cursor-grok-4.5-high | success | revise |
+
+Before the fix every one of these would have been recorded as a failed runner job
+and retried.
+
+### One finding the exit codes hid
+
+The first post-fix probe passed 9/9 on exit code, but inspecting the envelope
+bodies showed **two of three codex models writing `artifactPaths: []`** despite the
+schema instructing them to include the envelope path. `parseCodexResult` rejects
+success with empty evidence, so those reviewers would still have failed. Evidence
+that a review ran cannot depend on the model remembering to cite it, so the
+declared envelope — which the parser has already read — now counts as its own
+evidence. Worth remembering: a green exit code is not a green result.
+
 ## Correction to the earlier hypothesis
 
 The prior working theory — that `--json`, `--output-schema`, or a missing
