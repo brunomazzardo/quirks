@@ -9,6 +9,7 @@ import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.
 import { CampaignSupervisor } from "../../src/campaign/supervisor.js";
 import { CampaignStore } from "../../src/campaign/store.js";
 import { cleanupWorktrees } from "../../src/git/cleanup.js";
+import { runGit } from "../../src/git/argv.js";
 import { GitWorktreeManager } from "../../src/git/worktree.js";
 import { SyncOutbox } from "../../src/sync/outbox.js";
 import { validateSkills } from "../../scripts/validate-skills.mjs";
@@ -16,6 +17,28 @@ import { FakeTaskSource } from "../task-source/fake-source.js";
 import { campaignEnvelope } from "../campaign/support.js";
 import { computeInstructionsHash } from "../../src/campaign/task-brief.js";
 import { FakeRunnerPort } from "../campaign/support/fake-runner-port.js";
+
+/**
+ * A runner that actually commits, because this test drives real git worktrees.
+ * A runner reporting success while leaving the worktree at the campaign base is
+ * now refused a reviewer (QK-CTL-011), so a fake that never commits no longer
+ * models an implementer at all.
+ */
+class CommittingRunnerPort extends FakeRunnerPort {
+  override async dispatch(input: Parameters<FakeRunnerPort["dispatch"]>[0]) {
+    if (input.role === "implementer") {
+      const marker = path.join(input.worktreePath, "wave3-work.txt");
+      await writeFile(marker, `work for ${input.taskId}\n`, "utf8");
+      await runGit(input.worktreePath, ["add", "wave3-work.txt"]);
+      await runGit(input.worktreePath, [
+        "-c", "user.email=wave3@quirks.test",
+        "-c", "user.name=Wave3",
+        "commit", "-m", `work for ${input.taskId}`,
+      ]);
+    }
+    return super.dispatch(input);
+  }
+}
 
 async function supervisorWithGitWorktrees(): Promise<{
   supervisor: CampaignSupervisor;
@@ -96,7 +119,7 @@ async function supervisorWithGitWorktrees(): Promise<{
     store,
     source,
     outbox,
-    runner: new FakeRunnerPort(),
+    runner: new CommittingRunnerPort(),
     worktree: manager,
     lockPath: path.join(lockDir, "repository.lock"),
     repositoryRoot,

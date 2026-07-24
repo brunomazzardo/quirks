@@ -611,7 +611,16 @@ export async function runBoundedCampaign(options: BoundedCampaignOptions = {}): 
       throw new QuirksError("PROTOCOL_VIOLATION", "Implementer runner failed");
     }
 
-    const candidateCommit = await runtime.worktree.readCommit(worktree.path) ?? envelope.git.baseCommit;
+    const readCandidate = await runtime.worktree.readCommit(worktree.path);
+    if (readCandidate === undefined || readCandidate === envelope.git.baseCommit) {
+      // Same guard the supervisor applies: an unchanged or unreadable tree is
+      // no candidate, and this is the path that pushes to a real remote.
+      throw new QuirksError(
+        "PROTOCOL_VIOLATION",
+        "Implementer produced no candidate commit; refusing to review or land an unchanged tree",
+      );
+    }
+    const candidateCommit = readCandidate;
     const changedFiles = await listChangedFiles(worktree.path, envelope.git.baseCommit, candidateCommit);
     if (changedFiles.join("\n") !== "src/message.txt") {
       throw new QuirksError("PROTOCOL_VIOLATION", "Implementer changed unexpected files");

@@ -373,6 +373,11 @@ export class CampaignSupervisor {
 
         if (succeeded) {
           await this.attachProvenance(run, outcome, "completed");
+        } else if (outcome.implementer.failure?.code === "no_candidate_commit") {
+          // The implementer ran to completion and produced nothing. Without this
+          // the attempt left no provenance at all, so an operator saw a lane
+          // pause or exhausted retries with no iteration naming the cause.
+          await this.attachProvenance(run, outcome, "failed");
         } else if (outcome.implementer.status === "success" && outcome.reviewer) {
           // Implementer output existed but the reviewer rejected it: record the
           // attempt honestly instead of claiming acceptance.
@@ -688,8 +693,36 @@ export class CampaignSupervisor {
     let candidateCommit: string | undefined;
     // A reviewer is only dispatched when the implementer produced a candidate;
     // reviewing a failed implementer attempt would waste budget on no output.
+    //
+    // A candidate must be a commit the implementer actually made. Substituting
+    // the base for a missing one sent a reviewer against an empty diff, and an
+    // accept verdict then journalled the base as delivered work — the failed
+    // cmp-uimotion-1 campaign recorded base and candidate as the same SHA. An
+    // unchanged tree and an unreadable one are both "no candidate", not a
+    // reviewable result (QK-CTL-011).
     if (result.status === "success" && isGitWorktreePort(this.context.worktree)) {
-      candidateCommit = await this.context.worktree.readCommit(worktree.path) ?? envelope.git.baseCommit;
+      const readCandidate = await this.context.worktree.readCommit(worktree.path);
+      if (readCandidate === undefined || readCandidate === envelope.git.baseCommit) {
+        return {
+          taskId,
+          attempt,
+          implementer: {
+            ...result,
+            status: "failure",
+            failure: {
+              code: "no_candidate_commit",
+              message: readCandidate === undefined
+                ? "Implementer reported success but its worktree commit could not be read"
+                : "Implementer reported success without committing anything; the worktree is still at the campaign base",
+            },
+          },
+          implementerRoute: route,
+          jobs,
+          startedAt,
+          finishedAt: nowIso(this.context),
+        };
+      }
+      candidateCommit = readCandidate;
       const reviewWorktree = await this.context.worktree.prepareReviewWorktree(taskId, candidateCommit);
       reviewerRoute = routeForTask(envelope, taskId, "reviewer", this.context.profileIndex);
       const reviewJobId = `${envelope.campaignId}:${taskId}:reviewer:${attempt}`;

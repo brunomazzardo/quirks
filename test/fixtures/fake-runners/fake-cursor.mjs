@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  commitWork,
   hangForever,
   oversizedPayload,
   parseRunnerArgs,
@@ -89,6 +90,7 @@ async function main() {
 
   switch (mode) {
     case "success":
+      await commitWork(process.argv);
       emitInit(sessionId);
       await writeArtifact(outDir);
       await writeEnvelope(process.argv, sessionId);
