@@ -34,6 +34,11 @@ export class FakeRunnerPort implements CampaignRunnerPort {
       resolvedModel: "test-model",
       effort: input.route.effort,
       status: "success",
+      // A reviewer must say it approves; acceptance is never inferred from a
+      // silent success. The default models an approving reviewer so existing
+      // happy-path tests keep their meaning, while a test that wants a
+      // withheld approval queues an explicit revise or an absent verdict.
+      ...(input.role === "reviewer" ? { verdict: "accept" as const } : {}),
       sessionHandle: "fake-session",
       artifactPaths: [],
       usage: {},

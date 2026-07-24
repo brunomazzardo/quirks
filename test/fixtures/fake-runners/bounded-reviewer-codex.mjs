@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseRunnerArgs } from "./shared-modes.mjs";
+import { parseRunnerArgs, verdictForEnvelopePath } from "./shared-modes.mjs";
 
 function parseWorkspace(argv) {
   for (let index = 0; index < argv.length; index += 1) {
@@ -28,6 +28,8 @@ async function main() {
   }
   await writeCodexResult(resultPath, {
     status: "success",
+    // Allows a test to drive a withheld approval through the real acceptance path.
+    verdict: process.env.QUIRKS_BOUNDED_REVIEWER_VERDICT ?? verdictForEnvelopePath(resultPath),
     sessionHandle: sessionId,
     artifactPaths: [reviewPath],
   });

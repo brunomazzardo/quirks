@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type { Readable } from "node:stream";
-import { parseClaudeResult, claudeArtifactPaths } from "./claude.js";
+import { parseClaudeResult, claudeArtifactPaths, claudeResultPath } from "./claude.js";
 import { parseCodexResult } from "./codex.js";
 import { parseCursorResult, cursorResultPath } from "./cursor.js";
 import { normalizeJobResult } from "./job-result.js";
+import { parseReviewVerdict, redactTranscript, transcriptPath, type ReviewVerdict } from "./result-contract.js";
 import type { RunnerJobFailure, RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
 
 const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
@@ -17,6 +18,16 @@ export interface DispatchRunnerJobInput {
   argv: readonly string[];
   artifactDir: string;
   timeoutMs: number;
+  /**
+   * Working directory for the child, which is the job's worktree.
+   *
+   * codex binds its workspace with -C and cursor with --workspace, but claude
+   * has no such flag and relies entirely on the process working directory.
+   * Without this a claude job ran in the supervisor's checkout instead of its
+   * isolated worktree — editing the wrong tree while the prepared worktree
+   * stayed clean and its base commit was read back as the candidate.
+   */
+  cwd?: string;
   env?: Readonly<Record<string, string>>;
 }
 
@@ -27,6 +38,7 @@ interface StreamCollectResult {
 
 interface ParsedDispatch {
   status: RunnerJobStatus;
+  verdict?: ReviewVerdict;
   sessionHandle: string;
   artifactPaths: readonly string[];
   failure?: RunnerJobFailure;
@@ -71,6 +83,36 @@ function extractFlagValue(argv: readonly string[], flag: string): string | undef
 function codexDeclaredResultPath(argv: readonly string[]): string | undefined {
   return extractFlagValue(argv, "-o");
 }
+
+/**
+ * Remove any result envelope left by a previous attempt.
+ *
+ * Result paths are deterministic per job, so a retry, resume, or rerun would
+ * otherwise find the prior attempt's file still present — and the parsers prefer
+ * a valid envelope over the current invocation's error output. A failing run
+ * therefore reported the earlier success, including a stale accept verdict. Each
+ * invocation must own its result file.
+ */
+async function clearStaleResultEnvelope(input: {
+  jobId: string;
+  profile: RunnerProfile;
+  argv: readonly string[];
+  artifactDir: string;
+}): Promise<void> {
+  const declared = input.profile.runnerType === "codex"
+    ? codexDeclaredResultPath(input.argv)
+    : input.profile.runnerType === "cursor"
+      ? cursorResultPath(input.artifactDir, input.jobId)
+      : claudeResultPath(input.artifactDir, input.jobId);
+  if (!declared) return;
+  try {
+    await rm(declared, { force: true });
+  } catch {
+    // A path we cannot clear is reported by the parser as a missing or stale
+    // envelope; refusing to run here would be worse than proceeding.
+  }
+}
+
 
 async function readDeclaredArtifactFiles(
   declaredResultPath: string,
@@ -122,11 +164,15 @@ async function parseRunnerOutputAsync(input: {
     case "claude": {
       const parsed = parseClaudeResult(input.stdout, {
         exitCode: input.exitCode ?? 1,
-        artifactPaths: claudeArtifactPaths(input.artifactDir),
+        artifactPaths: claudeArtifactPaths(input.artifactDir, input.jobId),
         ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
       });
+      // The claude CLI cannot enforce the envelope, so the verdict is read back
+      // from the brief-declared file the job wrote.
+      const verdict = await readClaudeVerdict(claudeResultPath(input.artifactDir, input.jobId));
       return {
         status: parsed.status,
+        ...(verdict !== undefined ? { verdict } : {}),
         sessionHandle: parsed.sessionHandle || sessionFallback,
         artifactPaths: parsed.artifactPaths,
         ...(parsed.failure !== undefined
@@ -148,13 +194,15 @@ async function parseRunnerOutputAsync(input: {
         };
       }
 
-      const parsed = parseCodexResult(input.stdout, {
-        declaredResultPath,
-        files: await readDeclaredArtifactFiles(declaredResultPath),
-      });
+      const parsed = parseCodexResult(
+        input.stdout,
+        { declaredResultPath, files: await readDeclaredArtifactFiles(declaredResultPath) },
+        { requireWorkArtifacts: input.profile.capabilities.includes("repository-write") },
+      );
 
       return {
         status: parsed.status,
+        ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
         sessionHandle: parsed.sessionHandle ?? sessionFallback,
         artifactPaths: parsed.artifactPaths,
         ...(parsed.failure !== undefined
@@ -168,12 +216,14 @@ async function parseRunnerOutputAsync(input: {
       // the agent to write the envelope to the job-unique declared path and
       // the parser validates it strictly.
       const declaredResultPath = cursorResultPath(input.artifactDir, input.jobId);
-      const parsed = parseCursorResult(input.stdout, {
-        declaredResultPath,
-        files: await readDeclaredArtifactFiles(declaredResultPath),
-      });
+      const parsed = parseCursorResult(
+        input.stdout,
+        { declaredResultPath, files: await readDeclaredArtifactFiles(declaredResultPath) },
+        { requireWorkArtifacts: input.profile.capabilities.includes("repository-write") },
+      );
       return {
         status: parsed.status,
+        ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
         sessionHandle: parsed.sessionHandle ?? sessionFallback,
         artifactPaths: parsed.artifactPaths,
         ...(parsed.failure !== undefined
@@ -190,6 +240,47 @@ async function parseRunnerOutputAsync(input: {
       const exhaustive: never = input.profile.runnerType;
       return exhaustive;
     }
+  }
+}
+
+/**
+ * Persist the runner transcript as job evidence; never fail the job for it.
+ *
+ * Each transcript is capped well below the 16 MiB stdout limit: a long campaign
+ * dispatches thousands of jobs into one shared artifact dir, and retaining every
+ * full buffer could exhaust the disk that later envelope, journal, and
+ * provenance writes depend on. The tail is kept because a reviewer's findings
+ * come last. Written 0600: a transcript can still contain material the redactor
+ * does not recognise.
+ */
+const MAX_RETAINED_TRANSCRIPT_BYTES = 1024 * 1024;
+
+async function retainTranscript(
+  artifactDir: string,
+  jobId: string,
+  stdout: string,
+): Promise<string | undefined> {
+  if (stdout.length === 0) return undefined;
+  const target = transcriptPath(artifactDir, jobId);
+  const redacted = redactTranscript(stdout);
+  const bounded = redacted.length > MAX_RETAINED_TRANSCRIPT_BYTES
+    ? `[transcript truncated: kept the final ${MAX_RETAINED_TRANSCRIPT_BYTES} bytes]\n${redacted.slice(-MAX_RETAINED_TRANSCRIPT_BYTES)}`
+    : redacted;
+  try {
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(target, bounded, { encoding: "utf8", mode: 0o600 });
+    return target;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readClaudeVerdict(envelopePath: string): Promise<ReviewVerdict | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(envelopePath, "utf8")) as { verdict?: unknown };
+    return parseReviewVerdict(parsed.verdict);
+  } catch {
+    return undefined;
   }
 }
 
@@ -212,6 +303,13 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
     return failureResult(base, "failure", "invalid_argv", "Runner argv must include an executable");
   }
 
+  await clearStaleResultEnvelope({
+    jobId: input.jobId,
+    profile: input.profile,
+    argv: input.argv,
+    artifactDir: input.artifactDir,
+  });
+
   let child: ChildProcess | undefined;
   let timedOut = false;
   let terminationTimer: NodeJS.Timeout | undefined;
@@ -229,6 +327,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
   try {
     child = spawn(executable, input.argv.slice(1), {
       shell: false,
+      ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
@@ -278,12 +377,18 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       );
     }
 
+    const stdout = stdoutResult.buffer.toString("utf8");
+    // Retain the transcript before parsing. A read-only codex reviewer cannot
+    // write a findings file, and --output-schema constrains its final message to
+    // the envelope, so this is frequently the only place its reasoning exists.
+    const retainedTranscript = await retainTranscript(input.artifactDir, input.jobId, stdout);
+
     const parsed = await parseRunnerOutputAsync({
       jobId: input.jobId,
       profile: input.profile,
       argv: input.argv,
       artifactDir: input.artifactDir,
-      stdout: stdoutResult.buffer.toString("utf8"),
+      stdout,
       exitCode,
       ...(sessionId !== undefined ? { sessionId } : {}),
     });
@@ -295,8 +400,11 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       resolvedModel: input.profile.model,
       effort: input.profile.effort,
       status: parsed.status,
+      ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
       sessionHandle: parsed.sessionHandle,
-      artifactPaths: parsed.artifactPaths,
+      artifactPaths: retainedTranscript
+        ? [...parsed.artifactPaths, retainedTranscript]
+        : parsed.artifactPaths,
       ...(parsed.failure !== undefined ? { failure: parsed.failure } : {}),
       ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
     });

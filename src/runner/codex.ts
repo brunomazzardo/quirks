@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseReviewVerdict, type ReviewVerdict } from "./result-contract.js";
 
 export interface BuildCodexArgvInput {
   executable: string;
@@ -15,6 +16,7 @@ export interface BuildCodexArgvInput {
 
 export interface BuildCodexResumeArgvInput {
   executable: string;
+  workspace: string;
   sessionHandle: string;
   briefPath: string;
   resultPath: string;
@@ -34,6 +36,7 @@ export type CodexResultStatus =
 
 export interface CodexResult {
   status: CodexResultStatus;
+  verdict: ReviewVerdict | undefined;
   sessionHandle: string | undefined;
   artifactPaths: readonly string[];
   failure: string | undefined;
@@ -47,6 +50,7 @@ export interface CodexResultArtifacts {
 
 interface CodexResultArtifact {
   status?: unknown;
+  verdict?: unknown;
   sessionHandle?: unknown;
   artifactPaths?: unknown;
   failure?: unknown;
@@ -143,6 +147,10 @@ export function buildCodexResumeArgv(input: BuildCodexResumeArgvInput): readonly
   return [
     input.executable,
     "exec",
+    // The initial dispatch binds the workspace with -C; a resume that omits it
+    // restarts in whatever directory the supervisor happens to occupy.
+    "-C",
+    input.workspace,
     "-s",
     codexSandboxMode(input.capabilities),
     "-c",
@@ -215,7 +223,11 @@ function streamFailure(events: readonly CodexStreamEvent[]): { status: CodexResu
   return undefined;
 }
 
-export function parseCodexResult(stdout: string, artifacts: CodexResultArtifacts): CodexResult {
+export function parseCodexResult(
+  stdout: string,
+  artifacts: CodexResultArtifacts,
+  options: { requireWorkArtifacts?: boolean } = {},
+): CodexResult {
   const events = parseStreamEvents(stdout);
   const streamHandle = streamSessionHandle(events);
 
@@ -235,7 +247,11 @@ export function parseCodexResult(stdout: string, artifacts: CodexResultArtifacts
     return missingEnvelopeResult(events, streamHandle, `Invalid Codex result status in ${artifacts.declaredResultPath}`);
   }
 
-  const artifactPaths = parseArtifactPaths(parsed.artifactPaths, artifacts.declaredResultPath);
+  const artifactPaths = parseArtifactPaths(
+    parsed.artifactPaths,
+    artifacts.declaredResultPath,
+    options.requireWorkArtifacts === true,
+  );
   if (parsed.status === "success" && artifactPaths.length === 0) {
     return failureResult(`Codex success requires artifact evidence at ${artifacts.declaredResultPath}`, streamHandle);
   }
@@ -245,6 +261,7 @@ export function parseCodexResult(stdout: string, artifacts: CodexResultArtifacts
 
   return {
     status: parsed.status,
+    verdict: parseReviewVerdict(parsed.verdict),
     sessionHandle: streamHandle ?? envelopeHandle,
     artifactPaths,
     failure: typeof parsed.failure === "string" ? parsed.failure : undefined,
@@ -261,6 +278,7 @@ function missingEnvelopeResult(
   if (failure !== undefined) {
     return {
       status: failure.status,
+      verdict: undefined,
       sessionHandle,
       artifactPaths: [],
       failure: failure.failure,
@@ -273,6 +291,7 @@ function missingEnvelopeResult(
 function failureResult(failure: string, sessionHandle?: string): CodexResult {
   return {
     status: "failure",
+    verdict: undefined,
     sessionHandle,
     artifactPaths: [],
     failure,
@@ -284,8 +303,26 @@ function isCodexResultStatus(value: unknown): value is CodexResultStatus {
   return typeof value === "string" && CODEX_STATUSES.has(value as CodexResultStatus);
 }
 
-function parseArtifactPaths(value: unknown, declaredResultPath: string): readonly string[] {
-  if (value === undefined) return [declaredResultPath];
+/**
+ * Evidence paths for a job, defaulting to the declared envelope.
+ *
+ * The envelope we just read is itself proof the job ran, so an omitted or empty
+ * artifactPaths falls back to it rather than failing the job. Requiring the
+ * model to cite it was not reliable: the 2026-07-24 probe caught two of three
+ * codex models writing an explicit empty array despite the schema asking for
+ * the path, which would have failed every accepting reviewer.
+ */
+function parseArtifactPaths(
+  value: unknown,
+  declaredResultPath: string,
+  requireWorkArtifacts: boolean,
+): readonly string[] {
+  if (value === undefined) return requireWorkArtifacts ? [] : [declaredResultPath];
   if (!Array.isArray(value)) return [];
-  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+  const paths = value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+  if (paths.length > 0) return paths;
+  // A read-only reviewer that accepts legitimately changes nothing, so its
+  // envelope is its evidence. A job that could write, and claims success while
+  // producing nothing, has not shown it did the work.
+  return requireWorkArtifacts ? [] : [declaredResultPath];
 }

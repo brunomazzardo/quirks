@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { CliRunnerPort } from "../../src/runner/cli-runner-port.js";
 import { cursorResultContractSection, cursorResultPath } from "../../src/runner/cursor.js";
+import { resultContractPath } from "../../src/runner/result-contract.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 
 async function executableFakeRunner(scriptName: string): Promise<string> {
@@ -45,6 +46,7 @@ async function dispatchFixture(
   runnerType: RunnerProfile["runnerType"],
   scriptName: string,
   tier: RunnerProfile["tier"] = "standard",
+  declareResultContract = true,
 ) {
   const executable = await executableFakeRunner(scriptName);
   const profiles = new Map([
@@ -52,7 +54,16 @@ async function dispatchFixture(
   ]);
   const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-artifacts-"));
   const briefPath = path.join(artifactRoot, "brief.md");
-  await writeFile(briefPath, "# brief\n", "utf8");
+  // Claude and cursor learn their envelope path from the brief, exactly as the
+  // supervisor now states it for every job on those runners.
+  const contractPath = declareResultContract
+    ? resultContractPath(runnerType, artifactRoot, `job-${runnerType}`)
+    : undefined;
+  await writeFile(
+    briefPath,
+    contractPath === undefined ? "# brief\n" : `# brief\n\n${cursorResultContractSection(contractPath)}\n`,
+    "utf8",
+  );
   const worktreePath = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-worktree-"));
 
   const port = new CliRunnerPort(profiles);
@@ -153,7 +164,7 @@ test("CliRunnerPort dispatches cursor and validates the brief-declared result en
 });
 
 test("CliRunnerPort fails a cursor job that never writes the declared envelope, naming the path", async () => {
-  const result = await dispatchFixture("cursor", "fake-cursor.mjs");
+  const result = await dispatchFixture("cursor", "fake-cursor.mjs", "standard", false);
   assert.equal(result.status, "failure");
   assert.equal(result.failure?.code, "missing_structured_result");
   assert.match(result.failure?.message ?? "", /cursor-result-job-cursor\.json/);

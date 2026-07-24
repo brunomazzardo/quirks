@@ -182,12 +182,14 @@ test("codex dispatch argv references an existing result envelope schema", () => 
     "failure",
     "sessionHandle",
     "status",
+    "verdict",
   ]);
   assert.deepEqual([...(schema.required ?? [])].toSorted(), [
     "artifactPaths",
     "failure",
     "sessionHandle",
     "status",
+    "verdict",
   ]);
   assert.equal(schema.additionalProperties, false);
   assert.deepEqual([...(schema.properties?.["status"]?.enum ?? [])].toSorted(), [
@@ -211,6 +213,7 @@ test("codexPromptText points at the brief path for oversized or unreadable brief
 test("buildCodexResumeArgv keeps the result contract and continue prompt", () => {
   const argv = buildCodexResumeArgv({
     executable: "/usr/bin/codex",
+    workspace: "/tmp/worktree",
     sessionHandle: "codex-session-123",
     briefPath: "artifacts/job-1/brief.md",
     resultPath: "artifacts/job-1/result.json",
@@ -239,6 +242,7 @@ test("buildCodexResumeArgv keeps the result contract and continue prompt", () =>
 test("buildCodexResumeArgv maps read-only sandbox and honors an explicit continue prompt", () => {
   const argv = buildCodexResumeArgv({
     executable: "/usr/bin/codex",
+    workspace: "/tmp/worktree",
     sessionHandle: "codex-session-123",
     briefPath: "artifacts/job-1/brief.md",
     resultPath: "artifacts/job-1/result.json",
@@ -279,11 +283,104 @@ test("parseCodexResult reads status, session, and artifact paths from the declar
 
   assert.deepEqual(result, {
     status: "success",
+    verdict: undefined,
     sessionHandle: "codex-session-456",
     artifactPaths: ["artifacts/job-1/result.json", "artifacts/job-1/patch.diff"],
     failure: undefined,
     notes: [],
   });
+});
+
+/**
+ * The envelope `status` is transport ("did the job run"); `verdict` is judgment
+ * ("what did the reviewer decide"). Before they were separated, a reviewer
+ * recommending revision could only write status:"failure", which the supervisor
+ * read as a crashed runner and retried — the failed cmp-uimotion-1 campaign
+ * retried exactly that way until BUDGET_EXCEEDED, with a complete, well-formed
+ * review sitting in the `failure` field. See QK-RUN-008.
+ */
+test("parseCodexResult carries a revise verdict as a completed review, not a runner failure", () => {
+  const result = parseCodexResult("transcript noise\n", {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {
+      "artifacts/job-1/result.json": JSON.stringify({
+        status: "success",
+        verdict: "revise",
+        sessionHandle: "codex-session-456",
+        artifactPaths: ["artifacts/job-1/result.json"],
+        failure: null,
+      }),
+    },
+  });
+
+  assert.equal(result.status, "success", "the runner job itself ran to completion");
+  assert.equal(result.verdict, "revise", "the reviewer's judgment must survive transport");
+  assert.equal(result.failure, undefined, "a revise verdict is not a runner failure");
+});
+
+/**
+ * The schema tells reviewers to list the envelope itself in artifactPaths, but
+ * the 2026-07-24 probe showed two of three codex models writing an explicit
+ * empty array anyway. Evidence that a review ran cannot depend on the model
+ * remembering to cite it: the declared envelope, which we just read, is that
+ * evidence. An absent field already defaulted this way; an explicit [] now
+ * matches, so an accepting reviewer that changed no files is not failed for
+ * having produced nothing.
+ */
+test("parseCodexResult counts the declared envelope as evidence when the model omits it", () => {
+  const result = parseCodexResult("", {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {
+      "artifacts/job-1/result.json": JSON.stringify({
+        status: "success",
+        verdict: "accept",
+        sessionHandle: "s",
+        artifactPaths: [],
+        failure: null,
+      }),
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.verdict, "accept");
+  assert.deepEqual(result.artifactPaths, ["artifacts/job-1/result.json"]);
+});
+
+test("parseCodexResult carries an accept verdict", () => {
+  const result = parseCodexResult("", {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {
+      "artifacts/job-1/result.json": JSON.stringify({
+        status: "success",
+        verdict: "accept",
+        sessionHandle: "s",
+        artifactPaths: ["artifacts/job-1/result.json"],
+        failure: null,
+      }),
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.verdict, "accept");
+});
+
+// An implementer job has no verdict to give; only reviewers judge.
+test("parseCodexResult leaves the verdict undefined when the envelope carries none", () => {
+  const result = parseCodexResult("", {
+    declaredResultPath: "artifacts/job-1/result.json",
+    files: {
+      "artifacts/job-1/result.json": JSON.stringify({
+        status: "success",
+        verdict: null,
+        sessionHandle: "s",
+        artifactPaths: ["artifacts/job-1/result.json"],
+        failure: null,
+      }),
+    },
+  });
+
+  assert.equal(result.status, "success");
+  assert.equal(result.verdict, undefined);
 });
 
 const threadStartedEvent = JSON.stringify({ type: "thread.started", thread_id: "thread-789" });

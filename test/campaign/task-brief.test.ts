@@ -104,7 +104,7 @@ test("brief with a result contract states the envelope contract, example, and ex
 
   assert.match(brief, /Runner result contract:/);
   assert.ok(brief.includes(resultPath), "brief must state the exact result path");
-  for (const field of ["status", "sessionHandle", "artifactPaths", "failure"]) {
+  for (const field of ["status", "verdict", "sessionHandle", "artifactPaths", "failure"]) {
     assert.ok(brief.includes(`"${field}"`), `brief must name envelope field ${field}`);
   }
 
@@ -115,7 +115,7 @@ test("brief with a result contract states the envelope contract, example, and ex
   const parsedExample = JSON.parse(exampleJson) as Record<string, unknown>;
   assert.deepEqual(
     Object.keys(parsedExample).toSorted(),
-    ["artifactPaths", "failure", "sessionHandle", "status"],
+    ["artifactPaths", "failure", "sessionHandle", "status", "verdict"],
   );
   const validated = parseCursorResult("", {
     declaredResultPath: resultPath,
@@ -123,6 +123,10 @@ test("brief with a result contract states the envelope contract, example, and ex
   });
   assert.equal(validated.status, "success");
   assert.equal(validated.failure, undefined);
+  // The example deliberately shows a completed review that asks for changes:
+  // status "success" (the job ran) with verdict "revise" (the judgment). That
+  // is the distinction a reviewer previously had no way to express.
+  assert.equal(validated.verdict, "revise");
 });
 
 test("reviewer brief carries the result contract for its own job", async () => {

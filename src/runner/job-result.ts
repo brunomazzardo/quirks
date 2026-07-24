@@ -7,6 +7,7 @@ export interface NormalizeJobResultInput {
   resolvedModel: string;
   effort: string;
   status: RunnerJobResult["status"];
+  verdict?: RunnerJobResult["verdict"];
   sessionHandle: string;
   artifactPaths: readonly string[];
   usage?: RunnerJobResult["usage"];
@@ -23,6 +24,7 @@ export function normalizeJobResult(input: NormalizeJobResultInput): RunnerJobRes
     resolvedModel: input.resolvedModel,
     effort: input.effort,
     status: input.status,
+    ...(input.verdict !== undefined ? { verdict: input.verdict } : {}),
     sessionHandle: input.sessionHandle,
     artifactPaths: [...input.artifactPaths],
     usage: { ...input.usage },

@@ -8,6 +8,7 @@ export interface ClaudeArgvInput {
   effort: string;
   briefPath: string;
   workspace: string;
+  artifactDir: string;
   configDir?: string;
   allowPermissionBypass?: boolean;
 }
@@ -65,7 +66,10 @@ export function claudeEffort(effort: string): string {
 
 function appendSharedArgv(
   argv: string[],
-  input: Pick<ClaudeArgvInput, "model" | "effort" | "workspace" | "allowPermissionBypass">,
+  input: Pick<
+    ClaudeArgvInput,
+    "model" | "effort" | "workspace" | "artifactDir" | "allowPermissionBypass"
+  >,
 ): void {
   argv.push(
     "--model",
@@ -74,12 +78,17 @@ function appendSharedArgv(
     claudeEffort(input.effort),
     "--output-format",
     "stream-json",
-    "--add-dir",
-    input.workspace,
+    // --output-format=stream-json is rejected without --verbose. Passing it
+    // explicitly keeps dispatch independent of a per-account settings.json,
+    // which is the only reason the personal account ever worked.
+    "--verbose",
   );
   if (input.allowPermissionBypass === true) {
     argv.push("--dangerously-skip-permissions");
   }
+  // --add-dir is variadic, so it stays last: any positional appended after it
+  // would be absorbed as another directory rather than read as the prompt.
+  argv.push("--add-dir", input.workspace, input.artifactDir);
 }
 
 export function buildClaudeArgv(input: ClaudeArgvInput): readonly string[] {
@@ -88,9 +97,11 @@ export function buildClaudeArgv(input: ClaudeArgvInput): readonly string[] {
     "-p",
     "--session-id",
     input.sessionId,
+    // The prompt precedes every flag: a variadic flag placed before it would
+    // consume it, leaving the CLI with no prompt at all.
+    input.briefPath,
   ];
   appendSharedArgv(argv, input);
-  argv.push(input.briefPath);
   return argv;
 }
 
@@ -150,8 +161,18 @@ function hasUsageLimit(events: readonly ClaudeStreamEvent[]): boolean {
   return false;
 }
 
-export function claudeArtifactPaths(artifactDir: string): readonly string[] {
-  return [path.join(artifactDir, "result.json")];
+/**
+ * Job-unique result envelope path, mirroring `codexResultPath` and
+ * `cursorResultPath`. A shared artifactDir/result.json let concurrent roles and
+ * attempts clobber (or inherit) another job's envelope.
+ */
+export function claudeResultPath(artifactDir: string, jobId: string): string {
+  const safeJobId = jobId.replace(/[^A-Za-z0-9._-]/g, "-");
+  return path.join(artifactDir, `claude-result-${safeJobId}.json`);
+}
+
+export function claudeArtifactPaths(artifactDir: string, jobId: string): readonly string[] {
+  return [claudeResultPath(artifactDir, jobId)];
 }
 
 function verifyArtifactPaths(paths: readonly string[]): string[] | undefined {

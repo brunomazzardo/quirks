@@ -1,11 +1,23 @@
 import {
+  briefPathFromArgv,
+  declaredEnvelopePath,
   hangForever,
   oversizedPayload,
   parseRunnerArgs,
   wedgeAfterWork,
   writeArtifact,
+  writeDeclaredEnvelope,
   writePartialArtifact,
 } from "./shared-modes.mjs";
+
+// The claude CLI has no --output-schema/-o equivalent, so a claude job learns
+// its envelope path from the brief exactly as a cursor job does. Deriving it
+// any other way would let this fake pass while the real runner writes nothing,
+// which is how the missing claude result contract went unnoticed (QK-RUN-007).
+async function writeEnvelope(sessionId, envelope = {}) {
+  const envelopePath = await declaredEnvelopePath(briefPathFromArgv(process.argv));
+  return writeDeclaredEnvelope(envelopePath, { sessionHandle: sessionId, ...envelope });
+}
 
 function emitInit(sessionId) {
   process.stdout.write(`${JSON.stringify({
@@ -45,6 +57,7 @@ async function main() {
     case "success":
       emitInit(sessionId);
       await writeArtifact(outDir);
+      await writeEnvelope(sessionId);
       emitSuccessResult(sessionId);
       return;
     case "success-no-disk":
@@ -54,6 +67,7 @@ async function main() {
     case "permission-exit-zero":
     case "exit-zero-denied":
       await writeArtifact(outDir);
+      await writeEnvelope(sessionId);
       emitSuccessResult(sessionId, {
         permission_denials: [{ tool_name: "Bash", tool_use_id: "toolu_1", tool_input: {} }],
       });
@@ -61,10 +75,12 @@ async function main() {
     case "partial":
       emitInit(sessionId);
       await writePartialArtifact(outDir);
+      await writeEnvelope(sessionId, { status: "failure", failure: "honest_partial" });
       emitErrorResult(sessionId, { result: "honest_partial" });
       return;
     case "malformed":
       await writeArtifact(outDir);
+      await writeEnvelope(sessionId);
       process.stdout.write("All done. Task complete.\n");
       return;
     case "oversized":

@@ -18,7 +18,7 @@ import {
   type NormalizedTaskRecord,
 } from "./task-brief.js";
 import type { CampaignApproval, CampaignEnvelope, CampaignStatus } from "./types.js";
-import { cursorResultPath } from "../runner/cursor.js";
+import { resultContractPath, reviewerAcceptedAttempt } from "../runner/result-contract.js";
 import type { RunnerJobResult, RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
 import { RepositoryLock } from "../state/repository-lock.js";
@@ -99,12 +99,20 @@ interface TaskDispatchOutcome {
 }
 
 // An attempt is accepted only when the implementer job succeeded AND, whenever a
-// reviewer was dispatched for the attempt, the reviewer job succeeded as well.
+// reviewer was dispatched for the attempt, that reviewer both ran and accepted.
+// A reviewer that ran and asked for changes withholds acceptance without being a
+// runner failure (QK-RUN-008).
 function attemptSucceeded(outcome: TaskDispatchOutcome | undefined): boolean {
   if (!outcome || outcome.implementer.status !== "success") return false;
-  return outcome.reviewer === undefined || outcome.reviewer.status === "success";
+  return outcome.reviewer === undefined || reviewerAcceptedAttempt(outcome.reviewer);
 }
 
+/**
+ * The job whose *failure* explains a rejected attempt, for circuit-breaker and
+ * budget classification. A revise verdict is deliberately absent here: the
+ * reviewer ran fine, so classifying it as a runner error would retry a
+ * completed review — the loop that drained cmp-uimotion-1 to BUDGET_EXCEEDED.
+ */
 function attemptFailingResult(outcome: TaskDispatchOutcome): RunnerJobResult | undefined {
   if (outcome.implementer.status !== "success") return outcome.implementer;
   if (outcome.reviewer && outcome.reviewer.status !== "success") return outcome.reviewer;
@@ -251,8 +259,16 @@ export class CampaignSupervisor {
     let lastLaneBreaker: CircuitBreakerDecision | undefined;
     let wave = 0;
 
+    // Tasks whose reviewer ran and asked for changes. They are not failures and
+    // not completions; they are waiting on a human. Re-dispatching them would
+    // repeat identical work, because the next implementer brief carries neither
+    // the review nor any record of it — the budget-draining loop QK-RUN-008 set
+    // out to remove. Informed rework arrives with the findings channel
+    // (QK-RUN-009); until then one attempt is the honest bound.
+    const awaitingRevision = new Set<string>();
+
     while (completedTasks.size < run.planTaskIds.length) {
-      const runnable = selectRunnableTasks(run.plan, completedTasks, pausedLanes);
+      const runnable = selectRunnableTasks(run.plan, completedTasks, pausedLanes, awaitingRevision);
       if (runnable.length === 0) {
         // Reachable only when every remaining task is blocked behind a paused
         // lane; NO_RUNNABLE_TASKS is a defensive fallback that never fabricates
@@ -261,7 +277,9 @@ export class CampaignSupervisor {
         return this.haltRun(
           run,
           "paused",
-          stalledByLanes ? "ALL_LANES_PAUSED" : "NO_RUNNABLE_TASKS",
+          awaitingRevision.size > 0 && !stalledByLanes
+            ? "REVIEW_REVISION_REQUIRED"
+            : stalledByLanes ? "ALL_LANES_PAUSED" : "NO_RUNNABLE_TASKS",
           stalledByLanes ? lastLaneBreaker : undefined,
           completedJobs,
           pausedLanes,
@@ -313,12 +331,28 @@ export class CampaignSupervisor {
         }
 
         const succeeded = attemptSucceeded(outcome);
+        // Mirror the acceptance predicate rather than matching only "revise": a
+        // reviewer that ran but returned no usable verdict also fails
+        // acceptance, and gating on "revise" alone left that case retryable. A
+        // reviewer that crashed is excluded — that is a runner failure and
+        // belongs in the retry path. Computed before it is read: an earlier
+        // version set it further down, so the first withheld review still
+        // charged its lane.
+        const reviewWithheldApproval =
+          !succeeded &&
+          outcome.reviewer !== undefined &&
+          outcome.reviewer.status === "success" &&
+          !reviewerAcceptedAttempt(outcome.reviewer);
+        if (reviewWithheldApproval) awaitingRevision.add(taskId);
+
         if (succeeded) {
           completedTasks.add(taskId);
           waveCompleted.push(taskId);
           for (const lane of lanes) laneFailures.set(lane, 0);
           completedJobs.push(...outcome.jobs);
-        } else {
+        } else if (!reviewWithheldApproval) {
+          // A completed review that withheld approval is not a lane fault, so it
+          // must not push the lane toward its failure threshold.
           for (const lane of lanes) laneFailures.set(lane, (laneFailures.get(lane) ?? 0) + 1);
         }
 
@@ -555,9 +589,11 @@ export class CampaignSupervisor {
 
   /**
    * Job-bound result contract for runners without mechanical envelope
-   * enforcement. Cursor has no --output-schema/-o equivalent, so its brief
-   * must state the exact envelope contract and the job-unique path that
-   * `parseCursorResult` validates strictly (QK-RUN-005).
+   * enforcement. Cursor has no --output-schema/-o equivalent, so its brief must
+   * state the exact envelope contract and the job-unique path that
+   * `parseCursorResult` validates strictly (QK-RUN-005). Claude has no such
+   * flag either and `parseClaudeResult` hard-requires the artifact, so leaving
+   * the contract unstated made the envelope a matter of chance (QK-RUN-007).
    */
   private briefResultContract(
     profileId: string,
@@ -565,8 +601,10 @@ export class CampaignSupervisor {
     jobId: string,
   ): { resultContract: { resultPath: string } } | Record<string, never> {
     const profile = this.context.profileIndex?.get(profileId);
-    if (profile?.runnerType !== "cursor") return {};
-    return { resultContract: { resultPath: cursorResultPath(path.dirname(briefPath), jobId) } };
+    if (!profile) return {};
+    const resultPath = resultContractPath(profile.runnerType, path.dirname(briefPath), jobId);
+    if (resultPath === undefined) return {};
+    return { resultContract: { resultPath } };
   }
 
   private async dispatchTask(
@@ -858,10 +896,14 @@ export class CampaignSupervisor {
       iterationOutcome === "completed" && outcome.candidateCommit && /^[a-f0-9]{40}$/.test(outcome.candidateCommit)
         ? outcome.candidateCommit
         : undefined;
-    const outcomeReason =
-      iterationOutcome === "failed" && outcome.reviewer
-        ? `review_failed:${outcome.reviewer.status}${outcome.reviewer.failure ? `:${outcome.reviewer.failure.code}` : ""}`
-        : undefined;
+    // A reviewer that ran and asked for changes is a revise, not a failed
+    // runner. Flattening both into review_failed:success left an operator
+    // unable to tell rework from a crash, and contradicted the comment above.
+    const outcomeReason = iterationOutcome === "failed" && outcome.reviewer
+      ? outcome.reviewer.status === "success"
+        ? `review_${outcome.reviewer.verdict ?? "indeterminate"}`
+        : `review_failed:${outcome.reviewer.status}${outcome.reviewer.failure ? `:${outcome.reviewer.failure.code}` : ""}`
+      : undefined;
     await reconcileMutation({
       campaignId: run.envelope.campaignId,
       outbox: this.context.outbox,

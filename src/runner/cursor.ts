@@ -1,5 +1,6 @@
-import type { RunnerJobStatus } from "./types.js";
 import path from "node:path";
+import { parseReviewVerdict, type ReviewVerdict } from "./result-contract.js";
+import type { RunnerJobStatus } from "./types.js";
 
 const FORCE_CAPABILITY = "repository-write";
 
@@ -26,6 +27,7 @@ export const CURSOR_RESULT_PATH_INSTRUCTION =
 export function cursorResultContractSection(resultPath: string): string {
   const example = JSON.stringify({
     status: "success",
+    verdict: "revise",
     sessionHandle: "cursor-session-1",
     artifactPaths: [resultPath],
     failure: null,
@@ -33,8 +35,10 @@ export function cursorResultContractSection(resultPath: string): string {
   return [
     "Runner result contract:",
     `- ${CURSOR_RESULT_PATH_INSTRUCTION}${resultPath}`,
-    '- The envelope is a single JSON object with exactly these fields: "status" (one of "success", "failure", "cancelled", "timeout", "usage_limit", "permission_denied"), "sessionHandle" (your session or thread id as a string, or null), "artifactPaths" (array of file path strings for your evidence; include the envelope path itself), "failure" (string reason for any non-success status, or null).',
-    `- Filled example: ${example}`,
+    '- The envelope is a single JSON object with exactly these fields: "status" (one of "success", "failure", "cancelled", "timeout", "usage_limit", "permission_denied"), "verdict" ("accept" or "revise" if you are reviewing, otherwise null), "sessionHandle" (your session or thread id as a string, or null), "artifactPaths" (array of file path strings for your evidence; include the envelope path itself), "failure" (string reason for any non-success status, or null).',
+    '- "status" reports whether YOUR JOB ran, not whether you approve of the work. If you completed the review and are recommending changes, that is status "success" with verdict "revise" — never status "failure".',
+    '- Put review findings in your final message and evidence files, not in "failure". "failure" is only for the job itself failing.',
+    `- Filled example (a completed review that asks for changes): ${example}`,
     "- A missing or malformed envelope classifies the job as failed regardless of any prose summary.",
   ].join("\n");
 }
@@ -45,7 +49,18 @@ export interface CursorArgvInput {
   readonly model: string;
   readonly briefPath: string;
   readonly workspace: string;
+  readonly artifactDir: string;
   readonly capabilities?: readonly string[];
+}
+
+/**
+ * Positional prompt for a cursor job. cursor-agent takes its prompt as a
+ * positional (`agent [prompt...]`) and has no flag that accepts a prompt file,
+ * so the brief is referenced by path rather than inlined: argv is world-visible
+ * in `ps`, and a real brief would otherwise land there verbatim.
+ */
+export function cursorPromptText(briefPath: string): string {
+  return `Read the brief at ${briefPath}, complete it, and write the result envelope to the declared result path before exiting.`;
 }
 
 export interface CursorResultFailure {
@@ -55,6 +70,7 @@ export interface CursorResultFailure {
 
 export interface CursorParsedResult {
   readonly status: RunnerJobStatus;
+  readonly verdict?: ReviewVerdict;
   readonly sessionHandle?: string;
   readonly artifactPaths: readonly string[];
   readonly failure?: CursorResultFailure;
@@ -79,6 +95,7 @@ interface CursorResultEvent {
 
 interface CursorResultEnvelope {
   readonly status?: unknown;
+  readonly verdict?: unknown;
   readonly sessionHandle?: unknown;
   readonly artifactPaths?: unknown;
   readonly failure?: unknown;
@@ -101,14 +118,20 @@ export function buildCursorArgv(input: CursorArgvInput): readonly string[] {
     "json",
     "--model",
     input.model,
+    // Suppresses the workspace trust prompt, which blocks a headless run
+    // regardless of write capability. Not a write posture: --force is.
+    "--trust",
     "--workspace",
     input.workspace,
-    "--file",
-    input.briefPath,
+    // The brief and the result envelope both live outside the workspace.
+    "--add-dir",
+    input.artifactDir,
   ];
   if (input.capabilities?.includes(FORCE_CAPABILITY)) {
     argv.push("--force");
   }
+  // cursor-agent has no --file option; the prompt is a trailing positional.
+  argv.push(cursorPromptText(input.briefPath));
   return argv;
 }
 
@@ -181,6 +204,15 @@ function isCursorStatus(value: unknown): value is RunnerJobStatus {
   return typeof value === "string" && CURSOR_STATUSES.has(value as RunnerJobStatus);
 }
 
+function envelopeArtifactPaths(
+  paths: readonly string[],
+  declaredResultPath: string,
+  requireWorkArtifacts: boolean,
+): readonly string[] {
+  if (paths.length > 0) return paths;
+  return requireWorkArtifacts ? [] : [declaredResultPath];
+}
+
 function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string" && entry.length > 0);
 }
@@ -214,6 +246,7 @@ function envelopeFieldIssues(envelope: CursorResultEnvelope): EnvelopeFieldIssue
 
 interface ValidEnvelope {
   status: RunnerJobStatus;
+  verdict: ReviewVerdict | undefined;
   sessionHandle: string | undefined;
   artifactPaths: readonly string[];
   failure: string | undefined;
@@ -263,7 +296,12 @@ function readEnvelope(artifacts: CursorResultArtifacts): EnvelopeOutcome {
     kind: "valid",
     envelope: {
       status: candidate.status as RunnerJobStatus,
+      verdict: parseReviewVerdict(candidate.verdict),
       sessionHandle: typeof candidate.sessionHandle === "string" ? candidate.sessionHandle : undefined,
+      // The envelope we just read is itself evidence the job ran, so an empty
+      // list falls back to it rather than failing an accepting reviewer that
+      // changed no files. Model compliance with "cite the envelope path" was
+      // measured unreliable on 2026-07-24.
       artifactPaths: candidate.artifactPaths as readonly string[],
       failure: typeof candidate.failure === "string" ? candidate.failure : undefined,
     },
@@ -273,6 +311,7 @@ function readEnvelope(artifacts: CursorResultArtifacts): EnvelopeOutcome {
 export function parseCursorResult(
   stdout: string,
   artifacts: CursorResultArtifacts,
+  options: { requireWorkArtifacts?: boolean } = {},
 ): CursorParsedResult {
   const resultEvents = parseStructuredEvents(stdout).filter((event) => event.type === "result");
   const finalEvent = resultEvents[resultEvents.length - 1];
@@ -283,7 +322,15 @@ export function parseCursorResult(
   if (outcome.kind === "valid") {
     const sessionHandle = streamHandle ?? outcome.envelope.sessionHandle;
     if (outcome.envelope.status === "success") {
-      if (outcome.envelope.artifactPaths.length === 0) {
+      // A read-only reviewer that accepts legitimately changes nothing, so its
+      // envelope is its evidence. A job that could write, and claims success
+      // while producing nothing, has not shown it did the work.
+      const evidence = envelopeArtifactPaths(
+        outcome.envelope.artifactPaths,
+        artifacts.declaredResultPath,
+        options.requireWorkArtifacts === true,
+      );
+      if (evidence.length === 0) {
         return {
           status: "failure",
           artifactPaths: [],
@@ -296,7 +343,8 @@ export function parseCursorResult(
       }
       return {
         status: "success",
-        artifactPaths: outcome.envelope.artifactPaths,
+        artifactPaths: evidence,
+        ...(outcome.envelope.verdict !== undefined ? { verdict: outcome.envelope.verdict } : {}),
         ...(sessionHandle !== undefined ? { sessionHandle } : {}),
       };
     }

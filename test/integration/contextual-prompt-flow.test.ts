@@ -169,10 +169,18 @@ test("one planned feature becomes one task and one consistent set of action brie
     const promptSet = buildPromptSet(context);
     const uiReview = promptSet.recipes.find((recipe) => recipe.recipeId === "review-task-code");
     assert.ok(uiReview, "review recipe must be applicable");
-    assert.equal(
-      uiReview.prompt,
-      reviewerBrief,
-      "the copied UI review prompt and the dispatched reviewer brief are the same authoritative brief",
+    // The dispatched brief is the copied prompt plus the job-bound result
+    // contract, which a UI copy legitimately cannot carry: it has no dispatched
+    // job and so no job-unique envelope path. The authoritative kernel — every
+    // binding a reviewer acts on — must still be identical.
+    assert.ok(
+      reviewerBrief.startsWith(uiReview.prompt),
+      "the copied UI review prompt and the dispatched reviewer brief share one authoritative kernel",
+    );
+    const addendum = reviewerBrief.slice(uiReview.prompt.length).trim();
+    assert.ok(
+      addendum === "" || addendum.startsWith("Runner result contract:"),
+      `dispatched brief may only append the job-bound result contract, got: ${addendum.slice(0, 120)}`,
     );
   } finally {
     await supervisorContext?.dispose();

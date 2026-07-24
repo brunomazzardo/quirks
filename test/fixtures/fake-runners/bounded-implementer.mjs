@@ -1,9 +1,29 @@
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+// A claude job has no --output-schema/-o equivalent, so it learns its envelope
+// path from the brief. The brief is the positional prompt, which now precedes
+// the variadic --add-dir rather than trailing it (QK-RUN-007).
+async function writeDeclaredEnvelope(argv) {
+  const briefPath = argv.find((entry) => entry.endsWith(".md"));
+  if (!briefPath) return;
+  let envelopePath;
+  try {
+    const brief = await readFile(briefPath, "utf8");
+    envelopePath = brief.match(/write your result envelope JSON to exactly this path: (.+)$/m)?.[1]?.trim();
+  } catch {
+    return;
+  }
+  if (!envelopePath) return;
+  await mkdir(path.dirname(envelopePath), { recursive: true });
+  const verdict = /reviewer/i.test(envelopePath) ? "accept" : null;
+  const envelope = { status: "success", verdict, sessionHandle: null, artifactPaths: [envelopePath], failure: null };
+  await writeFile(envelopePath, `${JSON.stringify(envelope)}\n`, "utf8");
+}
 
 function parseWorkspace(argv) {
   for (let index = 0; index < argv.length; index += 1) {
@@ -57,6 +77,7 @@ async function main() {
     "bounded campaign implementer",
   ]);
   await writeArtifact(process.env.QUIRKS_FAKE_RUNNER_OUTDIR);
+  await writeDeclaredEnvelope(process.argv);
   emitInit("bounded-implementer");
   emitSuccess("bounded-implementer");
 }

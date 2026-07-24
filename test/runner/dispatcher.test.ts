@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
-import { chmod, cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { claudeResultPath } from "../../src/runner/claude.js";
 import { buildCodexResumeArgv } from "../../src/runner/codex.js";
+import { cursorResultContractSection } from "../../src/runner/cursor.js";
 import { dispatchRunnerJob } from "../../src/runner/dispatcher.js";
+import { transcriptPath } from "../../src/runner/result-contract.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -28,10 +31,13 @@ async function makeTempArtifactDir(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "quirks-runner-artifacts-"));
 }
 
-function fakeClaudeArgv(mode: string): readonly string[] {
+function fakeClaudeArgv(mode: string, briefPath: string): readonly string[] {
   return [
     process.execPath,
     path.resolve("test/fixtures/fake-runners/fake-claude.mjs"),
+    // Production passes the brief as the positional prompt; the fake reads its
+    // declared envelope path out of that brief, exactly as a real job does.
+    briefPath,
     "--session-id",
     SESSION_ID,
     "--mode",
@@ -39,12 +45,24 @@ function fakeClaudeArgv(mode: string): readonly string[] {
   ];
 }
 
+/** Brief stating the job-unique envelope path, as the supervisor now does. */
+async function briefDeclaring(artifactDir: string, jobId: string): Promise<string> {
+  const briefPath = path.join(artifactDir, "brief.md");
+  await writeFile(
+    briefPath,
+    `# brief\n\n${cursorResultContractSection(claudeResultPath(artifactDir, jobId))}\n`,
+    "utf8",
+  );
+  return briefPath;
+}
+
 async function dispatchFakeClaude(mode: string, timeoutMs = 5_000) {
+  const artifactDir = await makeTempArtifactDir();
   return dispatchRunnerJob({
     jobId: "job-1",
     profile: fakeProfile,
-    argv: fakeClaudeArgv(mode),
-    artifactDir: await makeTempArtifactDir(),
+    argv: fakeClaudeArgv(mode, await briefDeclaring(artifactDir, "job-1")),
+    artifactDir,
     timeoutMs,
   });
 }
@@ -101,6 +119,7 @@ test("dispatch executes codex resume argv against the declared result path", asy
   const artifactDir = await makeTempArtifactDir();
   const argv = buildCodexResumeArgv({
     executable,
+    workspace: artifactDir,
     sessionHandle: "codex-session-abc",
     briefPath: path.join(artifactDir, "brief.md"),
     resultPath: path.join(artifactDir, "codex-result.json"),
@@ -138,4 +157,77 @@ test("dispatch prefers the codex --json session handle and notes envelope disagr
   assert.equal(result.status, "success");
   assert.equal(result.sessionHandle, "jsonl-session-999");
   assert.deepEqual(result.notes, ["session_handle_mismatch"]);
+});
+
+/**
+ * Claude has no workspace flag: codex binds with -C and cursor with --workspace,
+ * but claude relies entirely on the process working directory. The dispatcher
+ * never set one, so a claude implementer ran in the supervisor's checkout rather
+ * than its isolated task worktree — editing the wrong tree while the prepared
+ * worktree stayed clean. Probes missed it because they set cwd themselves.
+ * Raised by the independent codex review of 45901c8.
+ */
+test("dispatch runs the child in the job's worktree so claude is bound to it", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const worktree = await mkdtemp(path.join(os.tmpdir(), "quirks-runner-worktree-"));
+  const probe = path.join(artifactDir, "probe-cwd.mjs");
+  await writeFile(probe, "process.stdout.write(JSON.stringify({ cwd: process.cwd() }));\n", "utf8");
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-cwd",
+    profile: fakeProfile,
+    argv: [process.execPath, probe],
+    artifactDir,
+    cwd: worktree,
+    timeoutMs: 5_000,
+  });
+
+  const transcript = await readFile(transcriptPath(artifactDir, "job-cwd"), "utf8");
+  const reported = JSON.parse(transcript) as { cwd: string };
+  assert.equal(
+    await realpath(reported.cwd),
+    await realpath(worktree),
+    "the runner must start inside its own worktree",
+  );
+  assert.ok(result.jobId === "job-cwd");
+});
+
+/**
+ * Result paths are deterministic per job, so a retry, a resume, or a rerun finds
+ * the previous attempt's envelope still on disk. The parsers prefer any valid
+ * envelope over the current invocation's error output, so a failing run was
+ * reported as the earlier success. Codex demonstrated it by pairing a current
+ * turn.failed event with an older accepting envelope; both codex and cursor
+ * returned success. The invocation must own its result file.
+ */
+test("a stale result envelope from a previous attempt cannot make a failed run succeed", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const resultPath = path.join(artifactDir, "codex-result.json");
+  // An older, accepting envelope left behind by a previous attempt.
+  await writeFile(
+    resultPath,
+    JSON.stringify({
+      status: "success",
+      verdict: "accept",
+      sessionHandle: "stale-session",
+      artifactPaths: [resultPath],
+      failure: null,
+    }),
+    "utf8",
+  );
+
+  // This invocation fails without writing any envelope of its own.
+  const failing = path.join(artifactDir, "failing-codex.mjs");
+  await writeFile(failing, "process.exitCode = 1;\n", "utf8");
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-stale",
+    profile: codexProfile,
+    argv: [process.execPath, failing, "-o", resultPath],
+    artifactDir,
+    timeoutMs: 5_000,
+  });
+
+  assert.notEqual(result.status, "success", "a failed invocation must not inherit an old envelope");
+  assert.notEqual(result.verdict, "accept", "a stale accept must never be reused");
 });

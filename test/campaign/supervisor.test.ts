@@ -403,6 +403,8 @@ class OverlapRecordingRunnerPort implements RunnerPort {
       resolvedModel: "test-model",
       effort: input.route.effort,
       status: "success" as const,
+      // Reviewers must state acceptance; a silent success no longer approves.
+      ...(input.role === "reviewer" ? { verdict: "accept" as const } : {}),
       sessionHandle: "overlap-session",
       artifactPaths: [],
       usage: {},
@@ -490,6 +492,73 @@ test("runToCompletion refuses task completion when the reviewer rejects the work
     assert.match(String(iteration["outcomeReason"]), /review/);
     const roles = (iteration["participants"] as Array<{ role: string }>).map((participant) => participant.role);
     assert.deepEqual(roles.toSorted(), ["implementer", "reviewer"]);
+  }
+  await supervisor.stop();
+});
+
+/**
+ * The campaign-level behaviour QK-RUN-008 exists for. A reviewer that ran and
+ * asked for changes must withhold acceptance without being classified or
+ * retried as a crashed runner, and provenance must say it was a revise rather
+ * than flattening it to review_failed:success. Raised as an under-constrained
+ * gap by the independent cross-vendor review, 2026-07-24.
+ */
+test("a reviewer revise verdict withholds acceptance and is recorded as a revise, not a runner failure", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  for (const attempt of [1, 2]) {
+    const jobId = `cmp-supervisor:QK-A:reviewer:${attempt}`;
+    runner.queueResult(jobId, {
+      schemaVersion: 1,
+      jobId,
+      runner: "cursor-standard",
+      runnerType: "cursor",
+      resolvedModel: "test-model",
+      effort: "standard",
+      // The job ran fine. The judgment is what withholds acceptance.
+      status: "success",
+      verdict: "revise",
+      sessionHandle: "review-session",
+      artifactPaths: [`/tmp/artifacts/cursor-result-${attempt}.json`],
+      usage: {},
+      failure: undefined,
+    });
+  }
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 4, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.notEqual(outcome.status, "completed");
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-A"), false);
+
+  // No blind retry: the next implementer brief carries neither the review nor
+  // any provenance of it, so re-dispatching repeats identical work until a lane
+  // threshold or the budget stops it. Until findings can be fed back as
+  // informed rework (QK-RUN-009), one attempt is the honest bound.
+  const reviewerDispatches = runner.dispatches.filter((d) => d.role === "reviewer" && d.taskId === "QK-A");
+  assert.equal(reviewerDispatches.length, 1, "a revise must not be blindly retried");
+
+  const iterations = await provenanceIterations(source, "QK-A");
+  assert.ok(iterations.length >= 1, "a revise attempt must still be recorded honestly");
+  for (const iteration of iterations) {
+    assert.equal(iteration["outcome"], "failed");
+    assert.equal(iteration["acceptedCommit"], undefined);
+    const reason = String(iteration["outcomeReason"]);
+    assert.match(reason, /revise/, `provenance must name the verdict, got: ${reason}`);
+    assert.doesNotMatch(
+      reason,
+      /review_failed:success/,
+      "a revise must not be flattened into a runner-failure reason",
+    );
   }
   await supervisor.stop();
 });
@@ -948,10 +1017,12 @@ test("reviewer gets a distinct read-only brief bound to the candidate commit", a
   assert.match(reviewerBrief, /executing-tasks/);
   assert.notEqual(implementerBrief, reviewerBrief);
 
-  // Codex enforces its envelope mechanically via --output-schema/-o; only
-  // cursor briefs carry the brief-guided result contract.
+  // Codex enforces its envelope mechanically via --output-schema/-o, so the
+  // codex implementer brief carries no contract. The claude reviewer has no
+  // such flag and parseClaudeResult hard-requires the artifact, so its brief
+  // must state the job-unique path (QK-RUN-007).
   assert.doesNotMatch(implementerBrief, /Runner result contract:/);
-  assert.doesNotMatch(reviewerBrief, /Runner result contract:/);
+  assert.match(reviewerBrief, /Runner result contract:/);
 });
 
 test("cursor briefs state the job-unique result envelope path for each role", async () => {

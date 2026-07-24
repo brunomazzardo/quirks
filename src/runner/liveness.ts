@@ -157,11 +157,13 @@ function buildResumeArgv(
         effort: profile.effort,
         briefPath: posture.briefPath,
         workspace: posture.workspace,
+        artifactDir: posture.artifactDir,
         ...(profile.configDir !== undefined ? { configDir: profile.configDir } : {}),
       });
     case "codex":
       return buildCodexResumeArgv({
         executable: profile.executable,
+        workspace: posture.workspace,
         sessionHandle,
         briefPath: posture.briefPath,
         resultPath: codexResultPath(posture.artifactDir, posture.jobId),
@@ -176,6 +178,7 @@ function buildResumeArgv(
         model: profile.model,
         briefPath: posture.briefPath,
         workspace: posture.workspace,
+        artifactDir: posture.artifactDir,
         capabilities: profile.capabilities,
       });
     default: {
@@ -213,6 +216,10 @@ export async function resumeJob(jobId: string, deps: ResumeJobDeps): Promise<Run
     profile: deps.profile,
     argv,
     artifactDir: deps.artifactDir,
+    // Same binding the initial dispatch needs: claude has no workspace flag, so
+    // without this a resumed job restarts in the supervisor's checkout rather
+    // than its task worktree.
+    cwd: deps.workspace,
     timeoutMs: deps.timeoutMs,
   });
 
