@@ -1,0 +1,60 @@
+{
+  "acceptanceCriteria": [
+    "cursor-agent dispatch exits 0 against the real binary: the --file flag is gone (cursor-agent has no such option) and --trust is passed so headless runs cannot block on a workspace trust prompt",
+    "Every claude profile dispatches successfully regardless of capabilities: the brief positional is no longer swallowed by the variadic --add-dir, so read-only reviewer profiles work without relying on --dangerously-skip-permissions as an accidental argument separator",
+    "claude dispatch passes --verbose explicitly with --output-format stream-json and no longer depends on a machine-local settings.json verbose flag",
+    "A real-binary probe gate exists that builds argv with the production buildRunnerArgv and executes every configured profile against the real CLI, and it is required evidence before any runner task is accepted",
+    "QK-RUN-003 and QK-RUN-005 acceptance evidence is re-established against real binaries, since both were accepted on fake-runner tests that could not observe these flags"
+  ],
+  "coordination": null,
+  "deliverables": [
+    "src/runner/cursor.ts buildCursorArgv: drop the nonexistent --file flag, pass the brief as the positional prompt, add --trust",
+    "src/runner/claude.ts appendSharedArgv/buildClaudeArgv: order argv so the brief positional cannot be consumed by variadic --add-dir, and always pass --verbose alongside --output-format stream-json",
+    "A committed real-binary runner probe (script plus documented invocation) that exercises production argv construction against claude, codex, and cursor and reports per-profile exit status",
+    "Real-boundary regression tests that would fail on any of the three argv defects, replacing fake-runner-only coverage"
+  ],
+  "dependsOn": [],
+  "execution": {
+    "capabilities": [
+      "repository-write"
+    ],
+    "completionBoundary": "accepted-commit",
+    "effort": "high",
+    "humanGates": [],
+    "parallelismKeys": [
+      "runner-profiles"
+    ],
+    "risk": [
+      "protocol",
+      "architecture"
+    ]
+  },
+  "id": "QK-RUN-007",
+  "kind": "implementation",
+  "priority": "P0",
+  "provenance": {
+    "iterations": [],
+    "schemaVersion": 1
+  },
+  "sourceRefs": [
+    {
+      "kind": "review",
+      "path": "docs/smoke/2026-07-24-runner-boundary-probe.md",
+      "commit": "8c58477235f276e7aff96ff79902ecd9f349f413"
+    }
+  ],
+  "status": "proposed",
+  "statusDetail": null,
+  "title": "Fix real-CLI argv defects in the cursor and claude runners and gate runner work on real-binary probes",
+  "verification": [
+    "pnpm check",
+    "Real-binary probe across all configured profiles, with per-profile exit status recorded as artifacts"
+  ],
+  "workflow": {
+    "designGate": {
+      "required": false
+    },
+    "family": "superpowers",
+    "phase": "execute"
+  }
+}

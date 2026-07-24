@@ -1,0 +1,69 @@
+{
+  "acceptanceCriteria": [
+    "A reviewer that recommends revise is recorded as a completed review job with a revise verdict, never as a runner failure, and never triggers a runner-level retry",
+    "A read-only reviewer that recommends accept succeeds with an empty artifactPaths list, because a review that changes nothing legitimately produces no artifacts",
+    "Runner transport status and agent verdict are separate fields in the result envelope contract, for codex and cursor alike",
+    "A campaign whose reviewer returns revise consumes one review attempt, not a retry loop, and cannot reach BUDGET_EXCEEDED through verdict misclassification",
+    "Regression tests cover both reviewer outcomes end to end: accept with no artifacts, and revise with findings"
+  ],
+  "coordination": null,
+  "deliverables": [
+    "Result envelope schema change separating transport status from agent verdict (schemas/codex-result.schema.json and the cursor equivalent)",
+    "src/runner/codex.ts parseCodexResult: stop rejecting status success with empty artifactPaths for read-only roles, and stop mapping a revise verdict onto a transport failure",
+    "src/runner/cursor.ts: the same two corrections at cursor.ts:286",
+    "Reviewer brief output contract updated so the accept/revise recommendation has a real channel instead of overloading the status enum",
+    "Supervisor handling so a revise verdict routes to the revision path rather than the runner-failure retry path"
+  ],
+  "dependsOn": [],
+  "execution": {
+    "capabilities": [
+      "repository-write"
+    ],
+    "completionBoundary": "accepted-commit",
+    "effort": "high",
+    "humanGates": [],
+    "parallelismKeys": [
+      "campaign-supervisor",
+      "runner-profiles"
+    ],
+    "risk": [
+      "protocol",
+      "architecture"
+    ]
+  },
+  "id": "QK-RUN-008",
+  "kind": "implementation",
+  "priority": "P0",
+  "provenance": {
+    "iterations": [],
+    "schemaVersion": 1
+  },
+  "sourceRefs": [
+    {
+      "kind": "review",
+      "path": "docs/smoke/2026-07-24-runner-boundary-probe.md",
+      "commit": "8c58477235f276e7aff96ff79902ecd9f349f413"
+    }
+  ],
+  "status": "proposed",
+  "statusDetail": null,
+  "title": "Separate reviewer verdict from runner transport status and allow artifact-free review success",
+  "verification": [
+    "pnpm check",
+    "A real cross-vendor review reaching both an accept verdict and a revise verdict without a runner-level retry"
+  ],
+  "workflow": {
+    "designGate": {
+      "decisionEnvelope": [
+        "Whether the verdict becomes a new envelope field or a separate reviewer result artifact",
+        "How an artifact-evidence requirement is retained for implementer roles while relaxed for read-only reviewer roles"
+      ],
+      "defaultApproval": "human",
+      "delegable": true,
+      "judgmentTier": "principal",
+      "required": true
+    },
+    "family": "superpowers",
+    "phase": "execute"
+  }
+}
