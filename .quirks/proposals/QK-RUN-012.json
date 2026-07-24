@@ -1,0 +1,59 @@
+{
+  "acceptanceCriteria": [
+    "A non-zero runner exit is never recorded as a durable terminal success",
+    "A PID probe that fails for permission reasons is not treated as evidence the process died",
+    "A failure to persist monitor state is surfaced rather than silently dropping the monitor while the session still looks active",
+    "A corrupt or unreadable worktree registry is reported, never silently replaced by an empty one that orphans existing worktrees",
+    "Watchdog coverage includes a non-zero exit, which it does not today"
+  ],
+  "coordination": null,
+  "deliverables": [
+    "src/runner/watchdog.ts: honour the child exit code, distinguish a permission error from a dead process, and stop swallowing persistence failures",
+    "src/git/worktree.ts loadStore: distinguish a genuinely absent registry from a corrupt or unreadable one",
+    "Tests for a non-zero exit, a permission-denied PID probe, and a corrupt registry"
+  ],
+  "dependsOn": [],
+  "execution": {
+    "capabilities": [
+      "repository-write"
+    ],
+    "completionBoundary": "accepted-commit",
+    "effort": "high",
+    "humanGates": [],
+    "parallelismKeys": [
+      "campaign-supervisor",
+      "runner-profiles"
+    ],
+    "risk": [
+      "architecture",
+      "protocol"
+    ]
+  },
+  "id": "QK-RUN-012",
+  "kind": "implementation",
+  "priority": "P1",
+  "provenance": {
+    "iterations": [],
+    "schemaVersion": 1
+  },
+  "sourceRefs": [
+    {
+      "kind": "review",
+      "path": "docs/smoke/2026-07-24-runner-boundary-probe.md",
+      "commit": "8c58477235f276e7aff96ff79902ecd9f349f413"
+    }
+  ],
+  "status": "proposed",
+  "statusDetail": null,
+  "title": "Stop the watchdog and worktree registry from converting failures into plausible values",
+  "verification": [
+    "pnpm check"
+  ],
+  "workflow": {
+    "designGate": {
+      "required": false
+    },
+    "family": "superpowers",
+    "phase": "execute"
+  }
+}

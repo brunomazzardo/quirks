@@ -1,0 +1,68 @@
+{
+  "acceptanceCriteria": [
+    "A run reported as completed has actually transitioned its tasks and its campaign, or it is not reported as completed",
+    "Accepted work does not remain permanently claimed",
+    "Budget spend, retry counts, and lane-failure counts survive a process restart rather than resetting on every invocation",
+    "A paused or partially claimed campaign can be resumed without the start path rejecting its own claimed tasks",
+    "No test asserts an outcome of completed while also asserting the durable campaign or task is not"
+  ],
+  "coordination": null,
+  "deliverables": [
+    "Durable completion in src/campaign/supervisor.ts: task review and completion transitions, campaign status, and integration of accepted commits",
+    "Durable budget and retry accounting, replacing the run-local trackers",
+    "Resume path in src/campaign/recovery.ts that reconciles with the declared transition table",
+    "Tests rewritten to assert the durable state matches what the CLI reports"
+  ],
+  "dependsOn": [],
+  "execution": {
+    "capabilities": [
+      "repository-write"
+    ],
+    "completionBoundary": "accepted-commit",
+    "effort": "principal",
+    "humanGates": [],
+    "parallelismKeys": [
+      "campaign-supervisor",
+      "runner-profiles"
+    ],
+    "risk": [
+      "architecture",
+      "protocol"
+    ]
+  },
+  "id": "QK-CTL-012",
+  "kind": "implementation",
+  "priority": "P0",
+  "provenance": {
+    "iterations": [],
+    "schemaVersion": 1
+  },
+  "sourceRefs": [
+    {
+      "kind": "review",
+      "path": "docs/smoke/2026-07-24-runner-boundary-probe.md",
+      "commit": "8c58477235f276e7aff96ff79902ecd9f349f413"
+    }
+  ],
+  "status": "proposed",
+  "statusDetail": null,
+  "title": "Make campaign completion durable instead of memory-only",
+  "verification": [
+    "pnpm check"
+  ],
+  "workflow": {
+    "designGate": {
+      "required": true,
+      "defaultApproval": "human",
+      "delegable": true,
+      "judgmentTier": "principal",
+      "decisionEnvelope": [
+        "Whether completion drives the task transitions itself or delegates to an explicit landing step",
+        "Where budget, retry, and lane-failure state becomes durable so a resumed run does not reset it",
+        "How an already-claimed task is resumed without the current start-path rejection"
+      ]
+    },
+    "family": "superpowers",
+    "phase": "execute"
+  }
+}

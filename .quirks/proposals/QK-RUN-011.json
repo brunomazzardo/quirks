@@ -1,0 +1,65 @@
+{
+  "acceptanceCriteria": [
+    "A profile granted repository-write does not thereby gain unrestricted shell, network, and remote-git authority",
+    "What an approved envelope authorises is what the runner can actually do",
+    "The capability names in a profile mean what an operator would reasonably read them to mean"
+  ],
+  "coordination": null,
+  "deliverables": [
+    "Bounded permission posture for claude and cursor in place of --dangerously-skip-permissions and bare --force",
+    "An explicit deny or allow policy for cursor rather than relying on its default",
+    "Documentation of the resulting authority model in references/"
+  ],
+  "dependsOn": [],
+  "execution": {
+    "capabilities": [
+      "repository-write"
+    ],
+    "completionBoundary": "accepted-commit",
+    "effort": "principal",
+    "humanGates": [],
+    "parallelismKeys": [
+      "campaign-supervisor",
+      "runner-profiles"
+    ],
+    "risk": [
+      "architecture",
+      "protocol"
+    ]
+  },
+  "id": "QK-RUN-011",
+  "kind": "implementation",
+  "priority": "P1",
+  "provenance": {
+    "iterations": [],
+    "schemaVersion": 1
+  },
+  "sourceRefs": [
+    {
+      "kind": "review",
+      "path": "docs/smoke/2026-07-24-runner-boundary-probe.md",
+      "commit": "8c58477235f276e7aff96ff79902ecd9f349f413"
+    }
+  ],
+  "status": "proposed",
+  "statusDetail": null,
+  "title": "Make the capability model an actual enforcement boundary",
+  "verification": [
+    "pnpm check"
+  ],
+  "workflow": {
+    "designGate": {
+      "required": true,
+      "defaultApproval": "human",
+      "delegable": true,
+      "judgmentTier": "principal",
+      "decisionEnvelope": [
+        "Whether repository-write should map to a bounded tool and command allow-list rather than a blanket bypass",
+        "What a campaign envelope is actually authorising, stated plainly, if full bypass is retained",
+        "Whether the sandbox posture belongs in the profile, the envelope, or both"
+      ]
+    },
+    "family": "superpowers",
+    "phase": "execute"
+  }
+}
