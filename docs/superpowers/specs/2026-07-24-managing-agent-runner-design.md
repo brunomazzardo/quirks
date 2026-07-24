@@ -30,9 +30,35 @@ That is the whole argument. A reviewer had something worth saying and the contra
 
 There is precedent in local practice: `~/.claude/skills/dispatching-external-agents` already says never to drive these CLIs directly — spawn a parent subagent that runs them, verifies results, and reports. This brings that proven pattern inside the tool.
 
+## Measured: `--output-schema` suppresses the review entirely
+
+Three review rounds on 2026-07-24 produced a decisive measurement, and it sharpens
+the design.
+
+Under `--output-schema`, codex's final message *must* be the envelope. In round one
+it smuggled a Critical finding into `sessionHandle`, truncated at 256 characters.
+Told in round three not to put prose there, and unable to write a findings file at
+all — a reviewer runs `-s read-only` and failed with `permission_denied` when asked
+— it returned a bare `verdict: "revise"` with **no reasoning anywhere**. The
+retained transcript was 472 KB across 74 events and contained exactly one agent
+message: the envelope JSON.
+
+The same brief, same model, same worktree, with `--output-schema` and `-o` removed,
+produced **eight substantive messages** including two Critical findings — both real,
+both since fixed, one of them a bug that no compiler could see because it lived
+inside a generated template string.
+
+So the choice is not "structured or messy". It is **structured or reasoned**. Today's
+contract buys machine-readable output by discarding the review that output is
+supposed to summarize.
+
+**Design consequence:** the launcher must *not* pass `--output-schema` (or the
+cursor/claude equivalents). The vendor CLI is left free to write a normal review,
+and the managing agent derives structure from the transcript it produced.
+
 ## Architecture
 
-1. **Thin launcher.** Keeps today's `buildClaudeArgv` / `buildCodexArgv` / `buildCursorArgv` and the env/cwd handling — all of it real-CLI-verified as of `f4d31e3` and worth keeping. What it loses is responsibility for result shape. `--output-schema` becomes optional and advisory rather than the contract.
+1. **Thin launcher.** Keeps today's `buildClaudeArgv` / `buildCodexArgv` / `buildCursorArgv` and the env/cwd handling — all of it real-CLI-verified as of `f4d31e3` and worth keeping. What it loses is responsibility for result shape: `--output-schema` is **dropped**, not merely made optional, for the reason measured above.
 
 2. **Managing agent per job.** Quirks spawns a claude subprocess with a fixed system brief: *here is the job, its role, its worktree, its artifact dir; run this command; then tell me what happened, in this schema.* It has read access to the artifact dir, the worktree, and the raw transcript. Its own output is structured (`--output-format json` with a declared shape) — one schema, in one place, from a model we control and can re-prompt.
 
@@ -40,7 +66,7 @@ There is precedent in local practice: `~/.claude/skills/dispatching-external-age
 
 4. **Verdict and findings both get a home.** The managing agent returns `{status, verdict, findings, artifactPaths, sessionHandle, failure}`. Findings are prose plus file/line references, kept as an artifact — no longer squeezed into a transport field.
 
-5. **Deterministic fast path preserved.** When the vendor CLI *did* produce a valid envelope (codex under `--output-schema` usually will), the managing agent is told to prefer it and confirm it against the transcript rather than re-deriving from scratch. Cheap, and it keeps the well-behaved case boring.
+5. **Deterministic fast path, where it is free.** If a runner still writes a well-formed envelope of its own accord, the managing agent prefers it and confirms it against the transcript rather than re-deriving from scratch. This is opportunistic only — it must never become a reason to reimpose a schema on the CLI.
 
 ## Honesty constraints — what this must not become
 
