@@ -1,0 +1,74 @@
+{
+  "acceptanceCriteria": [
+    "A reviewer's full findings survive the runner boundary as retained evidence, never truncated into a transport field",
+    "The vendor CLI is no longer required to emit a rigid envelope; a job whose CLI writes only prose and files still yields a correct structured result",
+    "The managing agent reports what the runner said and never judges the work itself; it has no authority to accept",
+    "A verdict is traceable: the agent quotes the reviewer's own supporting words, stored with the result, and an unsupported verdict is a runner failure rather than an acceptance",
+    "An undetermined verdict withholds acceptance instead of defaulting to accept",
+    "The raw transcript and every file the vendor CLI wrote are retained as job artifacts, so any interpretation can be audited afterwards",
+    "The managing agent runs read-only for reviewer jobs and cannot mutate task state, campaign state, or the repository",
+    "All nine configured profiles pass a real-CLI gate asserting that verdict and findings survive interpretation"
+  ],
+  "coordination": null,
+  "deliverables": [
+    "Managing-agent result contract: its returned schema, system brief, and read-only posture, tested against recorded real transcripts rather than fakes",
+    "A result-interpretation seam on RunnerPort, with today's schema path as one implementation so the change stays bisectable",
+    "The agent interpreter: spawn, structured output, evidence retention, indeterminate handling",
+    "Verdict plumbing above the runner boundary: provenance reason, supervisor coverage of a revise verdict, fail-closed acceptance",
+    "Retirement of the brief-stated envelope contracts and the fake-runner mimicry they forced, once the agent path carries real traffic",
+    "Real-CLI probe extended to assert verdict and findings survive interpretation across every profile"
+  ],
+  "dependsOn": [],
+  "execution": {
+    "capabilities": [
+      "repository-write"
+    ],
+    "completionBoundary": "accepted-commit",
+    "effort": "principal",
+    "humanGates": [],
+    "parallelismKeys": [
+      "runner-profiles",
+      "campaign-supervisor"
+    ],
+    "risk": [
+      "architecture",
+      "protocol"
+    ]
+  },
+  "id": "QK-RUN-009",
+  "kind": "implementation",
+  "priority": "P1",
+  "provenance": {
+    "iterations": [],
+    "schemaVersion": 1
+  },
+  "sourceRefs": [
+    {
+      "kind": "spec",
+      "path": "docs/superpowers/specs/2026-07-24-managing-agent-runner-design.md",
+      "commit": "cd58a5c6c3019ada4f17e0b10462201a7f6dab67"
+    }
+  ],
+  "status": "proposed",
+  "statusDetail": null,
+  "title": "Managing-agent runner layer so the CLI need not emit a rigid envelope",
+  "verification": [
+    "pnpm check",
+    "Real-CLI probe across all configured profiles asserting verdict and findings survive interpretation"
+  ],
+  "workflow": {
+    "designGate": {
+      "decisionEnvelope": [
+        "Which model tier interprets, and whether sonnet is the floor for reading a messy transcript honestly",
+        "Whether a failed managing agent retries then falls back to the schema path, or fails the job outright",
+        "Whether the strict envelope paths are deleted or kept behind a flag as a comparison baseline"
+      ],
+      "defaultApproval": "human",
+      "delegable": false,
+      "judgmentTier": "principal",
+      "required": true
+    },
+    "family": "superpowers",
+    "phase": "execute"
+  }
+}
