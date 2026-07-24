@@ -607,6 +607,9 @@ test("an implementer that commits nothing gets no reviewer and is not accepted",
   );
 
   const iterations = await provenanceIterations(source, "QK-A");
+  // The attempt must leave a record. Without provenance an operator sees a lane
+  // pause or exhausted retries with nothing naming the cause.
+  assert.ok(iterations.length >= 1, "a refused attempt must still be journalled");
   for (const iteration of iterations) {
     assert.notEqual(
       iteration["acceptedCommit"],

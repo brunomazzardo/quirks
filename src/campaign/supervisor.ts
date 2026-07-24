@@ -373,6 +373,11 @@ export class CampaignSupervisor {
 
         if (succeeded) {
           await this.attachProvenance(run, outcome, "completed");
+        } else if (outcome.implementer.failure?.code === "no_candidate_commit") {
+          // The implementer ran to completion and produced nothing. Without this
+          // the attempt left no provenance at all, so an operator saw a lane
+          // pause or exhausted retries with no iteration naming the cause.
+          await this.attachProvenance(run, outcome, "failed");
         } else if (outcome.implementer.status === "success" && outcome.reviewer) {
           // Implementer output existed but the reviewer rejected it: record the
           // attempt honestly instead of claiming acceptance.
