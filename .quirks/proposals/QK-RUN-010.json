@@ -1,0 +1,59 @@
+{
+  "acceptanceCriteria": [
+    "A runner child receives only the environment it needs, rather than inheriting every variable the operator's shell happens to carry",
+    "A runner that echoes its environment, or an error that embeds one, cannot persist a live credential into a retained transcript",
+    "The credential boundary rests on what is passed in, not on a pattern list guessing what came out",
+    "Existing runners keep working: the allow-list covers what claude, codex, and cursor genuinely require, verified by the real-CLI probe across every configured profile",
+    "Pattern-based redaction remains as a second layer, never as the only one"
+  ],
+  "coordination": null,
+  "deliverables": [
+    "An environment allow-list for spawned runner children in src/runner/dispatcher.ts, replacing the current full process.env inheritance",
+    "Per-runner required-variable sets, established by probing the real CLIs rather than by assumption",
+    "A test that seeds a credential-shaped variable into the parent environment and asserts it never reaches the child or its retained transcript"
+  ],
+  "dependsOn": [],
+  "execution": {
+    "capabilities": [
+      "repository-write"
+    ],
+    "completionBoundary": "accepted-commit",
+    "effort": "high",
+    "humanGates": [],
+    "parallelismKeys": [
+      "runner-profiles"
+    ],
+    "risk": [
+      "security",
+      "protocol"
+    ]
+  },
+  "id": "QK-RUN-010",
+  "kind": "implementation",
+  "priority": "P2",
+  "provenance": {
+    "iterations": [],
+    "schemaVersion": 1
+  },
+  "sourceRefs": [
+    {
+      "kind": "review",
+      "path": "docs/smoke/2026-07-24-runner-boundary-probe.md",
+      "commit": "8c58477235f276e7aff96ff79902ecd9f349f413"
+    }
+  ],
+  "status": "proposed",
+  "statusDetail": null,
+  "title": "Pass runners an allow-listed environment instead of inheriting the operator's",
+  "verification": [
+    "pnpm check",
+    "A credential-shaped variable seeded in the parent environment is absent from both the child environment and the retained transcript"
+  ],
+  "workflow": {
+    "designGate": {
+      "required": false
+    },
+    "family": "superpowers",
+    "phase": "execute"
+  }
+}
