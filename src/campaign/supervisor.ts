@@ -870,10 +870,14 @@ export class CampaignSupervisor {
       iterationOutcome === "completed" && outcome.candidateCommit && /^[a-f0-9]{40}$/.test(outcome.candidateCommit)
         ? outcome.candidateCommit
         : undefined;
-    const outcomeReason =
-      iterationOutcome === "failed" && outcome.reviewer
-        ? `review_failed:${outcome.reviewer.status}${outcome.reviewer.failure ? `:${outcome.reviewer.failure.code}` : ""}`
-        : undefined;
+    // A reviewer that ran and asked for changes is a revise, not a failed
+    // runner. Flattening both into review_failed:success left an operator
+    // unable to tell rework from a crash, and contradicted the comment above.
+    const outcomeReason = iterationOutcome === "failed" && outcome.reviewer
+      ? outcome.reviewer.status === "success"
+        ? `review_${outcome.reviewer.verdict ?? "indeterminate"}`
+        : `review_failed:${outcome.reviewer.status}${outcome.reviewer.failure ? `:${outcome.reviewer.failure.code}` : ""}`
+      : undefined;
     await reconcileMutation({
       campaignId: run.envelope.campaignId,
       outbox: this.context.outbox,

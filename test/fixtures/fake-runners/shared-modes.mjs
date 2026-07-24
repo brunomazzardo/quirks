@@ -18,6 +18,15 @@ export async function declaredEnvelopePath(briefPath) {
   }
 }
 
+/**
+ * Verdict a reviewer fake must state. Acceptance is never inferred from a
+ * silent success, so a fake standing in for a reviewer has to say it approves
+ * just as a real one does. Role is read off the job-unique envelope path.
+ */
+export function verdictForEnvelopePath(envelopePath) {
+  return envelopePath && /reviewer/i.test(envelopePath) ? "accept" : null;
+}
+
 /** Brief path from a claude argv: the positional prompt, which is a file path. */
 export function briefPathFromArgv(argv) {
   return argv.find((entry) => entry.endsWith(".md"));
@@ -63,6 +72,7 @@ export async function writeDeclaredEnvelope(envelopePath, envelope = {}) {
   await mkdir(path.dirname(envelopePath), { recursive: true });
   const payload = {
     status: "success",
+    verdict: verdictForEnvelopePath(envelopePath),
     sessionHandle: null,
     artifactPaths: [envelopePath],
     failure: null,

@@ -4,6 +4,7 @@ import {
   hangForever,
   oversizedPayload,
   parseRunnerArgs,
+  verdictForEnvelopePath,
   wedgeAfterWork,
   writeArtifact,
   writePartialArtifact,
@@ -41,6 +42,7 @@ async function writeEnvelope(argv, sessionId, envelope = {}) {
   await mkdir(path.dirname(envelopePath), { recursive: true });
   const payload = {
     status: "success",
+    verdict: verdictForEnvelopePath(envelopePath),
     sessionHandle: sessionId,
     artifactPaths: [envelopePath],
     failure: null,

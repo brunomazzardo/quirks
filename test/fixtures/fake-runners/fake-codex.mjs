@@ -7,6 +7,7 @@ import {
   wedgeAfterWork,
   writeArtifact,
   writePartialArtifact,
+  verdictForEnvelopePath,
 } from "./shared-modes.mjs";
 
 async function writeCodexResult(resultPath, payload) {
@@ -32,6 +33,7 @@ async function main() {
       const artifactPath = await writeArtifact(outDir);
       await writeCodexResult(resultPath, {
         status: "success",
+        verdict: verdictForEnvelopePath(resultPath),
         sessionHandle: sessionId,
         artifactPaths: artifactPath ? [artifactPath] : [resultPath],
       });
@@ -40,6 +42,7 @@ async function main() {
     case "success-no-disk": {
       await writeCodexResult(resultPath, {
         status: "success",
+        verdict: verdictForEnvelopePath(resultPath),
         sessionHandle: sessionId,
         artifactPaths: [],
       });
@@ -101,6 +104,7 @@ async function main() {
       await wedgeAfterWork(outDir, async () => {
         await writeCodexResult(resultPath, {
           status: "success",
+          verdict: verdictForEnvelopePath(resultPath),
           sessionHandle: sessionId,
           artifactPaths: outDir ? [path.join(outDir, "result.json")] : [],
         });
@@ -111,6 +115,7 @@ async function main() {
       const artifactPath = await writeArtifact(outDir);
       await writeCodexResult(resultPath, {
         status: "success",
+        verdict: verdictForEnvelopePath(resultPath),
         sessionHandle: "envelope-session-000",
         artifactPaths: artifactPath ? [artifactPath] : [resultPath],
       });
@@ -128,6 +133,7 @@ async function main() {
     case "fabricated-tests": {
       await writeCodexResult(resultPath, {
         status: "success",
+        verdict: verdictForEnvelopePath(resultPath),
         sessionHandle: sessionId,
         artifactPaths: [],
         failure: "fabricated_evidence",

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseRunnerArgs } from "./shared-modes.mjs";
+import { parseRunnerArgs, verdictForEnvelopePath } from "./shared-modes.mjs";
 
 function parseWorkspace(argv) {
   for (let index = 0; index < argv.length; index += 1) {
@@ -28,6 +28,7 @@ async function main() {
   }
   await writeCodexResult(resultPath, {
     status: "success",
+    verdict: verdictForEnvelopePath(resultPath),
     sessionHandle: sessionId,
     artifactPaths: [reviewPath],
   });

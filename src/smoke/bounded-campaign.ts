@@ -166,7 +166,9 @@ child.on("close", async (code) => {
       const envelopePath = await declaredEnvelopePath();
       if (envelopePath) {
         await mkdir(path.dirname(envelopePath), { recursive: true });
-        const envelope = { status: "success", sessionHandle: null, artifactPaths: [envelopePath], failure: null };
+        // A reviewer must state acceptance; a silent success no longer approves.
+        const verdict = /reviewer/i.test(envelopePath) ? "accept" : null;
+        const envelope = { status: "success", verdict, sessionHandle: null, artifactPaths: [envelopePath], failure: null };
         await writeFile(envelopePath, JSON.stringify(envelope) + "\\n", "utf8");
       }
     } catch {

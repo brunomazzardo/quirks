@@ -54,8 +54,23 @@ test("a reviewer that crashed is not accepted, and stays distinguishable from a 
   assert.equal(reviewerAcceptedAttempt({ status: "failure" }), false);
 });
 
-test("a reviewer with no verdict is accepted on transport status alone", () => {
-  assert.equal(reviewerAcceptedAttempt({ status: "success" }), true);
+/**
+ * Acceptance requires an explicit accept. Returning true for a merely-absent
+ * verdict was fail-open: cursor and claude do not mechanically require the
+ * field, so a reviewer could omit it and be silently treated as approving.
+ * Adding a channel for "revise" while defaulting its absence to "accept" would
+ * reintroduce the exact silent-wrong-acceptance class QK-RUN-008 set out to
+ * remove. Raised by the independent cross-vendor review, 2026-07-24.
+ */
+test("a reviewer that returned no verdict does not accept the attempt", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "success" }), false);
+});
+
+test("only an explicit accept verdict accepts the attempt", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept" }), true);
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "revise" }), false);
+  assert.equal(reviewerAcceptedAttempt({ status: "success" }), false);
+  assert.equal(reviewerAcceptedAttempt({ status: "failure", verdict: "accept" }), false);
 });
 
 test("result contract paths stay distinct per runner and per job", () => {
