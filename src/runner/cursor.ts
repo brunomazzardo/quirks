@@ -204,8 +204,13 @@ function isCursorStatus(value: unknown): value is RunnerJobStatus {
   return typeof value === "string" && CURSOR_STATUSES.has(value as RunnerJobStatus);
 }
 
-function envelopeArtifactPaths(paths: readonly string[], declaredResultPath: string): readonly string[] {
-  return paths.length > 0 ? paths : [declaredResultPath];
+function envelopeArtifactPaths(
+  paths: readonly string[],
+  declaredResultPath: string,
+  requireWorkArtifacts: boolean,
+): readonly string[] {
+  if (paths.length > 0) return paths;
+  return requireWorkArtifacts ? [] : [declaredResultPath];
 }
 
 function isStringArray(value: unknown): value is readonly string[] {
@@ -297,10 +302,7 @@ function readEnvelope(artifacts: CursorResultArtifacts): EnvelopeOutcome {
       // list falls back to it rather than failing an accepting reviewer that
       // changed no files. Model compliance with "cite the envelope path" was
       // measured unreliable on 2026-07-24.
-      artifactPaths: envelopeArtifactPaths(
-        candidate.artifactPaths as readonly string[],
-        artifacts.declaredResultPath,
-      ),
+      artifactPaths: candidate.artifactPaths as readonly string[],
       failure: typeof candidate.failure === "string" ? candidate.failure : undefined,
     },
   };
@@ -309,6 +311,7 @@ function readEnvelope(artifacts: CursorResultArtifacts): EnvelopeOutcome {
 export function parseCursorResult(
   stdout: string,
   artifacts: CursorResultArtifacts,
+  options: { requireWorkArtifacts?: boolean } = {},
 ): CursorParsedResult {
   const resultEvents = parseStructuredEvents(stdout).filter((event) => event.type === "result");
   const finalEvent = resultEvents[resultEvents.length - 1];
@@ -319,13 +322,28 @@ export function parseCursorResult(
   if (outcome.kind === "valid") {
     const sessionHandle = streamHandle ?? outcome.envelope.sessionHandle;
     if (outcome.envelope.status === "success") {
-      // No empty-evidence branch here: envelopeArtifactPaths already resolves an
-      // empty list to the declared envelope, which is itself proof the job ran.
-      // A job that wrote no envelope at all never reaches this point — it fails
-      // earlier as missing_structured_result.
+      // A read-only reviewer that accepts legitimately changes nothing, so its
+      // envelope is its evidence. A job that could write, and claims success
+      // while producing nothing, has not shown it did the work.
+      const evidence = envelopeArtifactPaths(
+        outcome.envelope.artifactPaths,
+        artifacts.declaredResultPath,
+        options.requireWorkArtifacts === true,
+      );
+      if (evidence.length === 0) {
+        return {
+          status: "failure",
+          artifactPaths: [],
+          ...(sessionHandle !== undefined ? { sessionHandle } : {}),
+          failure: {
+            reason: "missing_artifact_evidence",
+            detail: `cursor success requires artifact evidence in ${artifacts.declaredResultPath}`,
+          },
+        };
+      }
       return {
         status: "success",
-        artifactPaths: outcome.envelope.artifactPaths,
+        artifactPaths: evidence,
         ...(outcome.envelope.verdict !== undefined ? { verdict: outcome.envelope.verdict } : {}),
         ...(sessionHandle !== undefined ? { sessionHandle } : {}),
       };

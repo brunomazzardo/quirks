@@ -331,12 +331,26 @@ export class CampaignSupervisor {
         }
 
         const succeeded = attemptSucceeded(outcome);
+        // Mirror the acceptance predicate rather than matching only "revise": a
+        // reviewer that ran but returned no usable verdict also fails
+        // acceptance, and gating on "revise" alone left that case retryable. A
+        // reviewer that crashed is excluded — that is a runner failure and
+        // belongs in the retry path. Computed before it is read: an earlier
+        // version set it further down, so the first withheld review still
+        // charged its lane.
+        const reviewWithheldApproval =
+          !succeeded &&
+          outcome.reviewer !== undefined &&
+          outcome.reviewer.status === "success" &&
+          !reviewerAcceptedAttempt(outcome.reviewer);
+        if (reviewWithheldApproval) awaitingRevision.add(taskId);
+
         if (succeeded) {
           completedTasks.add(taskId);
           waveCompleted.push(taskId);
           for (const lane of lanes) laneFailures.set(lane, 0);
           completedJobs.push(...outcome.jobs);
-        } else if (!awaitingRevision.has(taskId)) {
+        } else if (!reviewWithheldApproval) {
           // A completed review that withheld approval is not a lane fault, so it
           // must not push the lane toward its failure threshold.
           for (const lane of lanes) laneFailures.set(lane, (laneFailures.get(lane) ?? 0) + 1);
@@ -355,21 +369,6 @@ export class CampaignSupervisor {
           await this.journalLanePause(run, taskId, lanes, decision);
         } else if (decision.action !== "continue") {
           halting ??= decision;
-        }
-
-        // Mirror the acceptance predicate rather than matching only "revise".
-        // A reviewer that ran but returned no usable verdict also fails
-        // acceptance, and gating on "revise" alone left that case retryable —
-        // blindly re-dispatched with no feedback, the same drain by another
-        // route. A reviewer that crashed is excluded: that is a runner failure
-        // and belongs in the retry path.
-        if (
-          !succeeded &&
-          outcome.reviewer !== undefined &&
-          outcome.reviewer.status === "success" &&
-          !reviewerAcceptedAttempt(outcome.reviewer)
-        ) {
-          awaitingRevision.add(taskId);
         }
 
         if (succeeded) {

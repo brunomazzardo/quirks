@@ -119,6 +119,7 @@ test("dispatch executes codex resume argv against the declared result path", asy
   const artifactDir = await makeTempArtifactDir();
   const argv = buildCodexResumeArgv({
     executable,
+    workspace: artifactDir,
     sessionHandle: "codex-session-abc",
     briefPath: path.join(artifactDir, "brief.md"),
     resultPath: path.join(artifactDir, "codex-result.json"),
@@ -189,4 +190,44 @@ test("dispatch runs the child in the job's worktree so claude is bound to it", a
     "the runner must start inside its own worktree",
   );
   assert.ok(result.jobId === "job-cwd");
+});
+
+/**
+ * Result paths are deterministic per job, so a retry, a resume, or a rerun finds
+ * the previous attempt's envelope still on disk. The parsers prefer any valid
+ * envelope over the current invocation's error output, so a failing run was
+ * reported as the earlier success. Codex demonstrated it by pairing a current
+ * turn.failed event with an older accepting envelope; both codex and cursor
+ * returned success. The invocation must own its result file.
+ */
+test("a stale result envelope from a previous attempt cannot make a failed run succeed", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const resultPath = path.join(artifactDir, "codex-result.json");
+  // An older, accepting envelope left behind by a previous attempt.
+  await writeFile(
+    resultPath,
+    JSON.stringify({
+      status: "success",
+      verdict: "accept",
+      sessionHandle: "stale-session",
+      artifactPaths: [resultPath],
+      failure: null,
+    }),
+    "utf8",
+  );
+
+  // This invocation fails without writing any envelope of its own.
+  const failing = path.join(artifactDir, "failing-codex.mjs");
+  await writeFile(failing, "process.exitCode = 1;\n", "utf8");
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-stale",
+    profile: codexProfile,
+    argv: [process.execPath, failing, "-o", resultPath],
+    artifactDir,
+    timeoutMs: 5_000,
+  });
+
+  assert.notEqual(result.status, "success", "a failed invocation must not inherit an old envelope");
+  assert.notEqual(result.verdict, "accept", "a stale accept must never be reused");
 });

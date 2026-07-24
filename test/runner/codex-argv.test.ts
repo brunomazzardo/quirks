@@ -213,6 +213,7 @@ test("codexPromptText points at the brief path for oversized or unreadable brief
 test("buildCodexResumeArgv keeps the result contract and continue prompt", () => {
   const argv = buildCodexResumeArgv({
     executable: "/usr/bin/codex",
+    workspace: "/tmp/worktree",
     sessionHandle: "codex-session-123",
     briefPath: "artifacts/job-1/brief.md",
     resultPath: "artifacts/job-1/result.json",
@@ -241,6 +242,7 @@ test("buildCodexResumeArgv keeps the result contract and continue prompt", () =>
 test("buildCodexResumeArgv maps read-only sandbox and honors an explicit continue prompt", () => {
   const argv = buildCodexResumeArgv({
     executable: "/usr/bin/codex",
+    workspace: "/tmp/worktree",
     sessionHandle: "codex-session-123",
     briefPath: "artifacts/job-1/brief.md",
     resultPath: "artifacts/job-1/result.json",

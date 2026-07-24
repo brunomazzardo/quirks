@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import { parseClaudeResult, claudeArtifactPaths, claudeResultPath } from "./claude.js";
 import { parseCodexResult } from "./codex.js";
@@ -84,6 +84,36 @@ function codexDeclaredResultPath(argv: readonly string[]): string | undefined {
   return extractFlagValue(argv, "-o");
 }
 
+/**
+ * Remove any result envelope left by a previous attempt.
+ *
+ * Result paths are deterministic per job, so a retry, resume, or rerun would
+ * otherwise find the prior attempt's file still present — and the parsers prefer
+ * a valid envelope over the current invocation's error output. A failing run
+ * therefore reported the earlier success, including a stale accept verdict. Each
+ * invocation must own its result file.
+ */
+async function clearStaleResultEnvelope(input: {
+  jobId: string;
+  profile: RunnerProfile;
+  argv: readonly string[];
+  artifactDir: string;
+}): Promise<void> {
+  const declared = input.profile.runnerType === "codex"
+    ? codexDeclaredResultPath(input.argv)
+    : input.profile.runnerType === "cursor"
+      ? cursorResultPath(input.artifactDir, input.jobId)
+      : claudeResultPath(input.artifactDir, input.jobId);
+  if (!declared) return;
+  try {
+    await rm(declared, { force: true });
+  } catch {
+    // A path we cannot clear is reported by the parser as a missing or stale
+    // envelope; refusing to run here would be worse than proceeding.
+  }
+}
+
+
 async function readDeclaredArtifactFiles(
   declaredResultPath: string,
 ): Promise<Readonly<Record<string, string>>> {
@@ -164,10 +194,11 @@ async function parseRunnerOutputAsync(input: {
         };
       }
 
-      const parsed = parseCodexResult(input.stdout, {
-        declaredResultPath,
-        files: await readDeclaredArtifactFiles(declaredResultPath),
-      });
+      const parsed = parseCodexResult(
+        input.stdout,
+        { declaredResultPath, files: await readDeclaredArtifactFiles(declaredResultPath) },
+        { requireWorkArtifacts: input.profile.capabilities.includes("repository-write") },
+      );
 
       return {
         status: parsed.status,
@@ -185,10 +216,11 @@ async function parseRunnerOutputAsync(input: {
       // the agent to write the envelope to the job-unique declared path and
       // the parser validates it strictly.
       const declaredResultPath = cursorResultPath(input.artifactDir, input.jobId);
-      const parsed = parseCursorResult(input.stdout, {
-        declaredResultPath,
-        files: await readDeclaredArtifactFiles(declaredResultPath),
-      });
+      const parsed = parseCursorResult(
+        input.stdout,
+        { declaredResultPath, files: await readDeclaredArtifactFiles(declaredResultPath) },
+        { requireWorkArtifacts: input.profile.capabilities.includes("repository-write") },
+      );
       return {
         status: parsed.status,
         ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
@@ -270,6 +302,13 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
   if (!executable) {
     return failureResult(base, "failure", "invalid_argv", "Runner argv must include an executable");
   }
+
+  await clearStaleResultEnvelope({
+    jobId: input.jobId,
+    profile: input.profile,
+    argv: input.argv,
+    artifactDir: input.artifactDir,
+  });
 
   let child: ChildProcess | undefined;
   let timedOut = false;
