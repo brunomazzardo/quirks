@@ -1,4 +1,6 @@
+import path from "node:path";
 import type { RunnerType } from "../campaign/routing.js";
+import { redactSecretShapedText } from "../prompt/untrusted-content.js";
 import { claudeResultPath } from "./claude.js";
 import { cursorResultPath } from "./cursor.js";
 
@@ -63,4 +65,25 @@ export function resultContractPath(
       return exhaustive;
     }
   }
+}
+
+/**
+ * Job-unique path for the retained runner transcript.
+ *
+ * A reviewer's reasoning frequently cannot reach us any other way. A codex
+ * reviewer runs under `-s read-only` and so cannot write a findings file at
+ * all, and its final message is constrained by `--output-schema` to be the
+ * envelope — the 2026-07-24 review rounds lost a Critical finding to exactly
+ * that squeeze, truncated into a 256-character transport field. Retaining the
+ * transcript is also what keeps any later interpretation auditable against
+ * what the runner actually said.
+ */
+export function transcriptPath(artifactDir: string, jobId: string): string {
+  const safeJobId = jobId.replace(/[^A-Za-z0-9._-]/g, "-");
+  return path.join(artifactDir, `transcript-${safeJobId}.jsonl`);
+}
+
+/** Redact secret-shaped text before a transcript is written to disk. */
+export function redactTranscript(transcript: string): string {
+  return redactSecretShapedText(transcript);
 }

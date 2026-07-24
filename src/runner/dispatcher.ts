@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import { parseClaudeResult, claudeArtifactPaths, claudeResultPath } from "./claude.js";
 import { parseCodexResult } from "./codex.js";
 import { parseCursorResult, cursorResultPath } from "./cursor.js";
 import { normalizeJobResult } from "./job-result.js";
-import { parseReviewVerdict, type ReviewVerdict } from "./result-contract.js";
+import { parseReviewVerdict, redactTranscript, transcriptPath, type ReviewVerdict } from "./result-contract.js";
 import type { RunnerJobFailure, RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
 
 const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
@@ -201,6 +201,23 @@ async function parseRunnerOutputAsync(input: {
   }
 }
 
+/** Persist the runner transcript as job evidence; never fail the job for it. */
+async function retainTranscript(
+  artifactDir: string,
+  jobId: string,
+  stdout: string,
+): Promise<string | undefined> {
+  if (stdout.length === 0) return undefined;
+  const target = transcriptPath(artifactDir, jobId);
+  try {
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(target, redactTranscript(stdout), "utf8");
+    return target;
+  } catch {
+    return undefined;
+  }
+}
+
 async function readClaudeVerdict(envelopePath: string): Promise<ReviewVerdict | undefined> {
   try {
     const parsed = JSON.parse(await readFile(envelopePath, "utf8")) as { verdict?: unknown };
@@ -295,12 +312,18 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       );
     }
 
+    const stdout = stdoutResult.buffer.toString("utf8");
+    // Retain the transcript before parsing. A read-only codex reviewer cannot
+    // write a findings file, and --output-schema constrains its final message to
+    // the envelope, so this is frequently the only place its reasoning exists.
+    const retainedTranscript = await retainTranscript(input.artifactDir, input.jobId, stdout);
+
     const parsed = await parseRunnerOutputAsync({
       jobId: input.jobId,
       profile: input.profile,
       argv: input.argv,
       artifactDir: input.artifactDir,
-      stdout: stdoutResult.buffer.toString("utf8"),
+      stdout,
       exitCode,
       ...(sessionId !== undefined ? { sessionId } : {}),
     });
@@ -314,7 +337,9 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       status: parsed.status,
       ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
       sessionHandle: parsed.sessionHandle,
-      artifactPaths: parsed.artifactPaths,
+      artifactPaths: retainedTranscript
+        ? [...parsed.artifactPaths, retainedTranscript]
+        : parsed.artifactPaths,
       ...(parsed.failure !== undefined ? { failure: parsed.failure } : {}),
       ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
     });

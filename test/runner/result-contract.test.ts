@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 import { claudeResultPath } from "../../src/runner/claude.js";
 import { cursorResultPath } from "../../src/runner/cursor.js";
-import { resultContractPath, reviewerAcceptedAttempt } from "../../src/runner/result-contract.js";
+import {
+  redactTranscript,
+  resultContractPath,
+  reviewerAcceptedAttempt,
+  transcriptPath,
+} from "../../src/runner/result-contract.js";
 
 /**
  * Which runners need the envelope contract stated in the brief, and which get
@@ -81,4 +87,33 @@ test("result contract paths stay distinct per runner and per job", () => {
     resultContractPath("claude", "/tmp/artifacts", "job-2"),
   ];
   assert.equal(new Set(paths).size, paths.length, "every runner/job pair needs its own envelope path");
+});
+
+/**
+ * A codex reviewer runs under `-s read-only` and so physically cannot write a
+ * findings file — the 2026-07-24 verification round proved it, failing with
+ * permission_denied while trying. Its reasoning exists only in the transcript,
+ * so unless that is retained the review is unreadable and the operator is left
+ * with a bare verdict. Retaining it is also the honesty constraint QK-RUN-009
+ * depends on: any later interpretation must remain auditable against what the
+ * runner actually said.
+ */
+test("transcript path is job-unique so concurrent jobs never clobber each other", () => {
+  const first = transcriptPath("/tmp/artifacts", "job-1");
+  const second = transcriptPath("/tmp/artifacts", "job-2");
+
+  assert.notEqual(first, second);
+  assert.match(first, /job-1/);
+});
+
+test("transcript path sanitizes campaign-style job ids into a plain file name", () => {
+  const resolved = transcriptPath("/tmp/artifacts", "cmp-1:QK-1:reviewer:2");
+  assert.equal(path.dirname(resolved), "/tmp/artifacts");
+  assert.doesNotMatch(path.basename(resolved), /[:/\\]/);
+});
+
+test("retained transcripts redact secret-shaped text rather than storing it verbatim", () => {
+  const redacted = redactTranscript('{"msg":"token sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLL"}');
+  assert.doesNotMatch(redacted, /sk-ant-api03-AAAABBBB/);
+  assert.match(redacted, /redacted-secret/);
 });

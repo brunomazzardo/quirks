@@ -15,6 +15,11 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /https:\/\/[^/?#\s]*@[^/?#\s][^\s]*/g,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
   /\bAKIA[0-9A-Z]{16}\b/g,
+  // Provider API keys. These reach us through retained runner transcripts,
+  // where a CLI can echo its environment or embed a key in an error message.
+  /\bsk-[A-Za-z0-9](?:[A-Za-z0-9-]{18,})\b/g,
+  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g,
+  /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g,
 ];
 
 const HOME_PATH_PATTERN = /(?:\/Users|\/home)\/[^\s"'`]+/g;
