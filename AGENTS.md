@@ -9,19 +9,34 @@ Quirks is a project-agnostic local control plane for planning, dispatching, obse
 - Specs, plans, commits, PRs, and reports are referenced by path/commit/URL. Do not copy their full bodies into task JSON.
 - Real external execution must be bound to an approved campaign envelope, configured runner profile, budget, worktree, and independent review.
 
-## Current state (2026-07-22, post QK-DGF-002)
+## Current state (2026-07-24, post runner repair)
 
-The dogfood release repair `QK-DGF-002` is complete and merged to `main` (merge `a16a108`); all seven repair slices completed through `quirks-tasks` CLI mutations. The handoff `docs/handoffs/2026-07-22-qk-dgf-002.md` is superseded and kept only as history. `.superpowers/sdd/progress.md` describes the earlier foundation plan, not current work.
+The real-CLI runner repair `QK-RUN-007`/`QK-RUN-008` is merged to `main` (merge `e65be67`). All three agent CLIs now dispatch, return a result envelope, and carry a reviewer verdict: a real-binary probe went from 4/9 configured profiles to 9/9, and four reviewers across three vendors returned `revise` on defective code and `accept` on correct code, read back through the production parsers. Evidence: `docs/smoke/2026-07-24-runner-boundary-probe.md`.
+
+The defects fixed there are worth knowing, because they set the standard for what counts as evidence here: cursor was sent a `--file` flag that does not exist; claude's brief was swallowed by a variadic `--add-dir`; claude depended on a machine-local `verbose` setting; claude had no result contract and a shared result path; a reviewer's verdict had no channel, so `revise` was retried as a crash until the budget drained; no runner was bound to its worktree; a stale envelope could make a failed run succeed. **Every one was invisible to a fully green test suite.**
 
 Honest remaining gaps — do not claim a release until these clear:
 
-- Real host×runner smoke matrix best recorded run is 4/9 cells passed (`docs/smoke/2026-host-matrix.md`); ledger tasks `QK-HOST-004A/B/C` stay `blocked`.
-- The bounded real campaign is harness-only, operator-blocked at the Codex reviewer (`docs/smoke/bounded-campaign-report.md`); `QK-HOST-005A/B` and `QK-RELEASE-REV` stay `blocked`.
-- The QK-DGF-002 merge was accepted without the independent Step-6 release review; see `docs/superpowers/reviews/2026-07-22-qk-dgf-002-acceptance.md`.
+- Real host×runner smoke matrix best recorded run is 4/9 cells passed (`docs/smoke/2026-host-matrix.md`); ledger tasks `QK-HOST-004A/B/C` stay `blocked`. This predates the runner repair and is worth re-running.
+- The bounded real campaign is harness-only (`docs/smoke/bounded-campaign-report.md`); `QK-HOST-005A/B` and `QK-RELEASE-REV` stay `blocked`.
+- Campaign completion is memory-only: a run reports `completed` while the durable campaign stays `running` and its tasks stay `claimed`, and budgets reset every invocation (`QK-CTL-012`, P0). Do not trust a reported completion as durable state.
+- `QK-RUN-007`/`QK-RUN-008` are merged but still sit at `proposed` in the ledger; there is no clean CLI path to close a task done outside a campaign.
+- The capability model is not an enforcement boundary: `repository-write` maps to claude's `--dangerously-skip-permissions` and cursor's bare `--force` (`QK-RUN-011`).
+
+Nothing has been pushed to any remote. The push gate remains the owner's.
 
 Until the transition criteria in `references/dogfood.md` pass, use the documented Superpowers bootstrap for parent orchestration. Quirks CLIs remain the only mechanical task/campaign authority.
 
-Active workstreams are planned in `docs/superpowers/plans/2026-07-22-post-repair-workstreams.md`.
+Active workstreams are planned in `docs/superpowers/plans/2026-07-22-post-repair-workstreams.md`. The next architectural step is the managing-agent runner layer, specified in `docs/superpowers/specs/2026-07-24-managing-agent-runner-design.md` (`QK-RUN-009`) and awaiting three owner decisions at its design gate.
+
+## Evidence standard for runner work
+
+Fake-runner tests cannot observe CLI flag validity, sandbox behaviour, or output shape. Five independent cross-vendor review rounds informed the runner repair and **each one found something the previous round missed**, including two defects introduced while fixing earlier findings.
+
+- Never accept runner work on fake-runner evidence alone. Probe the real binaries by building argv with the production `buildRunnerArgv` and executing it.
+- A green exit code is not a green result: inspect the envelope body, not just the status.
+- `--output-schema` suppresses codex's reasoning entirely. Measured: 0 prose messages with it, 8 without. Do not constrain a reviewer's final message and then wonder where its findings went.
+- Runner transcripts are retained as redacted job evidence; read them when a verdict looks unexplained.
 
 ## Required development discipline
 
