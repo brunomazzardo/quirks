@@ -1,5 +1,52 @@
+import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+/** Workspace the runner was pointed at, however its CLI spells that. */
+export function workspaceFromArgv(argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    if ((argv[index] === "-C" || argv[index] === "--workspace") && argv[index + 1]) return argv[index + 1];
+  }
+  return process.cwd();
+}
+
+/** Whether this invocation was granted write authority, per each CLI's posture flag. */
+export function canWrite(argv) {
+  return argv.includes("--dangerously-skip-permissions")
+    || argv.includes("--force")
+    || argv.includes("workspace-write");
+}
+
+/**
+ * Commit something, as a real implementer does.
+ *
+ * The fakes used to write an artifact and never touch git, so every CLI-level
+ * campaign test ran with a worktree still sitting at the campaign base — the
+ * exact state the supervisor now refuses to review. Best-effort: a non-git
+ * workspace simply skips.
+ */
+export async function commitWork(argv) {
+  if (!canWrite(argv)) return undefined;
+  const workspace = workspaceFromArgv(argv);
+  try {
+    const marker = path.join(workspace, "fake-runner-work.txt");
+    await writeFile(marker, `work by fake runner at ${process.pid}\n`, "utf8");
+    await execFileAsync("git", ["-C", workspace, "add", "fake-runner-work.txt"]);
+    await execFileAsync("git", [
+      "-C", workspace,
+      "-c", "user.email=fake@quirks.test",
+      "-c", "user.name=Fake Runner",
+      "commit", "-m", "fake runner implementer work",
+    ]);
+    const { stdout } = await execFileAsync("git", ["-C", workspace, "rev-parse", "HEAD"]);
+    return stdout.trim();
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Result envelope path a brief declares, for runners whose CLI cannot enforce

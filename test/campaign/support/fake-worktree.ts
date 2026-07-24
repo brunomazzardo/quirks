@@ -7,6 +7,19 @@ export interface FakeWorktreeRecord {
   commit?: string;
 }
 
+/**
+ * Deterministic candidate commit for a task that actually committed something.
+ *
+ * The default used to be the campaign base, so every unseeded task modelled an
+ * implementer that produced nothing — and the supervisor accepted it. A test
+ * that wants that case now seeds the base commit explicitly (QK-CTL-011).
+ */
+export function fakeCandidateCommit(taskId: string): string {
+  let hash = 0;
+  for (const char of taskId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash.toString(16).padStart(8, "0").repeat(5);
+}
+
 export class FakeWorktreePort implements CampaignGitWorktreePort {
   readonly prepared: Array<{ taskId: string; baseCommit: string; record: FakeWorktreeRecord }> = [];
   private readonly records = new Map<string, FakeWorktreeRecord>();
@@ -21,7 +34,7 @@ export class FakeWorktreePort implements CampaignGitWorktreePort {
       path: `/tmp/quirks-worktree/${taskId}`,
       branch: `quirks/task/${taskId}`,
       modifiedFiles: [],
-      commit: baseCommit,
+      commit: fakeCandidateCommit(taskId),
     };
     this.records.set(taskId, record);
     this.prepared.push({ taskId, baseCommit, record });

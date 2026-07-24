@@ -20,7 +20,9 @@ import type { RunnerPort } from "../../src/campaign/ports.js";
 import { FakeTaskSource } from "../task-source/fake-source.js";
 import { campaignEnvelope } from "./support.js";
 import { FakeRunnerPort } from "./support/fake-runner-port.js";
-import { FakeWorktreePort } from "./support/fake-worktree.js";
+import { FakeWorktreePort, fakeCandidateCommit } from "./support/fake-worktree.js";
+
+const BASE_COMMIT = "a".repeat(40);
 
 interface TestContextOptions {
   taskIds?: readonly string[];
@@ -563,6 +565,59 @@ test("a reviewer revise verdict withholds acceptance and is recorded as a revise
   await supervisor.stop();
 });
 
+/**
+ * An implementer that reports success while committing nothing leaves the
+ * worktree at the base commit. The supervisor substituted that base as the
+ * candidate, so a reviewer was dispatched against an empty diff, and a verdict
+ * of accept could journal acceptedCommit === baseCommit as delivered work. The
+ * failed cmp-uimotion-1 campaign recorded exactly that: base and candidate both
+ * 419347a. Both reviewers of the runner repair named this independently as the
+ * top remaining Critical (QK-CTL-011).
+ */
+test("an implementer that commits nothing gets no reviewer and is not accepted", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  const worktree = new FakeWorktreePort();
+  // The implementer "succeeds" but HEAD never moves off the campaign base.
+  worktree.seed("QK-A", {
+    path: "/tmp/quirks-worktree/QK-A",
+    branch: "quirks/task/QK-A",
+    modifiedFiles: [],
+    commit: BASE_COMMIT,
+  });
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 4, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 1, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+    worktree,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.notEqual(outcome.status, "completed");
+  assert.equal(
+    runner.dispatches.some((dispatch) => dispatch.role === "reviewer"),
+    false,
+    "no reviewer may be dispatched against an unchanged tree",
+  );
+
+  const iterations = await provenanceIterations(source, "QK-A");
+  for (const iteration of iterations) {
+    assert.notEqual(
+      iteration["acceptedCommit"],
+      BASE_COMMIT,
+      "the base commit must never be journalled as accepted work",
+    );
+    assert.equal(iteration["outcome"], "failed");
+  }
+  await supervisor.stop();
+});
+
 test("runToCompletion skips reviewer dispatch for failed implementer attempts", async () => {
   const source = new FakeTaskSource();
   source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
@@ -608,7 +663,11 @@ test("runToCompletion records accepted provenance only for reviewer-approved att
   const iteration = iterations[0];
   assert.ok(iteration, "expected a provenance iteration");
   assert.equal(iteration["outcome"], "completed");
-  assert.equal(iteration["acceptedCommit"], "a".repeat(40));
+  // The accepted commit must be what the implementer actually committed, never
+  // the campaign base. This previously asserted the base, because the fake
+  // worktree defaulted to it and the supervisor accepted an unchanged tree.
+  assert.notEqual(iteration["acceptedCommit"], BASE_COMMIT, "the base is not delivered work");
+  assert.equal(iteration["acceptedCommit"], fakeCandidateCommit("QK-A"));
   const roles = (iteration["participants"] as Array<{ role: string }>).map((participant) => participant.role);
   assert.deepEqual(roles.toSorted(), ["implementer", "reviewer"]);
   await supervisor.stop();

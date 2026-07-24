@@ -1,4 +1,5 @@
 import {
+  commitWork,
   briefPathFromArgv,
   declaredEnvelopePath,
   hangForever,
@@ -55,6 +56,7 @@ async function main() {
 
   switch (mode) {
     case "success":
+      await commitWork(process.argv);
       emitInit(sessionId);
       await writeArtifact(outDir);
       await writeEnvelope(sessionId);

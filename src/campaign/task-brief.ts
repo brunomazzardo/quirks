@@ -171,6 +171,15 @@ export async function buildTaskBrief(input: BuildTaskBriefInput): Promise<string
       `Reviewer brief for ${input.task.id} requires a validated candidate commit`,
     );
   }
+  // A candidate identical to the base is the same absence wearing a plausible
+  // value: there is no diff to review, so the brief fails closed exactly as it
+  // does for a missing candidate (QK-CTL-011).
+  if (input.role === "reviewer" && input.git.candidateCommit === input.git.baseCommit) {
+    throw new QuirksError(
+      "PROTOCOL_VIOLATION",
+      `Reviewer brief for ${input.task.id} has a candidate commit identical to the base; there is nothing to review`,
+    );
+  }
   const recipe = getRecipe(briefRecipeId(input.role));
   if (!recipe) {
     throw new QuirksError("PROTOCOL_VIOLATION", `No brief recipe is registered for role ${input.role}`);

@@ -151,3 +151,20 @@ test("instructions hash freezes recipe versions plus configured workflow skills"
   assert.notEqual(computeInstructionsHash(skills), computeInstructionsHash({}));
   assert.match(computeInstructionsHash(skills), /^sha256:[0-9a-f]{64}$/);
 });
+
+/**
+ * Defence in depth for QK-CTL-011: even if some future path derives a candidate
+ * equal to the base, a reviewer brief describing an empty diff must never be
+ * built. The builder already fails closed on a missing candidate; an identical
+ * one is the same absence wearing a plausible value.
+ */
+test("reviewer brief refuses a candidate commit identical to the base", async () => {
+  await assert.rejects(
+    () => buildTaskBrief(briefInput({
+      role: "reviewer",
+      git: { baseCommit: BASE_COMMIT, candidateCommit: BASE_COMMIT },
+    })),
+    /candidate/i,
+    "an empty diff is not reviewable",
+  );
+});
