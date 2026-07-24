@@ -336,7 +336,9 @@ export class CampaignSupervisor {
           waveCompleted.push(taskId);
           for (const lane of lanes) laneFailures.set(lane, 0);
           completedJobs.push(...outcome.jobs);
-        } else {
+        } else if (!awaitingRevision.has(taskId)) {
+          // A completed review that withheld approval is not a lane fault, so it
+          // must not push the lane toward its failure threshold.
           for (const lane of lanes) laneFailures.set(lane, (laneFailures.get(lane) ?? 0) + 1);
         }
 
@@ -355,7 +357,18 @@ export class CampaignSupervisor {
           halting ??= decision;
         }
 
-        if (!succeeded && outcome.reviewer?.verdict === "revise") {
+        // Mirror the acceptance predicate rather than matching only "revise".
+        // A reviewer that ran but returned no usable verdict also fails
+        // acceptance, and gating on "revise" alone left that case retryable —
+        // blindly re-dispatched with no feedback, the same drain by another
+        // route. A reviewer that crashed is excluded: that is a runner failure
+        // and belongs in the retry path.
+        if (
+          !succeeded &&
+          outcome.reviewer !== undefined &&
+          outcome.reviewer.status === "success" &&
+          !reviewerAcceptedAttempt(outcome.reviewer)
+        ) {
           awaitingRevision.add(taskId);
         }
 

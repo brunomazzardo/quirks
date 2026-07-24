@@ -114,6 +114,7 @@ export class CliRunnerPort implements RunnerPort {
       argv,
       artifactDir,
       timeoutMs: profile.wallClockMs,
+      cwd: input.worktreePath,
     };
     const env = sanitizedRunnerEnv(profile);
     return dispatchRunnerJob(env ? { ...dispatchInput, env } : dispatchInput);

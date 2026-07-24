@@ -17,7 +17,13 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /\bAKIA[0-9A-Z]{16}\b/g,
   // Provider API keys. These reach us through retained runner transcripts,
   // where a CLI can echo its environment or embed a key in an error message.
-  /\bsk-[A-Za-z0-9](?:[A-Za-z0-9-]{18,})\b/g,
+  // Known key prefixes, plus an unbroken sk- run. A permissive hyphenated form
+  // matched ordinary identifiers: `git checkout sk-this-is-a-long-branch-name`
+  // was rewritten into a redaction marker, and this function also sanitizes task
+  // titles, criteria, and verification commands.
+  /\bsk-(?:ant|proj|or|live|test)-[A-Za-z0-9_-]{16,}/g,
+  /\bsk-[A-Za-z0-9]{32,}\b/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
   /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g,
   /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g,
 ];

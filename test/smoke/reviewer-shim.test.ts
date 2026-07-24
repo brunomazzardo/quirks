@@ -72,14 +72,22 @@ test("the generated reviewer shim preserves the reviewer's own accept verdict", 
   );
 });
 
-test("the generated reviewer shim does not invent a verdict when the reviewer states none", async () => {
-  const { shimPath, configDir } = await generatedShim();
+test("the generated reviewer shim does not invent a verdict the reviewer never gave", async () => {
+  const configDir = await mkdtemp(path.join(os.tmpdir(), "quirks-shim-none-"));
+  // A stand-in that writes NO envelope at all, so the shim has nothing to preserve.
+  const silentCodex = path.join(configDir, "silent-codex.mjs");
+  await writeFile(silentCodex, "#!/usr/bin/env node\n", "utf8");
+  await chmod(silentCodex, 0o755);
+  const shimPath = await wrapCodexReviewerWithReviewArtifact(configDir, silentCodex);
   const workspace = await mkdtemp(path.join(os.tmpdir(), "quirks-shim-ws-"));
   const resultPath = path.join(configDir, "codex-result-none.json");
 
-  // Overwrite the stand-in so it writes no envelope at all.
   await execFileAsync(process.execPath, [shimPath, "-C", workspace, "-o", resultPath]);
+
   const envelope = JSON.parse(await readFile(resultPath, "utf8")) as { verdict: string | null };
-  // The stand-in writes accept; with no envelope the shim must not fabricate one.
-  assert.notEqual(envelope.verdict, undefined, "verdict field must always be present");
+  assert.equal(
+    envelope.verdict,
+    null,
+    "with no reviewer envelope the shim must not fabricate an approval",
+  );
 });

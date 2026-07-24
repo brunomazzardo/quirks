@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type { RunnerType } from "../campaign/routing.js";
 import { redactSecretShapedText } from "../prompt/untrusted-content.js";
@@ -79,8 +80,12 @@ export function resultContractPath(
  * what the runner actually said.
  */
 export function transcriptPath(artifactDir: string, jobId: string): string {
+  // Sanitizing alone is not injective: `cmp:alpha` and `cmp-alpha` collapse to
+  // the same name, and .quirks/briefs is shared across campaigns, so one job's
+  // evidence could overwrite another's. A digest of the raw id disambiguates.
   const safeJobId = jobId.replace(/[^A-Za-z0-9._-]/g, "-");
-  return path.join(artifactDir, `transcript-${safeJobId}.jsonl`);
+  const digest = createHash("sha256").update(jobId).digest("hex").slice(0, 8);
+  return path.join(artifactDir, `transcript-${safeJobId}-${digest}.jsonl`);
 }
 
 /** Redact secret-shaped text before a transcript is written to disk. */

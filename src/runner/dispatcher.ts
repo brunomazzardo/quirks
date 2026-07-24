@@ -18,6 +18,16 @@ export interface DispatchRunnerJobInput {
   argv: readonly string[];
   artifactDir: string;
   timeoutMs: number;
+  /**
+   * Working directory for the child, which is the job's worktree.
+   *
+   * codex binds its workspace with -C and cursor with --workspace, but claude
+   * has no such flag and relies entirely on the process working directory.
+   * Without this a claude job ran in the supervisor's checkout instead of its
+   * isolated worktree — editing the wrong tree while the prepared worktree
+   * stayed clean and its base commit was read back as the candidate.
+   */
+  cwd?: string;
   env?: Readonly<Record<string, string>>;
 }
 
@@ -201,7 +211,18 @@ async function parseRunnerOutputAsync(input: {
   }
 }
 
-/** Persist the runner transcript as job evidence; never fail the job for it. */
+/**
+ * Persist the runner transcript as job evidence; never fail the job for it.
+ *
+ * Each transcript is capped well below the 16 MiB stdout limit: a long campaign
+ * dispatches thousands of jobs into one shared artifact dir, and retaining every
+ * full buffer could exhaust the disk that later envelope, journal, and
+ * provenance writes depend on. The tail is kept because a reviewer's findings
+ * come last. Written 0600: a transcript can still contain material the redactor
+ * does not recognise.
+ */
+const MAX_RETAINED_TRANSCRIPT_BYTES = 1024 * 1024;
+
 async function retainTranscript(
   artifactDir: string,
   jobId: string,
@@ -209,9 +230,13 @@ async function retainTranscript(
 ): Promise<string | undefined> {
   if (stdout.length === 0) return undefined;
   const target = transcriptPath(artifactDir, jobId);
+  const redacted = redactTranscript(stdout);
+  const bounded = redacted.length > MAX_RETAINED_TRANSCRIPT_BYTES
+    ? `[transcript truncated: kept the final ${MAX_RETAINED_TRANSCRIPT_BYTES} bytes]\n${redacted.slice(-MAX_RETAINED_TRANSCRIPT_BYTES)}`
+    : redacted;
   try {
     await mkdir(artifactDir, { recursive: true });
-    await writeFile(target, redactTranscript(stdout), "utf8");
+    await writeFile(target, bounded, { encoding: "utf8", mode: 0o600 });
     return target;
   } catch {
     return undefined;
@@ -263,6 +288,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
   try {
     child = spawn(executable, input.argv.slice(1), {
       shell: false,
+      ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
