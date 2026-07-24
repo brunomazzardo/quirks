@@ -18,7 +18,7 @@ import {
   type NormalizedTaskRecord,
 } from "./task-brief.js";
 import type { CampaignApproval, CampaignEnvelope, CampaignStatus } from "./types.js";
-import { cursorResultPath } from "../runner/cursor.js";
+import { resultContractPath } from "../runner/result-contract.js";
 import type { RunnerJobResult, RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
 import { RepositoryLock } from "../state/repository-lock.js";
@@ -555,9 +555,11 @@ export class CampaignSupervisor {
 
   /**
    * Job-bound result contract for runners without mechanical envelope
-   * enforcement. Cursor has no --output-schema/-o equivalent, so its brief
-   * must state the exact envelope contract and the job-unique path that
-   * `parseCursorResult` validates strictly (QK-RUN-005).
+   * enforcement. Cursor has no --output-schema/-o equivalent, so its brief must
+   * state the exact envelope contract and the job-unique path that
+   * `parseCursorResult` validates strictly (QK-RUN-005). Claude has no such
+   * flag either and `parseClaudeResult` hard-requires the artifact, so leaving
+   * the contract unstated made the envelope a matter of chance (QK-RUN-007).
    */
   private briefResultContract(
     profileId: string,
@@ -565,8 +567,10 @@ export class CampaignSupervisor {
     jobId: string,
   ): { resultContract: { resultPath: string } } | Record<string, never> {
     const profile = this.context.profileIndex?.get(profileId);
-    if (profile?.runnerType !== "cursor") return {};
-    return { resultContract: { resultPath: cursorResultPath(path.dirname(briefPath), jobId) } };
+    if (!profile) return {};
+    const resultPath = resultContractPath(profile.runnerType, path.dirname(briefPath), jobId);
+    if (resultPath === undefined) return {};
+    return { resultContract: { resultPath } };
   }
 
   private async dispatchTask(

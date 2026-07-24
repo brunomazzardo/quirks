@@ -9,9 +9,15 @@ import {
   writePartialArtifact,
 } from "./shared-modes.mjs";
 
+// cursor-agent has no flag that accepts a prompt file: the brief arrives inside
+// the trailing positional instruction built by `cursorPromptText`. Parsing it
+// the way a real cursor job would keeps this fake honest about the boundary.
 function briefPathOf(argv) {
-  const index = argv.indexOf("--file");
-  return index === -1 ? undefined : argv[index + 1];
+  for (const entry of argv) {
+    const match = entry.match(/^Read the brief at (.+?), complete it,/);
+    if (match) return match[1];
+  }
+  return undefined;
 }
 
 // A compliant cursor job reads its brief and follows the runner result

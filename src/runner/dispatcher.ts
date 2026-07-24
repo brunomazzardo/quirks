@@ -122,7 +122,7 @@ async function parseRunnerOutputAsync(input: {
     case "claude": {
       const parsed = parseClaudeResult(input.stdout, {
         exitCode: input.exitCode ?? 1,
-        artifactPaths: claudeArtifactPaths(input.artifactDir),
+        artifactPaths: claudeArtifactPaths(input.artifactDir, input.jobId),
         ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
       });
       return {

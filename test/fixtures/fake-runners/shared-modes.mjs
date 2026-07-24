@@ -1,5 +1,27 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+/**
+ * Result envelope path a brief declares, for runners whose CLI cannot enforce
+ * it (claude and cursor). A real job learns its path exactly this way, so the
+ * fakes must too: deriving it any other way would let a runner pass here while
+ * failing against the real CLI, which is the gap QK-RUN-007 closed.
+ */
+export async function declaredEnvelopePath(briefPath) {
+  if (!briefPath) return undefined;
+  try {
+    const brief = await readFile(briefPath, "utf8");
+    const match = brief.match(/write your result envelope JSON to exactly this path: (.+)$/m);
+    return match?.[1]?.trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Brief path from a claude argv: the positional prompt, which is a file path. */
+export function briefPathFromArgv(argv) {
+  return argv.find((entry) => entry.endsWith(".md"));
+}
 
 export function parseRunnerArgs(argv) {
   let mode = "success";
@@ -27,12 +49,27 @@ export function parseRunnerArgs(argv) {
   return { mode, sessionId, resultPath };
 }
 
-export async function writeArtifact(outDir, contents = '{"status":"ok"}\n') {
+export async function writeArtifact(outDir, contents = '{"status":"ok"}\n', fileName = "result.json") {
   if (!outDir) return undefined;
   await mkdir(outDir, { recursive: true });
-  const artifactPath = path.join(outDir, "result.json");
+  const artifactPath = path.join(outDir, fileName);
   await writeFile(artifactPath, contents, "utf8");
   return artifactPath;
+}
+
+/** Write an envelope to an absolute, brief-declared path. */
+export async function writeDeclaredEnvelope(envelopePath, envelope = {}) {
+  if (!envelopePath) return undefined;
+  await mkdir(path.dirname(envelopePath), { recursive: true });
+  const payload = {
+    status: "success",
+    sessionHandle: null,
+    artifactPaths: [envelopePath],
+    failure: null,
+    ...envelope,
+  };
+  await writeFile(envelopePath, `${JSON.stringify(payload)}\n`, "utf8");
+  return envelopePath;
 }
 
 export async function writePartialArtifact(outDir) {

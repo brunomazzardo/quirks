@@ -948,10 +948,12 @@ test("reviewer gets a distinct read-only brief bound to the candidate commit", a
   assert.match(reviewerBrief, /executing-tasks/);
   assert.notEqual(implementerBrief, reviewerBrief);
 
-  // Codex enforces its envelope mechanically via --output-schema/-o; only
-  // cursor briefs carry the brief-guided result contract.
+  // Codex enforces its envelope mechanically via --output-schema/-o, so the
+  // codex implementer brief carries no contract. The claude reviewer has no
+  // such flag and parseClaudeResult hard-requires the artifact, so its brief
+  // must state the job-unique path (QK-RUN-007).
   assert.doesNotMatch(implementerBrief, /Runner result contract:/);
-  assert.doesNotMatch(reviewerBrief, /Runner result contract:/);
+  assert.match(reviewerBrief, /Runner result contract:/);
 });
 
 test("cursor briefs state the job-unique result envelope path for each role", async () => {

@@ -18,6 +18,8 @@ import { loadProjectContext } from "../project/config.js";
 import { canonicalRepository } from "../project/repository.js";
 import { loadRunnerProfiles } from "../runner/profiles.js";
 import type { RunnerProfile } from "../runner/types.js";
+import { cursorResultContractSection } from "../runner/cursor.js";
+import { resultContractPath } from "../runner/result-contract.js";
 import { SessionRegistry } from "../runner/sessions.js";
 import { reconcileMutation } from "../sync/reconciler.js";
 import { SyncOutbox } from "../sync/outbox.js";
@@ -136,21 +138,37 @@ async function wrapClaudeWithArtifactShim(configDir: string, realExecutable: str
   const shimPath = path.join(configDir, "bounded-claude-shim.mjs");
   const content = `#!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const executable = ${JSON.stringify(realExecutable)};
 const argv = process.argv.slice(2);
-const briefPath = argv.at(-1);
-const artifactDir = briefPath ? path.dirname(briefPath) : process.cwd();
+// The brief is no longer the last argv entry: claude's positional prompt now
+// precedes the variadic --add-dir, so locate it by extension instead.
+const briefPath = argv.find((entry) => entry.endsWith(".md"));
+
+async function declaredEnvelopePath() {
+  if (!briefPath) return undefined;
+  try {
+    const brief = await readFile(briefPath, "utf8");
+    const match = brief.match(/write your result envelope JSON to exactly this path: (.+)$/m);
+    return match?.[1]?.trim();
+  } catch {
+    return undefined;
+  }
+}
 
 const child = spawn(executable, argv, { stdio: ["ignore", "pipe", "inherit"], env: process.env });
 child.stdout.on("data", (chunk) => process.stdout.write(chunk));
 child.on("close", async (code) => {
-  if (code === 0 && briefPath) {
+  if (code === 0) {
     try {
-      await mkdir(artifactDir, { recursive: true });
-      await writeFile(path.join(artifactDir, "result.json"), '{"status":"ok"}\\n', "utf8");
+      const envelopePath = await declaredEnvelopePath();
+      if (envelopePath) {
+        await mkdir(path.dirname(envelopePath), { recursive: true });
+        const envelope = { status: "success", sessionHandle: null, artifactPaths: [envelopePath], failure: null };
+        await writeFile(envelopePath, JSON.stringify(envelope) + "\\n", "utf8");
+      }
     } catch {
       // preserve runner exit semantics
     }
@@ -424,13 +442,16 @@ async function mutateAcknowledged(input: {
   return show.nativeRevision;
 }
 
-function buildBrief(): string {
-  return [
+function buildBrief(resultPath?: string): string {
+  const brief = [
     `# ${BOUNDED_TASK_ID}`,
     "",
     "Replace src/message.txt with exactly this string and commit only that file:",
     BOUNDED_APPROVED_MESSAGE,
   ].join("\n");
+  // Runners whose CLI cannot enforce the envelope learn the job-unique path
+  // from the brief, exactly as the supervisor states it in a real campaign.
+  return resultPath === undefined ? brief : `${brief}\n\n${cursorResultContractSection(resultPath)}\n`;
 }
 
 async function listChangedFiles(repositoryRoot: string, baseCommit: string, headCommit: string): Promise<string[]> {
@@ -556,10 +577,14 @@ export async function runBoundedCampaign(options: BoundedCampaignOptions = {}): 
 
     const worktree = await runtime.worktree.prepareTaskWorktree(BOUNDED_TASK_ID, envelope.git.baseCommit);
     const briefPath = path.join(worktree.path, ".quirks-bounded-brief.md");
-    await writeFile(briefPath, buildBrief(), "utf8");
 
     const implementerRoute = routeForTask(envelope, BOUNDED_TASK_ID, "implementer", runtime.profiles);
     const implementerJobId = `${envelope.campaignId}:${BOUNDED_TASK_ID}:implementer:1`;
+    await writeFile(
+      briefPath,
+      buildBrief(resultContractPath(implementerRoute.runnerType, path.dirname(briefPath), implementerJobId)),
+      "utf8",
+    );
     const implementerResult = await runtime.runner.dispatch({
       jobId: implementerJobId,
       taskId: BOUNDED_TASK_ID,
@@ -587,12 +612,20 @@ export async function runBoundedCampaign(options: BoundedCampaignOptions = {}): 
     const reviewWorktree = await runtime.worktree.prepareReviewWorktree(BOUNDED_TASK_ID, candidateCommit);
     const reviewerRoute = routeForTask(envelope, BOUNDED_TASK_ID, "reviewer", runtime.profiles);
     const reviewerJobId = `${envelope.campaignId}:${BOUNDED_TASK_ID}:reviewer:1`;
+    // The reviewer needs its own brief: sharing the implementer's would point
+    // both roles at one envelope path, letting them clobber each other.
+    const reviewerBriefPath = path.join(reviewWorktree.path, ".quirks-bounded-brief.md");
+    await writeFile(
+      reviewerBriefPath,
+      buildBrief(resultContractPath(reviewerRoute.runnerType, path.dirname(reviewerBriefPath), reviewerJobId)),
+      "utf8",
+    );
     const reviewerResult = await runtime.runner.dispatch({
       jobId: reviewerJobId,
       taskId: BOUNDED_TASK_ID,
       role: "reviewer",
       route: reviewerRoute,
-      briefPath,
+      briefPath: reviewerBriefPath,
       worktreePath: reviewWorktree.path,
     });
     if (reviewerResult.status !== "success") {

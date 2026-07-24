@@ -157,6 +157,7 @@ function buildResumeArgv(
         effort: profile.effort,
         briefPath: posture.briefPath,
         workspace: posture.workspace,
+        artifactDir: posture.artifactDir,
         ...(profile.configDir !== undefined ? { configDir: profile.configDir } : {}),
       });
     case "codex":
@@ -176,6 +177,7 @@ function buildResumeArgv(
         model: profile.model,
         briefPath: posture.briefPath,
         workspace: posture.workspace,
+        artifactDir: posture.artifactDir,
         capabilities: profile.capabilities,
       });
     default: {

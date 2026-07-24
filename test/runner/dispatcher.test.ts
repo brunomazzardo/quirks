@@ -3,7 +3,9 @@ import { chmod, cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { claudeResultPath } from "../../src/runner/claude.js";
 import { buildCodexResumeArgv } from "../../src/runner/codex.js";
+import { cursorResultContractSection } from "../../src/runner/cursor.js";
 import { dispatchRunnerJob } from "../../src/runner/dispatcher.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 
@@ -28,10 +30,13 @@ async function makeTempArtifactDir(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "quirks-runner-artifacts-"));
 }
 
-function fakeClaudeArgv(mode: string): readonly string[] {
+function fakeClaudeArgv(mode: string, briefPath: string): readonly string[] {
   return [
     process.execPath,
     path.resolve("test/fixtures/fake-runners/fake-claude.mjs"),
+    // Production passes the brief as the positional prompt; the fake reads its
+    // declared envelope path out of that brief, exactly as a real job does.
+    briefPath,
     "--session-id",
     SESSION_ID,
     "--mode",
@@ -39,12 +44,24 @@ function fakeClaudeArgv(mode: string): readonly string[] {
   ];
 }
 
+/** Brief stating the job-unique envelope path, as the supervisor now does. */
+async function briefDeclaring(artifactDir: string, jobId: string): Promise<string> {
+  const briefPath = path.join(artifactDir, "brief.md");
+  await writeFile(
+    briefPath,
+    `# brief\n\n${cursorResultContractSection(claudeResultPath(artifactDir, jobId))}\n`,
+    "utf8",
+  );
+  return briefPath;
+}
+
 async function dispatchFakeClaude(mode: string, timeoutMs = 5_000) {
+  const artifactDir = await makeTempArtifactDir();
   return dispatchRunnerJob({
     jobId: "job-1",
     profile: fakeProfile,
-    argv: fakeClaudeArgv(mode),
-    artifactDir: await makeTempArtifactDir(),
+    argv: fakeClaudeArgv(mode, await briefDeclaring(artifactDir, "job-1")),
+    artifactDir,
     timeoutMs,
   });
 }

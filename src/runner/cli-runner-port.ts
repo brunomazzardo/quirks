@@ -61,6 +61,7 @@ export function buildRunnerArgv(
         effort: profile.effort,
         briefPath: input.briefPath,
         workspace: input.worktreePath,
+        artifactDir,
         ...(profile.configDir ? { configDir: profile.configDir } : {}),
         allowPermissionBypass: profile.capabilities.includes("repository-write"),
       });
@@ -86,6 +87,7 @@ export function buildRunnerArgv(
         model: profile.model,
         briefPath: input.briefPath,
         workspace: input.worktreePath,
+        artifactDir,
         capabilities: [...profile.capabilities],
       });
     }
@@ -121,7 +123,7 @@ export class CliRunnerPort implements RunnerPort {
 export function artifactPathsForRunner(profile: RunnerProfile, artifactDir: string, jobId: string): readonly string[] {
   switch (profile.runnerType) {
     case "claude":
-      return claudeArtifactPaths(artifactDir);
+      return claudeArtifactPaths(artifactDir, jobId);
     case "codex":
       return [codexResultPath(artifactDir, jobId)];
     case "cursor":
