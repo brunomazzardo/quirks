@@ -170,6 +170,49 @@ for (const [label, line] of [
   });
 }
 
+/**
+ * Round 4 of independent review, 2026-07-25: making separator tokens open a
+ * boundary — which is what lets "Verdict — Accept as it stands" work — also
+ * re-admitted the mid-clause lift that the boundary rule was added to stop,
+ * whenever ordinary punctuation sits between the negation and the fragment.
+ *
+ * Formatting must stay permissive, so the fix is not to narrow the boundary
+ * again but to bind polarity: an `accept` cannot rest on words a refusal was
+ * leading up to.
+ */
+for (const [label, text] of [
+  ["an em dash", "I don't think — this should be accepted as it stands."],
+  ["a hyphen", "I don't think - this should be accepted as it stands."],
+  ["a colon", "I don't think: this should be accepted as it stands."],
+  ["a semicolon", "I cannot approve it; this should be accepted as it stands only later."],
+] as const) {
+  test(`a lift after ${label} inside a refusal cannot support an accept`, () => {
+    const transcript = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text }] },
+    });
+    assert.equal(
+      quoteSupportedByTranscript("this should be accepted as it stands.", transcript, "accept"),
+      false,
+      `${label} must not launder a refusal into an acceptance`,
+    );
+  });
+}
+
+test("a whole negated sentence cannot support an accept, however it is quoted", async () => {
+  const transcript = await fixture("claude-reviewer-revise.jsonl");
+  // The reviewer's own words, quoted honestly — but they are a refusal, so they
+  // cannot be the evidence for an acceptance.
+  assert.equal(quoteSupportedByTranscript(REVISE_QUOTE, transcript, "accept"), false);
+  // The same words remain valid evidence for the verdict they actually express.
+  assert.equal(quoteSupportedByTranscript(REVISE_QUOTE, transcript, "revise"), true);
+});
+
+test("an accept quoted from a genuine approval is still supported", async () => {
+  const transcript = await fixture("claude-reviewer-accept.jsonl");
+  assert.equal(quoteSupportedByTranscript(ACCEPT_QUOTE, transcript, "accept"), true);
+});
+
 test("skipping markers does not let a quote start mid-word", () => {
   const transcript = JSON.stringify({
     type: "assistant",

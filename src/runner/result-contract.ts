@@ -28,6 +28,13 @@ export function parseReviewVerdict(raw: unknown): ReviewVerdict | undefined {
  * and so never a retryable runner error.
  *
  * Acceptance requires an explicit accept *and* the words that support it.
+ *
+ * This checks that evidence is *present*, not that it is authentic: verifying a
+ * quote against its transcript needs the transcript, which lives at the runner
+ * boundary, so `ManagingAgentInterpreter` is what refuses an unsupported or
+ * refusal-flavoured quote before a result is ever built. Splitting it this way
+ * is deliberate, and worth knowing when adding another producer of results —
+ * this predicate will not catch a quote that was never checked.
  * Treating an absent verdict as accept was fail-open, and so is treating an
  * unsupported one: the type says a verdict without evidence was never traceable
  * to anything the reviewer said, but that invariant used to live only inside the

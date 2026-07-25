@@ -308,7 +308,7 @@ async function reconcile(
 
   if (facts.role === "reviewer") {
     if (report.verdict === "accept" || report.verdict === "revise") {
-      if (!quoteSupportedByTranscript(report.verdictEvidence, transcript)) {
+      if (!quoteSupportedByTranscript(report.verdictEvidence, transcript, report.verdict)) {
         // The whole traceability rule lives here: a verdict we cannot find in
         // the runner's own words is not a verdict. Failing closed is what keeps
         // an invented accept from landing work nobody approved.
@@ -327,8 +327,12 @@ async function reconcile(
         }
         return {
           kind: "reject",
-          reason:
-            "the quote you gave in verdictEvidence does not appear in the transcript. Quote the reviewer's own words verbatim and contiguously, or answer \"indeterminate\".",
+          reason: report.verdict === "accept"
+            ? "the quote you gave for an accept verdict either does not appear in the transcript, or is part of "
+              + "a sentence refusing the work. Quote the reviewer's own approval verbatim, or answer "
+              + "\"revise\" or \"indeterminate\"."
+            : "the quote you gave in verdictEvidence does not appear in the transcript. Quote the reviewer's own "
+              + "words verbatim and contiguously, or answer \"indeterminate\".",
         };
       }
       verdict = report.verdict;

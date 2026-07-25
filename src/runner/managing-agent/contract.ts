@@ -207,6 +207,23 @@ export function parseManagingAgentReport(raw: unknown): ManagingAgentReport | un
 const MIN_QUOTE_SIGNIFICANT_CHARS = 12;
 
 /**
+ * Words that turn an approval into a refusal, and how far ahead they reach.
+ *
+ * Round 4 of independent review measured the gap this closes: once separator
+ * tokens could open a boundary — which is what lets a verdict written as
+ * "Verdict — Accept as it stands" verify — a quote could also start just after
+ * the punctuation inside "I don't think — this should be accepted as it
+ * stands", laundering a refusal into evidence for an acceptance.
+ *
+ * Narrowing the boundary again would fail ordinary reviewer formatting into a
+ * paused lane, which is the over-constraint this whole change exists to remove.
+ * Binding polarity instead attacks the actual failure: an `accept` may not rest
+ * on words that a refusal was in the middle of saying.
+ */
+const REFUSAL_CUES = /\b(?:don't|do not|doesn't|does not|cannot|can't|won't|will not|shouldn't|should not|isn't|is not|not|never|refuse|refused|reject|rejected|unless)\b/;
+const APPROVAL_LOOKBACK_CHARS = 120;
+
+/**
  * Presentation characters a quote may lose without losing its evidence.
  *
  * Measured against the real CLIs on 2026-07-25: a reviewer wrote
@@ -242,6 +259,16 @@ function normalizeQuoteText(value: string): string {
 /** Punctuation after which a new statement can begin. */
 const STATEMENT_TERMINATORS = new Set([".", "!", "?", ":", ";"]);
 
+/**
+ * Punctuation that genuinely ends a thought.
+ *
+ * A colon or semicolon opens a quotable start — "Verdict: Accept as it stands"
+ * is a verdict — but it does not end the sentence it belongs to, so the run-up
+ * to a quote reaches back past it. Treating them as full stops let "I don't
+ * think: this should be accepted" launder a refusal.
+ */
+const SENTENCE_TERMINATORS = new Set([".", "!", "?"]);
+
 /** Whether a character can carry meaning, as opposed to marking up what does. */
 function isWordCharacter(character: string): boolean {
   return /[\p{L}\p{N}]/u.test(character);
@@ -251,6 +278,12 @@ interface NormalizedHaystack {
   text: string;
   /** Offsets in `text` where a statement, line, or message begins. */
   starts: ReadonlySet<number>;
+  /**
+   * The subset of `starts` that end one statement and begin another: a line, a
+   * message, or a full stop. A list marker or a dash opens a quotable start
+   * without ending the thought that precedes it.
+   */
+  hardStarts: ReadonlySet<number>;
 }
 
 /**
@@ -264,8 +297,10 @@ interface NormalizedHaystack {
 function normalizeHaystack(value: string): NormalizedHaystack {
   const folded = foldPresentation(value);
   const starts = new Set<number>([0]);
+  const hardStarts = new Set<number>([0]);
   let text = "";
   let pendingBoundary = true;
+  let pendingHardBoundary = true;
   let sawWhitespace = false;
   let lastMeaningful = "";
   let tokenHasWord = false;
@@ -277,7 +312,11 @@ function normalizeHaystack(value: string): NormalizedHaystack {
       // A terminator only ends a statement when whitespace follows it, so a
       // path like `sum.js:3:the` does not open one mid-token.
       if (STATEMENT_TERMINATORS.has(lastMeaningful)) pendingBoundary = true;
-      if (character === "\n" || character === "\r") pendingBoundary = true;
+      if (SENTENCE_TERMINATORS.has(lastMeaningful)) pendingHardBoundary = true;
+      if (character === "\n" || character === "\r") {
+        pendingBoundary = true;
+        pendingHardBoundary = true;
+      }
       // A standalone marker token — a table pipe, an em dash, a bullet — is a
       // separator, so what follows it starts fresh. "Verdict — Accept as it
       // stands" is a verdict stated after a dash, not mid-sentence.
@@ -288,6 +327,7 @@ function normalizeHaystack(value: string): NormalizedHaystack {
     }
     if (text.length > 0 && sawWhitespace) text += " ";
     if (pendingBoundary) starts.add(text.length);
+    if (pendingHardBoundary) hardStarts.add(text.length);
     text += character;
     tokenLength += 1;
     if (isWordCharacter(character)) tokenHasWord = true;
@@ -296,11 +336,12 @@ function normalizeHaystack(value: string): NormalizedHaystack {
     // Measured: rejecting those failed ordinary reviewer formatting into a
     // paused lane (independent claude review, 2026-07-25).
     pendingBoundary = pendingBoundary && !isWordCharacter(character);
+    pendingHardBoundary = pendingHardBoundary && !isWordCharacter(character);
     lastMeaningful = character;
     sawWhitespace = false;
   }
 
-  return { text, starts };
+  return { text, starts, hardStarts };
 }
 
 /**
@@ -335,12 +376,40 @@ function normalizeHaystack(value: string): NormalizedHaystack {
  * don't think this should be accepted as it stands" — and the retained
  * transcript is what lets a human check it after the fact.
  */
-export function quoteSupportedByTranscript(quote: string, transcript: string): boolean {
+export function quoteSupportedByTranscript(
+  quote: string,
+  transcript: string,
+  verdict?: "accept" | "revise" | "indeterminate",
+): boolean {
   const needle = normalizeQuoteText(quote);
   if (needle.replaceAll(/\s/g, "").length < MIN_QUOTE_SIGNIFICANT_CHARS) return false;
   const haystack = normalizeHaystack(transcriptQuoteHaystack(transcript));
   for (let index = haystack.text.indexOf(needle); index !== -1; index = haystack.text.indexOf(needle, index + 1)) {
-    if (haystack.starts.has(index)) return true;
+    if (!haystack.starts.has(index)) continue;
+    if (verdict === "accept" && refusalLeadsInto(haystack, index, needle)) continue;
+    return true;
   }
   return false;
+}
+
+/**
+ * Whether a refusal is what these words belong to.
+ *
+ * Checks the quote itself and the run-up to it — back to the last full stop,
+ * line, or message start, since that is as far as one statement reaches. Only
+ * `accept` is policed: reading a refusal into approving words is the direction
+ * that lands work nobody approved, and the reverse fails closed anyway.
+ */
+function refusalLeadsInto(haystack: NormalizedHaystack, index: number, needle: string): boolean {
+  if (REFUSAL_CUES.test(needle)) return true;
+  let lookbackStart = Math.max(0, index - APPROVAL_LOOKBACK_CHARS);
+  for (let offset = index; offset > lookbackStart; offset -= 1) {
+    // A hard boundary — the start of a statement, line, or message — ends the
+    // run-up: what came before it is a different statement.
+    if (haystack.hardStarts.has(offset)) {
+      lookbackStart = offset;
+      break;
+    }
+  }
+  return REFUSAL_CUES.test(haystack.text.slice(lookbackStart, index));
 }

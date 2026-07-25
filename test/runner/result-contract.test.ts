@@ -78,7 +78,7 @@ test("an accept verdict with no supporting evidence does not accept the attempt"
   );
 });
 
-test("an accept verdict that quotes the reviewer accepts the attempt", () => {
+test("an accept verdict carrying evidence passes this predicate, which checks presence not authenticity", () => {
   assert.equal(
     reviewerAcceptedAttempt({
       status: "success",
