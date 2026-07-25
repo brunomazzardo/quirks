@@ -11,7 +11,7 @@ import { boundedTranscriptExcerpt } from "../transcript.js";
  */
 
 /** Bumped whenever the brief changes, and recorded with every interpretation. */
-export const MANAGING_AGENT_BRIEF_VERSION = 1;
+export const MANAGING_AGENT_BRIEF_VERSION = 2;
 
 export const BEGIN_TRANSCRIPT_MARKER = "[BEGIN UNTRUSTED TRANSCRIPT]";
 export const END_TRANSCRIPT_MARKER = "[END UNTRUSTED TRANSCRIPT]";
@@ -30,6 +30,11 @@ export const MANAGING_AGENT_SYSTEM_BRIEF = [
   "",
   "2. `status` says whether the job ran, never whether its work was any good. A reviewer that finished",
   "   its review and is asking for changes ran successfully: that is status \"success\", not a failure.",
+  "   Classify a refusal by what refused it, using the specific value rather than the general one:",
+  "   a run turned away for quota, credits, or rate reasons is \"usage_limit\", not \"failure\"; a run",
+  "   blocked by a sandbox or permission prompt is \"permission_denied\"; a run interrupted or",
+  "   cancelled is \"cancelled\". The campaign pauses on a usage limit and retries after its reset,",
+  "   so reporting one as a plain failure spends the next attempt against a quota that is still out.",
   "",
   "3. A `verdict` is only ever the reviewer's own stated recommendation, and only for a reviewer job:",
   "   - \"accept\" or \"revise\" only when the reviewer itself said so.",

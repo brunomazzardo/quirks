@@ -253,6 +253,57 @@ test("resumeJob dispatches a runner-native resume and records the session update
   assert.deepEqual(sessions[0]?.artifactPaths, ["artifacts/job-1/result.json"]);
 });
 
+/**
+ * A resume reuses the job id but built its dispatch without a role, so it
+ * defaulted to "implementer" — and an implementer job never carries a verdict.
+ * A resumed reviewer would therefore have had its judgment discarded. The
+ * session record already knows what the job was.
+ */
+test("a resumed job keeps the role it was dispatched under", async () => {
+  const store = await openMinimalStore();
+  const registry = await SessionRegistry.open(store);
+  const journal = new EventJournal(path.join(store.campaignPath, "role-journal.jsonl"));
+  const artifactPath = await makeArtifact(-10 * STALE_AFTER_MS);
+  await registry.register({
+    jobId: "job-reviewer",
+    role: "reviewer",
+    profileId: fakeProfile.profileId,
+    sessionHandle: "session-abc",
+    pid: 999_999,
+    artifactPaths: [artifactPath],
+  });
+
+  let capturedRole: string | undefined;
+  await resumeJob("job-reviewer", {
+    registry,
+    journal,
+    profile: fakeProfile,
+    workspace: "/repo/workspace",
+    briefPath: "/repo/brief.md",
+    artifactDir: "/tmp/artifacts/job-reviewer",
+    timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
+    dispatch: async (input) => {
+      capturedRole = input.role;
+      return {
+        schemaVersion: 1,
+        jobId: input.jobId,
+        runner: input.profile.profileId,
+        runnerType: input.profile.runnerType,
+        resolvedModel: input.profile.model,
+        effort: input.profile.effort,
+        status: "success",
+        sessionHandle: "session-abc",
+        artifactPaths: [],
+        usage: {},
+        failure: undefined,
+      };
+    },
+  });
+
+  assert.equal(capturedRole, "reviewer");
+});
+
 test("resumeJob builds a codex resume argv bound to the workspace and constraining no output", async () => {
   const store = await openMinimalStore();
   const registry = await SessionRegistry.open(store);

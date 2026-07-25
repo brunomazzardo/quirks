@@ -214,6 +214,10 @@ export async function resumeJob(jobId: string, deps: ResumeJobDeps): Promise<Run
   const dispatch = deps.dispatch ?? dispatchRunnerJob;
   const result = await dispatch({
     jobId,
+    // The session record knows what this job was. Without it a resumed reviewer
+    // dispatches as an implementer, and an implementer job carries no verdict —
+    // so its judgment would be silently discarded.
+    role: session.role,
     profile: deps.profile,
     argv,
     artifactDir: deps.artifactDir,
