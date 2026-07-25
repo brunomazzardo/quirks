@@ -11,8 +11,8 @@ Quirks is a project-agnostic local control plane for planning, dispatching, obse
 
 ## Current state (2026-07-25, post managing-agent runner layer)
 
-The managing-agent runner layer `QK-RUN-009` is implemented on the branch
-`worktree-qk-run-009-managing-agent` and **not yet merged**. The runner now
+The managing-agent runner layer `QK-RUN-009` is merged to `main` (merge
+`667a3a8`) and unpushed. The runner now
 splits in two: a launcher that only knows how to start codex, cursor, and claude
 correctly, and a managing agent — one sonnet subprocess per job — that reads the
 retained transcript and produces the structured `RunnerJobResult`. No CLI is
@@ -24,7 +24,8 @@ The honesty properties this rests on, in the order they matter:
 - The agent reports what a runner said. It never judges the work and cannot accept.
 - A verdict must quote the runner's own words, and Quirks verifies the quote
   against the retained transcript: only the runner's own messages count (not the
-  brief it read), and a quote must begin where a sentence begins.
+  brief it read), a quote must begin where a statement begins, and an `accept`
+  may not rest on words a refusal was leading up to.
 - Absence fails closed to `indeterminate`. Nothing maps absence to `accept`.
 - The transcript is always retained, including when a run times out or floods.
 - The agent launches with `--tools ""`, no MCP, no settings, and no skills, so

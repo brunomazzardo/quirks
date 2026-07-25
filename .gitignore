@@ -1,4 +1,7 @@
 node_modules/
+# Worktrees symlink node_modules, and a symlink is not matched by the pattern
+# above — it reached a commit once.
+node_modules
 dist/
 coverage/
 .superpowers/
