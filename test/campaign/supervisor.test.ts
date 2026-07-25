@@ -10,7 +10,6 @@ import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.
 import { CampaignSupervisor, type CampaignSupervisorContext } from "../../src/campaign/supervisor.js";
 import { CampaignStore } from "../../src/campaign/store.js";
 import { computeInstructionsHash } from "../../src/campaign/task-brief.js";
-import { cursorResultPath } from "../../src/runner/cursor.js";
 import { SessionRegistry } from "../../src/runner/sessions.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 import { RepositoryLock } from "../../src/state/repository-lock.js";
@@ -1186,17 +1185,16 @@ test("reviewer gets a distinct read-only brief bound to the candidate commit", a
   assert.match(reviewerBrief, /executing-tasks/);
   assert.notEqual(implementerBrief, reviewerBrief);
 
-  // Codex enforces its envelope mechanically via --output-schema/-o, so the
-  // codex implementer brief carries no contract. The claude reviewer has no
-  // such flag and parseClaudeResult hard-requires the artifact, so its brief
-  // must state the job-unique path (QK-RUN-007).
+  // Neither role is handed an envelope contract any more: the reviewer is asked
+  // to review and left to say what it found (QK-RUN-009).
   assert.doesNotMatch(implementerBrief, /Runner result contract:/);
-  assert.match(reviewerBrief, /Runner result contract:/);
+  assert.doesNotMatch(reviewerBrief, /Runner result contract:/);
 });
 
-test("cursor briefs state the job-unique result envelope path for each role", async () => {
-  const candidateCommit = "b".repeat(40);
+test("dispatched briefs state no envelope contract at all", async () => {
   const source = new FakeTaskSource();
+  source.upsertTask("QK-1", { status: "ready", execution: executionFor(["lane-a"]) });
+  const candidateCommit = "b".repeat(40);
   const runner = new FakeRunnerPort();
   const worktree = new FakeWorktreePort();
   worktree.seed("QK-1", {
@@ -1228,25 +1226,14 @@ test("cursor briefs state the job-unique result envelope path for each role", as
   const [implementer, reviewer] = runner.dispatches;
   assert.ok(implementer && reviewer, "expected implementer and reviewer dispatches");
 
-  const briefsDir = path.dirname(implementer.briefPath);
-  const implementerBrief = await readFile(implementer.briefPath, "utf8");
-  assert.match(implementerBrief, /Runner result contract:/);
-  assert.ok(
-    implementerBrief.includes(cursorResultPath(briefsDir, implementer.jobId)),
-    "implementer brief must state its own job-unique result path",
-  );
-
-  const reviewerBrief = await readFile(reviewer.briefPath, "utf8");
-  assert.match(reviewerBrief, /Runner result contract:/);
-  assert.ok(
-    reviewerBrief.includes(cursorResultPath(path.dirname(reviewer.briefPath), reviewer.jobId)),
-    "reviewer brief must state its own job-unique result path",
-  );
-  assert.notEqual(
-    cursorResultPath(briefsDir, implementer.jobId),
-    cursorResultPath(path.dirname(reviewer.briefPath), reviewer.jobId),
-    "roles must never share a result envelope path",
-  );
+  // Demanding a rigid envelope from a CLI that was never built to emit one is
+  // where the dispatch defects lived, and under --output-schema it cost codex
+  // its reasoning entirely. Neither brief may ask for one (QK-RUN-009).
+  for (const brief of [implementer.briefPath, reviewer.briefPath]) {
+    const contents = await readFile(brief, "utf8");
+    assert.doesNotMatch(contents, /Runner result contract:/);
+    assert.doesNotMatch(contents, /result envelope/i);
+  }
 });
 
 test("rejects instructions drift between the envelope and configured workflow skills", async () => {

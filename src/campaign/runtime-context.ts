@@ -4,6 +4,8 @@ import type { CampaignEnvelope } from "./types.js";
 import { QuirksError } from "../core/errors.js";
 import { GitWorktreeManager } from "../git/worktree.js";
 import { CliRunnerPort } from "../runner/cli-runner-port.js";
+import { loadInterpreterConfig } from "../runner/managing-agent/config.js";
+import { ManagingAgentInterpreter } from "../runner/managing-agent/interpreter.js";
 import { loadRunnerProfiles } from "../runner/profiles.js";
 import type { RunnerProfile } from "../runner/types.js";
 import { resolveAppPaths } from "../state/app-paths.js";
@@ -51,7 +53,12 @@ export async function createCampaignRuntime(
 
   const profiles = await loadRunnerProfiles(options.configDir ? { configDir: options.configDir } : {});
   const profileMap = new Map(profiles.map((profile) => [profile.profileId, profile]));
-  const runner = new CliRunnerPort(profileMap);
+  // One interpretation path, wired here: the managing agent reads what each
+  // runner actually produced and derives the structured result.
+  const interpreterConfig = await loadInterpreterConfig(
+    options.configDir ? { configDir: options.configDir } : {},
+  );
+  const runner = new CliRunnerPort(profileMap, new ManagingAgentInterpreter(interpreterConfig));
   const stateDir = stateDirFor(envelope.repositoryId, options.stateDir);
   const worktree = await GitWorktreeManager.open({
     repositoryRoot,

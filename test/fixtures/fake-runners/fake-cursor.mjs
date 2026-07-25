@@ -1,73 +1,30 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import {
   commitWork,
+  FAKE_REVIEW_ACCEPT_PROSE,
+  FAKE_REVIEW_REVISE_PROSE,
   hangForever,
   oversizedPayload,
   parseRunnerArgs,
-  verdictForEnvelopePath,
   wedgeAfterWork,
   writeArtifact,
   writePartialArtifact,
 } from "./shared-modes.mjs";
 
-// cursor-agent has no flag that accepts a prompt file: the brief arrives inside
-// the trailing positional instruction built by `cursorPromptText`. Parsing it
-// the way a real cursor job would keeps this fake honest about the boundary.
-function briefPathOf(argv) {
-  for (const entry of argv) {
-    const match = entry.match(/^Read the brief at (.+?), complete it,/);
-    if (match) return match[1];
-  }
-  return undefined;
-}
-
-// A compliant cursor job reads its brief and follows the runner result
-// contract: cursor has no --output-schema/-o equivalent, so the declared
-// envelope path exists only as brief text.
-async function declaredEnvelopePath(argv) {
-  const briefPath = briefPathOf(argv);
-  if (!briefPath) return undefined;
-  try {
-    const brief = await readFile(briefPath, "utf8");
-    const match = brief.match(/write your result envelope JSON to exactly this path: (.+)$/m);
-    return match?.[1]?.trim();
-  } catch {
-    return undefined;
-  }
-}
-
-async function writeEnvelope(argv, sessionId, envelope = {}) {
-  const envelopePath = await declaredEnvelopePath(argv);
-  if (!envelopePath) return;
-  await mkdir(path.dirname(envelopePath), { recursive: true });
-  const payload = {
-    status: "success",
-    verdict: verdictForEnvelopePath(envelopePath),
-    sessionHandle: sessionId,
-    artifactPaths: [envelopePath],
-    failure: null,
-    ...envelope,
-  };
-  await writeFile(envelopePath, `${JSON.stringify(payload)}\n`, "utf8");
-}
-
-function emitInit(sessionId) {
-  process.stdout.write(`${JSON.stringify({
-    type: "system",
-    subtype: "init",
-    session_id: sessionId,
-    threadId: sessionId,
-  })}\n`);
-}
+// A fake cursor-agent. Cursor's `--output-format json` emits a single JSON
+// document at the end rather than a JSONL stream — measured against the real
+// binary on 2026-07-25, where a full review arrived as one 994-byte object with
+// the whole review in `result`. It writes no envelope: cursor never had an
+// --output-schema equivalent, and production no longer asks for one.
 
 function emitResult(sessionId, extra = {}) {
   process.stdout.write(`${JSON.stringify({
     type: "result",
     subtype: "success",
+    is_error: false,
     session_id: sessionId,
     threadId: sessionId,
-    is_error: false,
+    duration_ms: 12,
+    result: "Done: the work is complete and committed. Accept as it stands.",
     ...extra,
   })}\n`);
 }
@@ -76,9 +33,9 @@ function emitErrorResult(sessionId, message, extra = {}) {
   process.stdout.write(`${JSON.stringify({
     type: "result",
     subtype: "error",
+    is_error: true,
     session_id: sessionId,
     threadId: sessionId,
-    is_error: true,
     error: message,
     ...extra,
   })}\n`);
@@ -91,25 +48,27 @@ async function main() {
   switch (mode) {
     case "success":
       await commitWork(process.argv);
-      emitInit(sessionId);
       await writeArtifact(outDir);
-      await writeEnvelope(process.argv, sessionId);
       emitResult(sessionId);
       return;
     case "success-no-disk":
-      emitInit(sessionId);
-      await writeEnvelope(process.argv, sessionId, { artifactPaths: [] });
-      emitResult(sessionId);
+      emitResult(sessionId, { result: "Done. I changed no files." });
+      return;
+    case "review-revise":
+      emitResult(sessionId, { result: FAKE_REVIEW_REVISE_PROSE });
+      return;
+    case "review-accept":
+      emitResult(sessionId, { result: FAKE_REVIEW_ACCEPT_PROSE });
+      return;
+    case "review-silent":
+      emitResult(sessionId, { result: "I read the file. It defines one function." });
       return;
     case "permission-exit-zero":
     case "exit-zero-denied":
-      emitInit(sessionId);
       emitErrorResult(sessionId, "permission denied by host", { message: "permission denied" });
       return;
     case "partial":
-      emitInit(sessionId);
       await writePartialArtifact(outDir);
-      await writeEnvelope(process.argv, sessionId, { status: "failure", failure: "honest_partial" });
       emitErrorResult(sessionId, "honest_partial");
       return;
     case "malformed":
@@ -120,12 +79,10 @@ async function main() {
       process.stdout.write(oversizedPayload());
       return;
     case "transient":
-      emitInit(sessionId);
       emitErrorResult(sessionId, "transient_runner");
       process.exitCode = 1;
       return;
     case "usage-limit":
-      emitInit(sessionId);
       emitErrorResult(sessionId, "usage limit reached", { message: "rate limit exceeded" });
       return;
     case "silence":
@@ -133,16 +90,13 @@ async function main() {
       hangForever();
       return;
     case "wedge-after-work":
-      emitInit(sessionId);
       await wedgeAfterWork(outDir, () => emitResult(sessionId));
       return;
     case "non-resumable":
-      emitInit(sessionId);
       emitErrorResult(sessionId, "non-resumable", { threadId: "invalid-resume-handle" });
       return;
     case "fabricated-tests":
-      emitInit(sessionId);
-      emitResult(sessionId, { message: "tests passed" });
+      emitResult(sessionId, { result: "All tests passed." });
       return;
     case "cancel":
       process.exitCode = 130;

@@ -18,8 +18,7 @@ import { loadProjectContext } from "../project/config.js";
 import { canonicalRepository } from "../project/repository.js";
 import { loadRunnerProfiles } from "../runner/profiles.js";
 import type { RunnerProfile } from "../runner/types.js";
-import { cursorResultContractSection } from "../runner/cursor.js";
-import { resultContractPath, reviewerAcceptedAttempt } from "../runner/result-contract.js";
+import { reviewerAcceptedAttempt } from "../runner/result-contract.js";
 import { SessionRegistry } from "../runner/sessions.js";
 import { reconcileMutation } from "../sync/reconciler.js";
 import { SyncOutbox } from "../sync/outbox.js";
@@ -91,10 +90,12 @@ async function executableFakeRunner(scriptName: string, configDir: string): Prom
 async function writeFakeProfilesConfig(configDir: string): Promise<void> {
   const implementer = await executableFakeRunner("bounded-implementer.mjs", configDir);
   const reviewer = await executableFakeRunner("bounded-reviewer-codex.mjs", configDir);
+  const interpreter = await executableFakeRunner("fake-interpreter.mjs", configDir);
   await writeFile(
     path.join(configDir, "profiles.json"),
     `${JSON.stringify({
       schemaVersion: 1,
+      interpreter: { executable: interpreter, wallClockMs: 10_000 },
       tierAliases: {
         "bounded-claude": { tier: "standard" },
         "bounded-codex": { tier: "high" },
@@ -456,16 +457,15 @@ async function mutateAcknowledged(input: {
   return show.nativeRevision;
 }
 
-function buildBrief(resultPath?: string): string {
-  const brief = [
+function buildBrief(): string {
+  // No envelope contract: the runner is left to work and speak naturally, and
+  // the managing agent derives the structured result (QK-RUN-009).
+  return [
     `# ${BOUNDED_TASK_ID}`,
     "",
     "Replace src/message.txt with exactly this string and commit only that file:",
     BOUNDED_APPROVED_MESSAGE,
   ].join("\n");
-  // Runners whose CLI cannot enforce the envelope learn the job-unique path
-  // from the brief, exactly as the supervisor states it in a real campaign.
-  return resultPath === undefined ? brief : `${brief}\n\n${cursorResultContractSection(resultPath)}\n`;
 }
 
 async function listChangedFiles(repositoryRoot: string, baseCommit: string, headCommit: string): Promise<string[]> {
@@ -596,7 +596,7 @@ export async function runBoundedCampaign(options: BoundedCampaignOptions = {}): 
     const implementerJobId = `${envelope.campaignId}:${BOUNDED_TASK_ID}:implementer:1`;
     await writeFile(
       briefPath,
-      buildBrief(resultContractPath(implementerRoute.runnerType, path.dirname(briefPath), implementerJobId)),
+      buildBrief(),
       "utf8",
     );
     const implementerResult = await runtime.runner.dispatch({
@@ -640,7 +640,7 @@ export async function runBoundedCampaign(options: BoundedCampaignOptions = {}): 
     const reviewerBriefPath = path.join(reviewWorktree.path, ".quirks-bounded-brief.md");
     await writeFile(
       reviewerBriefPath,
-      buildBrief(resultContractPath(reviewerRoute.runnerType, path.dirname(reviewerBriefPath), reviewerJobId)),
+      buildBrief(),
       "utf8",
     );
     const reviewerResult = await runtime.runner.dispatch({

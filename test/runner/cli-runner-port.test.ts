@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { chmod, cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { CliRunnerPort } from "../../src/runner/cli-runner-port.js";
-import { cursorResultContractSection, cursorResultPath } from "../../src/runner/cursor.js";
-import { resultContractPath } from "../../src/runner/result-contract.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
+import { StubInterpreter } from "./support/stub-interpreter.js";
 
 async function executableFakeRunner(scriptName: string): Promise<string> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-"));
@@ -45,59 +44,45 @@ function profile(
 async function dispatchFixture(
   runnerType: RunnerProfile["runnerType"],
   scriptName: string,
-  tier: RunnerProfile["tier"] = "standard",
-  declareResultContract = true,
+  role: "implementer" | "reviewer" = "implementer",
+  interpreter = new StubInterpreter(),
 ) {
   const executable = await executableFakeRunner(scriptName);
   const profiles = new Map([
-    [runnerType, profile(runnerType, runnerType, executable, tier)],
+    [runnerType, profile(runnerType, runnerType, executable)],
   ]);
   const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-artifacts-"));
   const briefPath = path.join(artifactRoot, "brief.md");
-  // Claude and cursor learn their envelope path from the brief, exactly as the
-  // supervisor now states it for every job on those runners.
-  const contractPath = declareResultContract
-    ? resultContractPath(runnerType, artifactRoot, `job-${runnerType}`)
-    : undefined;
-  await writeFile(
-    briefPath,
-    contractPath === undefined ? "# brief\n" : `# brief\n\n${cursorResultContractSection(contractPath)}\n`,
-    "utf8",
-  );
+  // A plain brief: no envelope contract is stated for any runner any more.
+  await writeFile(briefPath, "# brief\n", "utf8");
   const worktreePath = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-worktree-"));
 
-  const port = new CliRunnerPort(profiles);
-  return port.dispatch({
+  const port = new CliRunnerPort(profiles, interpreter);
+  const result = await port.dispatch({
     jobId: `job-${runnerType}`,
     taskId: "QK-1",
-    role: "implementer",
+    role,
     route: {
       profileId: runnerType,
       runnerType,
-      tier,
-      effort: tier,
+      tier: "standard",
+      effort: "standard",
       quotaPoolId: "pool",
     },
     briefPath,
     worktreePath,
   });
+  return { result, interpreter, artifactRoot, worktreePath };
 }
 
-test("CliRunnerPort dispatches claude through argv builder and requires artifact evidence", async () => {
-  const result = await dispatchFixture("claude", "fake-claude.mjs");
+test("CliRunnerPort dispatches claude through the production argv builder", async () => {
+  const { result, interpreter } = await dispatchFixture("claude", "fake-claude.mjs");
   assert.equal(result.status, "success");
-  assert.match(result.sessionHandle, /^[0-9a-f-]{36}$/);
-  assert.equal(result.artifactPaths.length > 0, true);
+  assert.equal(interpreter.facts[0]?.runnerType, "claude");
+  assert.match(interpreter.facts[0]?.sessionId ?? "", /^[0-9a-f-]{36}$/);
 });
 
-test("CliRunnerPort dispatches codex through declared result artifact path", async () => {
-  const result = await dispatchFixture("codex", "fake-codex.mjs");
-  assert.equal(result.status, "success");
-  assert.match(result.sessionHandle, /./);
-  assert.equal(result.artifactPaths.length > 0, true);
-});
-
-test("CliRunnerPort passes the brief contents through to the codex prompt positional", async () => {
+test("CliRunnerPort dispatches codex and passes the brief contents as the prompt positional", async () => {
   const executable = await executableFakeRunner("fake-codex.mjs");
   const profiles = new Map([["codex", profile("codex", "codex", executable)]]);
   const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-codex-brief-"));
@@ -106,7 +91,7 @@ test("CliRunnerPort passes the brief contents through to the codex prompt positi
   await writeFile(briefPath, briefContents, "utf8");
   const worktreePath = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-codex-worktree-"));
 
-  const port = new CliRunnerPort(profiles);
+  const port = new CliRunnerPort(profiles, new StubInterpreter());
   const result = await port.dispatch({
     jobId: "job-codex-brief",
     taskId: "QK-1",
@@ -129,51 +114,36 @@ test("CliRunnerPort passes the brief contents through to the codex prompt positi
   const promptIndex = captured.indexOf(briefContents);
   assert.notEqual(promptIndex, -1);
   assert.equal(captured[promptIndex - 1], "--");
+  // The result-shape flags are gone from the real dispatch path, not just from
+  // the argv unit test.
+  assert.equal(captured.includes("--output-schema"), false);
+  assert.equal(captured.includes("-o"), false);
 });
 
-// QK-RUN-005 acceptance: a cursor job that follows the brief's result
-// contract passes validation; the brief-declared path is the job-unique one.
-test("CliRunnerPort dispatches cursor and validates the brief-declared result envelope", async () => {
-  const executable = await executableFakeRunner("fake-cursor.mjs");
-  const profiles = new Map([["cursor", profile("cursor", "cursor", executable)]]);
-  const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-cursor-"));
-  const briefPath = path.join(artifactRoot, "brief.md");
-  const resultPath = cursorResultPath(artifactRoot, "job-cursor");
-  await writeFile(briefPath, `# brief\n\n${cursorResultContractSection(resultPath)}\n`, "utf8");
-  const worktreePath = await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-cursor-worktree-"));
-
-  const port = new CliRunnerPort(profiles);
-  const result = await port.dispatch({
-    jobId: "job-cursor",
-    taskId: "QK-1",
-    role: "implementer",
-    route: {
-      profileId: "cursor",
-      runnerType: "cursor",
-      tier: "standard",
-      effort: "standard",
-      quotaPoolId: "pool",
-    },
-    briefPath,
-    worktreePath,
-  });
-
+test("CliRunnerPort dispatches cursor", async () => {
+  const { result, interpreter } = await dispatchFixture("cursor", "fake-cursor.mjs");
   assert.equal(result.status, "success");
-  assert.match(result.sessionHandle, /./);
-  assert.ok(result.artifactPaths.includes(resultPath), "result must report the declared envelope path");
+  assert.equal(interpreter.facts[0]?.runnerType, "cursor");
 });
 
-test("CliRunnerPort fails a cursor job that never writes the declared envelope, naming the path", async () => {
-  const result = await dispatchFixture("cursor", "fake-cursor.mjs", "standard", false);
-  assert.equal(result.status, "failure");
-  assert.equal(result.failure?.code, "missing_structured_result");
-  assert.match(result.failure?.message ?? "", /cursor-result-job-cursor\.json/);
+/**
+ * The role decides whether a verdict is asked for at all. Dropping it here read
+ * every reviewer as an implementer, which silently discards its judgment — the
+ * fail-open this boundary exists to prevent.
+ */
+test("CliRunnerPort passes the job role through to interpretation", async () => {
+  const { interpreter } = await dispatchFixture("claude", "fake-claude.mjs", "reviewer");
+  assert.equal(interpreter.facts[0]?.role, "reviewer");
+});
+
+test("CliRunnerPort binds the child to the job's worktree", async () => {
+  const { interpreter, worktreePath } = await dispatchFixture("claude", "fake-claude.mjs");
+  assert.equal(interpreter.facts[0]?.worktreePath, worktreePath);
 });
 
 test("CliRunnerPort rejects unknown profile ids", async () => {
-  const port = new CliRunnerPort(new Map());
+  const port = new CliRunnerPort(new Map(), new StubInterpreter());
   const briefPath = path.join(await mkdtemp(path.join(os.tmpdir(), "quirks-cli-runner-brief-")), "brief.md");
-  await mkdir(path.dirname(briefPath), { recursive: true });
   await writeFile(briefPath, "# brief\n", "utf8");
   await assert.rejects(
     () => port.dispatch({

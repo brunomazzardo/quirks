@@ -1,24 +1,19 @@
 import {
   commitWork,
-  briefPathFromArgv,
-  declaredEnvelopePath,
+  FAKE_REVIEW_ACCEPT_PROSE,
+  FAKE_REVIEW_REVISE_PROSE,
   hangForever,
   oversizedPayload,
   parseRunnerArgs,
   wedgeAfterWork,
   writeArtifact,
-  writeDeclaredEnvelope,
   writePartialArtifact,
 } from "./shared-modes.mjs";
 
-// The claude CLI has no --output-schema/-o equivalent, so a claude job learns
-// its envelope path from the brief exactly as a cursor job does. Deriving it
-// any other way would let this fake pass while the real runner writes nothing,
-// which is how the missing claude result contract went unnoticed (QK-RUN-007).
-async function writeEnvelope(sessionId, envelope = {}) {
-  const envelopePath = await declaredEnvelopePath(briefPathFromArgv(process.argv));
-  return writeDeclaredEnvelope(envelopePath, { sessionHandle: sessionId, ...envelope });
-}
+// A fake claude CLI. It writes no result envelope, because no production code
+// reads one: since QK-RUN-009 the CLI is left to speak naturally and a managing
+// agent derives the structured result. What this fake owes the launcher is the
+// real stream-json event shape, its exit code, and prose that means something.
 
 function emitInit(sessionId) {
   process.stdout.write(`${JSON.stringify({
@@ -28,13 +23,21 @@ function emitInit(sessionId) {
   })}\n`);
 }
 
-function emitSuccessResult(sessionId, extra = {}) {
+function emitAssistantText(sessionId, text) {
+  process.stdout.write(`${JSON.stringify({
+    type: "assistant",
+    session_id: sessionId,
+    message: { role: "assistant", content: [{ type: "text", text }] },
+  })}\n`);
+}
+
+function emitSuccessResult(sessionId, result = "Done: the work is complete and committed. Accept as it stands.", extra = {}) {
   process.stdout.write(`${JSON.stringify({
     type: "result",
     subtype: "success",
     session_id: sessionId,
     is_error: false,
-    result: "Done.",
+    result,
     ...extra,
   })}\n`);
 }
@@ -59,30 +62,42 @@ async function main() {
       await commitWork(process.argv);
       emitInit(sessionId);
       await writeArtifact(outDir);
-      await writeEnvelope(sessionId);
       emitSuccessResult(sessionId);
       return;
     case "success-no-disk":
       emitInit(sessionId);
       emitSuccessResult(sessionId);
       return;
+    case "review-revise":
+      emitInit(sessionId);
+      emitAssistantText(sessionId, FAKE_REVIEW_REVISE_PROSE);
+      emitSuccessResult(sessionId, FAKE_REVIEW_REVISE_PROSE);
+      return;
+    case "review-accept":
+      emitInit(sessionId);
+      emitAssistantText(sessionId, FAKE_REVIEW_ACCEPT_PROSE);
+      emitSuccessResult(sessionId, FAKE_REVIEW_ACCEPT_PROSE);
+      return;
+    case "review-silent":
+      // Ran, said nothing about accepting or revising. The interpretation must
+      // come back indeterminate rather than reading calm as approval.
+      emitInit(sessionId);
+      emitSuccessResult(sessionId, "I read the file. It defines one function.");
+      return;
     case "permission-exit-zero":
     case "exit-zero-denied":
       await writeArtifact(outDir);
-      await writeEnvelope(sessionId);
-      emitSuccessResult(sessionId, {
+      emitSuccessResult(sessionId, "Blocked by permissions.", {
         permission_denials: [{ tool_name: "Bash", tool_use_id: "toolu_1", tool_input: {} }],
       });
       return;
     case "partial":
       emitInit(sessionId);
       await writePartialArtifact(outDir);
-      await writeEnvelope(sessionId, { status: "failure", failure: "honest_partial" });
       emitErrorResult(sessionId, { result: "honest_partial" });
       return;
     case "malformed":
       await writeArtifact(outDir);
-      await writeEnvelope(sessionId);
       process.stdout.write("All done. Task complete.\n");
       return;
     case "oversized":
@@ -113,7 +128,7 @@ async function main() {
       return;
     case "fabricated-tests":
       emitInit(sessionId);
-      emitSuccessResult(sessionId, { result: "All tests passed." });
+      emitSuccessResult(sessionId, "All tests passed.");
       return;
     case "cancel":
       process.exitCode = 130;

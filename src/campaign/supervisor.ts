@@ -18,7 +18,7 @@ import {
   type NormalizedTaskRecord,
 } from "./task-brief.js";
 import type { CampaignApproval, CampaignEnvelope, CampaignStatus } from "./types.js";
-import { resultContractPath, reviewerAcceptedAttempt } from "../runner/result-contract.js";
+import { reviewerAcceptedAttempt } from "../runner/result-contract.js";
 import { sanitizeInlineEvidence } from "../prompt/untrusted-content.js";
 import type { RunnerJobResult, RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
@@ -614,26 +614,6 @@ export class CampaignSupervisor {
     };
   }
 
-  /**
-   * Job-bound result contract for runners without mechanical envelope
-   * enforcement. Cursor has no --output-schema/-o equivalent, so its brief must
-   * state the exact envelope contract and the job-unique path that
-   * `parseCursorResult` validates strictly (QK-RUN-005). Claude has no such
-   * flag either and `parseClaudeResult` hard-requires the artifact, so leaving
-   * the contract unstated made the envelope a matter of chance (QK-RUN-007).
-   */
-  private briefResultContract(
-    profileId: string,
-    briefPath: string,
-    jobId: string,
-  ): { resultContract: { resultPath: string } } | Record<string, never> {
-    const profile = this.context.profileIndex?.get(profileId);
-    if (!profile) return {};
-    const resultPath = resultContractPath(profile.runnerType, path.dirname(briefPath), jobId);
-    if (resultPath === undefined) return {};
-    return { resultContract: { resultPath } };
-  }
-
   private async dispatchTask(
     run: PreparedRun,
     taskId: string,
@@ -673,7 +653,6 @@ export class CampaignSupervisor {
       skills: briefSkills,
       profiles: briefProfiles,
       ...(this.context.profileIndex?.has(route.profileId) ? { implementerProfileId: route.profileId } : {}),
-      ...this.briefResultContract(route.profileId, briefPath, jobId),
     });
     await writeFile(briefPath, implementerBrief, "utf8");
 
@@ -766,7 +745,6 @@ export class CampaignSupervisor {
         skills: briefSkills,
         profiles: briefProfiles,
         ...(this.context.profileIndex?.has(route.profileId) ? { implementerProfileId: route.profileId } : {}),
-        ...this.briefResultContract(reviewerRoute.profileId, reviewerBriefPath, reviewJobId),
       });
       await writeFile(reviewerBriefPath, reviewerBrief, "utf8");
       reviewer = await this.context.runner.dispatch({

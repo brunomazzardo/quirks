@@ -4,9 +4,9 @@ import path from "node:path";
 import type { ResolvedRoute } from "../campaign/routing.js";
 import type { RunnerPort } from "../campaign/ports.js";
 import { QuirksError } from "../core/errors.js";
-import { buildClaudeArgv, buildClaudeEnv, claudeArtifactPaths } from "./claude.js";
-import { buildCodexArgv, codexPromptText, codexResultPath, codexResultSchemaPath } from "./codex.js";
-import { buildCursorArgv, cursorResultPath } from "./cursor.js";
+import { buildClaudeArgv, buildClaudeEnv } from "./claude.js";
+import { buildCodexArgv, codexPromptText } from "./codex.js";
+import { buildCursorArgv } from "./cursor.js";
 import { dispatchRunnerJob } from "./dispatcher.js";
 import type { ResultInterpreter } from "./interpretation.js";
 import type { RunnerJobResult, RunnerProfile } from "./types.js";
@@ -73,9 +73,7 @@ export function buildRunnerArgv(
         model: profile.model,
         workspace: input.worktreePath,
         promptText: codexPromptText(input.briefPath, briefContents),
-        resultPath: codexResultPath(artifactDir, input.jobId),
         artifactDir,
-        schemaPath: codexResultSchemaPath(),
         capabilities: profile.capabilities,
         effort: profile.effort,
       });
@@ -102,7 +100,13 @@ export function buildRunnerArgv(
 export class CliRunnerPort implements RunnerPort {
   constructor(
     private readonly profiles: ReadonlyMap<string, RunnerProfile>,
-    private readonly interpreter?: ResultInterpreter,
+    /**
+     * Required, and deliberately not defaulted. There is exactly one result
+     * path now; a port constructed without an interpreter would be a port that
+     * cannot produce a result, and defaulting one here would hide that from
+     * whoever forgot to wire it.
+     */
+    private readonly interpreter: ResultInterpreter,
   ) {}
 
   async dispatch(input: RunnerDispatchInput): Promise<RunnerJobResult> {
@@ -122,24 +126,9 @@ export class CliRunnerPort implements RunnerPort {
       artifactDir,
       timeoutMs: profile.wallClockMs,
       cwd: input.worktreePath,
-      ...(this.interpreter !== undefined ? { interpreter: this.interpreter } : {}),
+      interpreter: this.interpreter,
     };
     const env = sanitizedRunnerEnv(profile);
     return dispatchRunnerJob(env ? { ...dispatchInput, env } : dispatchInput);
-  }
-}
-
-export function artifactPathsForRunner(profile: RunnerProfile, artifactDir: string, jobId: string): readonly string[] {
-  switch (profile.runnerType) {
-    case "claude":
-      return claudeArtifactPaths(artifactDir, jobId);
-    case "codex":
-      return [codexResultPath(artifactDir, jobId)];
-    case "cursor":
-      return [cursorResultPath(artifactDir, jobId)];
-    default: {
-      const exhaustive: never = profile.runnerType;
-      return exhaustive;
-    }
   }
 }

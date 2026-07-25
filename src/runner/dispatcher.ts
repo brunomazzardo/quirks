@@ -1,12 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { Readable } from "node:stream";
-import { claudeResultPath } from "./claude.js";
-import { cursorResultPath } from "./cursor.js";
 import type { InterpretedResult, ResultInterpreter, RunnerJobFacts } from "./interpretation.js";
 import { normalizeJobResult } from "./job-result.js";
 import { redactTranscript, transcriptPath } from "./result-contract.js";
-import { SchemaResultInterpreter, codexDeclaredResultPath } from "./schema-interpreter.js";
 import type { RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
 
 const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
@@ -35,7 +33,7 @@ export interface DispatchRunnerJobInput {
    * How the runner's output becomes a structured result. The launcher knows how
    * to start a CLI correctly and nothing about the shape of what it says.
    */
-  interpreter?: ResultInterpreter;
+  interpreter: ResultInterpreter;
 }
 
 interface StreamCollectResult {
@@ -76,35 +74,6 @@ function extractFlagValue(argv: readonly string[], flag: string): string | undef
     }
   }
   return undefined;
-}
-
-/**
- * Remove any result envelope left by a previous attempt.
- *
- * Result paths are deterministic per job, so a retry, resume, or rerun would
- * otherwise find the prior attempt's file still present — and the parsers prefer
- * a valid envelope over the current invocation's error output. A failing run
- * therefore reported the earlier success, including a stale accept verdict. Each
- * invocation must own its result file.
- */
-async function clearStaleResultEnvelope(input: {
-  jobId: string;
-  profile: RunnerProfile;
-  argv: readonly string[];
-  artifactDir: string;
-}): Promise<void> {
-  const declared = input.profile.runnerType === "codex"
-    ? codexDeclaredResultPath(input.argv)
-    : input.profile.runnerType === "cursor"
-      ? cursorResultPath(input.artifactDir, input.jobId)
-      : claudeResultPath(input.artifactDir, input.jobId);
-  if (!declared) return;
-  try {
-    await rm(declared, { force: true });
-  } catch {
-    // A path we cannot clear is reported by the parser as a missing or stale
-    // envelope; refusing to run here would be worse than proceeding.
-  }
 }
 
 function failureResult(
@@ -156,6 +125,23 @@ function retainableTranscript(stdout: string): string {
     : redacted;
 }
 
+/** How many same-job attempts keep their own transcript before one is reused. */
+const MAX_TRANSCRIPT_ATTEMPTS = 100;
+
+function numberedTranscriptPath(target: string, attempt: number): string {
+  const extension = path.extname(target);
+  return `${target.slice(0, target.length - extension.length)}.${attempt}${extension}`;
+}
+
+/**
+ * Retain a transcript without ever overwriting an earlier one.
+ *
+ * The path is derived from the job id, and a resume reuses the job id — so a
+ * plain write destroyed the evidence the first attempt's result had been
+ * derived from. The whole design rests on the transcript still being there to
+ * check an interpretation against, so a second attempt takes the next free
+ * name instead.
+ */
 async function writeTranscript(
   artifactDir: string,
   jobId: string,
@@ -165,8 +151,22 @@ async function writeTranscript(
   const target = transcriptPath(artifactDir, jobId);
   try {
     await mkdir(artifactDir, { recursive: true });
-    await writeFile(target, transcript, { encoding: "utf8", mode: 0o600 });
-    return target;
+    for (let attempt = 0; attempt < MAX_TRANSCRIPT_ATTEMPTS; attempt += 1) {
+      const candidate = attempt === 0 ? target : numberedTranscriptPath(target, attempt);
+      try {
+        // 0600: a transcript can still contain material the redactor does not
+        // recognise. "wx" is what makes this non-destructive.
+        await writeFile(candidate, transcript, { encoding: "utf8", mode: 0o600, flag: "wx" });
+        return candidate;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+    }
+    // A hundred attempts under one job id is pathological. Reuse the last slot
+    // rather than the first, so the original attempt's transcript survives.
+    const last = numberedTranscriptPath(target, MAX_TRANSCRIPT_ATTEMPTS - 1);
+    await writeFile(last, transcript, { encoding: "utf8", mode: 0o600 });
+    return last;
   } catch {
     return undefined;
   }
@@ -184,13 +184,6 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
   if (!executable) {
     return failureResult(base, "failure", "invalid_argv", "Runner argv must include an executable");
   }
-
-  await clearStaleResultEnvelope({
-    jobId: input.jobId,
-    profile: input.profile,
-    argv: input.argv,
-    artifactDir: input.artifactDir,
-  });
 
   let child: ChildProcess | undefined;
   let timedOut = false;
@@ -283,7 +276,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
 
     let parsed: InterpretedResult;
     try {
-      parsed = await (input.interpreter ?? new SchemaResultInterpreter()).interpret(facts, transcript);
+      parsed = await input.interpreter.interpret(facts, transcript);
     } catch (error) {
       // An interpreter that throws must not take the campaign down with it, and
       // must not be recorded as a runner failure of its own: the run may have

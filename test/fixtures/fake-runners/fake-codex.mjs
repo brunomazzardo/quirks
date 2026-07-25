@@ -2,26 +2,41 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   commitWork,
+  FAKE_REVIEW_ACCEPT_PROSE,
+  FAKE_REVIEW_REVISE_PROSE,
   hangForever,
   oversizedPayload,
   parseRunnerArgs,
   wedgeAfterWork,
   writeArtifact,
   writePartialArtifact,
-  verdictForEnvelopePath,
 } from "./shared-modes.mjs";
 
-async function writeCodexResult(resultPath, payload) {
-  if (!resultPath) {
-    process.stderr.write("missing -o result path\n");
-    process.exit(2);
-  }
-  await mkdir(path.dirname(resultPath), { recursive: true });
-  await writeFile(resultPath, `${JSON.stringify(payload)}\n`, "utf8");
+// A fake codex CLI emitting the `--json` event stream. It writes no result
+// envelope: --output-schema and -o are gone from the production argv, because
+// they were measured suppressing codex's reasoning entirely (0 prose messages
+// with them, 8 without). A fake that still wrote one would be mimicking a
+// contract production no longer has.
+
+function emit(event) {
+  process.stdout.write(`${JSON.stringify(event)}\n`);
+}
+
+function emitThread(sessionId) {
+  emit({ type: "thread.started", thread_id: sessionId });
+  emit({ type: "turn.started" });
+}
+
+function emitAgentMessage(text) {
+  emit({ type: "item.completed", item: { id: "item_0", type: "agent_message", text } });
+}
+
+function emitTurnCompleted() {
+  emit({ type: "turn.completed", usage: { input_tokens: 10, output_tokens: 5 } });
 }
 
 async function main() {
-  const { mode, sessionId, resultPath } = parseRunnerArgs(process.argv);
+  const { mode, sessionId } = parseRunnerArgs(process.argv);
   const outDir = process.env.QUIRKS_FAKE_RUNNER_OUTDIR;
 
   if (outDir) {
@@ -32,42 +47,48 @@ async function main() {
   switch (mode) {
     case "success": {
       await commitWork(process.argv);
-      const artifactPath = await writeArtifact(outDir);
-      await writeCodexResult(resultPath, {
-        status: "success",
-        verdict: verdictForEnvelopePath(resultPath),
-        sessionHandle: sessionId,
-        artifactPaths: artifactPath ? [artifactPath] : [resultPath],
-      });
+      await writeArtifact(outDir);
+      emitThread(sessionId);
+      emitAgentMessage("Done: the change is committed. Accept as it stands.");
+      emitTurnCompleted();
       return;
     }
     case "success-no-disk": {
-      await writeCodexResult(resultPath, {
-        status: "success",
-        verdict: verdictForEnvelopePath(resultPath),
-        sessionHandle: sessionId,
-        artifactPaths: [],
-      });
+      emitThread(sessionId);
+      emitAgentMessage("Done. I changed no files.");
+      emitTurnCompleted();
+      return;
+    }
+    case "review-revise": {
+      emitThread(sessionId);
+      emitAgentMessage(FAKE_REVIEW_REVISE_PROSE);
+      emitTurnCompleted();
+      return;
+    }
+    case "review-accept": {
+      emitThread(sessionId);
+      emitAgentMessage(FAKE_REVIEW_ACCEPT_PROSE);
+      emitTurnCompleted();
+      return;
+    }
+    case "review-silent": {
+      emitThread(sessionId);
+      emitAgentMessage("I read the file. It defines one function.");
+      emitTurnCompleted();
       return;
     }
     case "permission-exit-zero":
     case "exit-zero-denied": {
-      await writeCodexResult(resultPath, {
-        status: "permission_denied",
-        sessionHandle: sessionId,
-        artifactPaths: [],
-        failure: "permission denied",
-      });
+      emitThread(sessionId);
+      emit({ type: "error", message: "permission denied by sandbox" });
+      emit({ type: "turn.failed", error: { message: "permission denied by sandbox" } });
       return;
     }
     case "partial": {
-      const artifactPath = await writePartialArtifact(outDir);
-      await writeCodexResult(resultPath, {
-        status: "failure",
-        sessionHandle: sessionId,
-        artifactPaths: artifactPath ? [artifactPath] : [],
-        failure: "honest_partial",
-      });
+      await writePartialArtifact(outDir);
+      emitThread(sessionId);
+      emitAgentMessage("I got part of the way and stopped: honest_partial.");
+      emit({ type: "turn.failed", error: { message: "honest_partial" } });
       return;
     }
     case "malformed": {
@@ -80,22 +101,15 @@ async function main() {
       return;
     }
     case "transient": {
-      await writeCodexResult(resultPath, {
-        status: "failure",
-        sessionHandle: sessionId,
-        artifactPaths: [],
-        failure: "transient_runner",
-      });
+      emitThread(sessionId);
+      emit({ type: "turn.failed", error: { message: "transient_runner" } });
       process.exitCode = 1;
       return;
     }
     case "usage-limit": {
-      await writeCodexResult(resultPath, {
-        status: "usage_limit",
-        sessionHandle: sessionId,
-        artifactPaths: [],
-        failure: "usage limit reached",
-      });
+      emitThread(sessionId);
+      emit({ type: "error", message: "You've hit your usage limit." });
+      emit({ type: "turn.failed", error: { message: "You've hit your usage limit." } });
       return;
     }
     case "silence":
@@ -103,43 +117,28 @@ async function main() {
       hangForever();
       return;
     case "wedge-after-work":
-      await wedgeAfterWork(outDir, async () => {
-        await writeCodexResult(resultPath, {
-          status: "success",
-          verdict: verdictForEnvelopePath(resultPath),
-          sessionHandle: sessionId,
-          artifactPaths: outDir ? [path.join(outDir, "result.json")] : [],
-        });
+      emitThread(sessionId);
+      await wedgeAfterWork(outDir, () => {
+        emitAgentMessage("Done.");
+        emitTurnCompleted();
       });
       return;
     case "session-mismatch": {
-      process.stdout.write(`${JSON.stringify({ type: "thread.started", thread_id: "jsonl-session-999" })}\n`);
-      const artifactPath = await writeArtifact(outDir);
-      await writeCodexResult(resultPath, {
-        status: "success",
-        verdict: verdictForEnvelopePath(resultPath),
-        sessionHandle: "envelope-session-000",
-        artifactPaths: artifactPath ? [artifactPath] : [resultPath],
-      });
+      emit({ type: "thread.started", thread_id: "jsonl-session-999" });
+      await writeArtifact(outDir);
+      emitAgentMessage("Done.");
+      emitTurnCompleted();
       return;
     }
     case "non-resumable": {
-      await writeCodexResult(resultPath, {
-        status: "failure",
-        sessionHandle: "invalid-resume-handle",
-        artifactPaths: [],
-        failure: "non-resumable",
-      });
+      emit({ type: "thread.started", thread_id: "invalid-resume-handle" });
+      emit({ type: "turn.failed", error: { message: "non-resumable" } });
       return;
     }
     case "fabricated-tests": {
-      await writeCodexResult(resultPath, {
-        status: "success",
-        verdict: verdictForEnvelopePath(resultPath),
-        sessionHandle: sessionId,
-        artifactPaths: [],
-        failure: "fabricated_evidence",
-      });
+      emitThread(sessionId);
+      emitAgentMessage("All tests passed.");
+      emitTurnCompleted();
       return;
     }
     case "cancel":

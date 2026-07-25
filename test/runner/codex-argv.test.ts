@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
 import test from "node:test";
 import { buildRunnerArgv } from "../../src/runner/cli-runner-port.js";
 import {
@@ -8,21 +7,15 @@ import {
   buildCodexArgv,
   buildCodexResumeArgv,
   codexPromptText,
-  codexResultPath,
-  codexResultSchemaPath,
-  parseCodexResult,
   type BuildCodexArgvInput,
 } from "../../src/runner/codex.js";
-import type { RunnerProfile } from "../../src/runner/types.js";
 
 const freshInput: BuildCodexArgvInput = {
   executable: "/usr/bin/codex",
   model: "gpt-5.6-terra-medium",
   workspace: "/tmp/worktree",
   promptText: "# brief\nDo the thing.\n",
-  resultPath: "artifacts/job-1/result.json",
   artifactDir: "artifacts/job-1",
-  schemaPath: "schemas/codex-result.schema.json",
   capabilities: ["repository-read"],
   effort: "high",
 };
@@ -62,7 +55,7 @@ test("buildCodexArgv maps profile effort tiers onto codex reasoning efforts", ()
   }
 });
 
-test("buildCodexArgv emits model, workspace, artifact dir, effort, schema, color, json, and result flags", () => {
+test("buildCodexArgv emits model, workspace, artifact dir, effort, color, and json, and nothing about result shape", () => {
   const argv = buildCodexArgv(freshInput);
 
   assert.deepEqual(argv.slice(0, 2), ["/usr/bin/codex", "exec"]);
@@ -70,10 +63,14 @@ test("buildCodexArgv emits model, workspace, artifact dir, effort, schema, color
   assert.equal(flagValue(argv, "-C"), "/tmp/worktree");
   assert.equal(flagValue(argv, "--add-dir"), "artifacts/job-1");
   assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=high");
-  assert.equal(flagValue(argv, "--output-schema"), "schemas/codex-result.schema.json");
+  // Measured 2026-07-24: under --output-schema codex emitted 0 prose messages
+  // and smuggled a Critical finding into a 256-character transport field; the
+  // same brief without it produced 8 substantive messages including two real
+  // Criticals. The flag is dropped, not made optional (QK-RUN-009).
+  assert.equal(argv.includes("--output-schema"), false);
+  assert.equal(argv.includes("-o"), false);
   assert.equal(flagValue(argv, "--color"), "never");
   assert.equal(argv.includes("--json"), true);
-  assert.equal(flagValue(argv, "-o"), "artifacts/job-1/result.json");
 });
 
 test("buildCodexArgv passes the prompt text as the final positional, not the brief path", () => {
@@ -95,71 +92,26 @@ test("codexPromptText inlines brief contents under the size cap", () => {
   assert.equal(codexPromptText("/tmp/brief.md", "small brief"), "small brief");
 });
 
-test("codexResultPath is unique per job so concurrent jobs never clobber each other", () => {
-  const first = codexResultPath("/tmp/artifacts", "job-1");
-  const second = codexResultPath("/tmp/artifacts", "job-2");
-
-  assert.notEqual(first, second);
-  assert.match(first, /job-1/);
-  assert.match(second, /job-2/);
-});
-
-function codexDispatchInput(jobId: string) {
-  return {
-    jobId,
-    taskId: "QK-1",
-    role: "implementer" as const,
-    route: { profileId: "codex-standard", runnerType: "codex" as const, tier: "standard" as const, effort: "standard" as const, quotaPoolId: "pool" },
-    briefPath: "/tmp/artifacts/briefs/brief.md",
-    worktreePath: "/tmp/worktree",
-  };
-}
-
-test("codex dispatch argv declares a job-unique result path per dispatched job", () => {
-  const profile: RunnerProfile = {
-    schemaVersion: 1,
-    profileId: "codex-standard",
-    runnerType: "codex",
-    executable: "/usr/bin/codex",
-    accountAlias: "default",
-    quotaPoolId: "pool",
-    tier: "standard",
-    model: "test-model",
-    effort: "standard",
-    capabilities: ["repository-read"],
-    wallClockMs: 5_000,
-    redactionRules: [],
-  };
-
-  const first = flagValue(buildRunnerArgv(profile, codexDispatchInput("job-1"), "/tmp/artifacts/briefs", "# brief\n"), "-o");
-  const second = flagValue(buildRunnerArgv(profile, codexDispatchInput("job-2"), "/tmp/artifacts/briefs", "# brief\n"), "-o");
-
-  assert.notEqual(first, second);
-  assert.match(first ?? "", /job-1/);
-  assert.match(second ?? "", /job-2/);
-});
-
-test("codex dispatch argv references an existing result envelope schema", () => {
-  const profile: RunnerProfile = {
-    schemaVersion: 1,
-    profileId: "codex-standard",
-    runnerType: "codex",
-    executable: "/usr/bin/codex",
-    accountAlias: "default",
-    quotaPoolId: "pool",
-    tier: "standard",
-    model: "test-model",
-    effort: "standard",
-    capabilities: ["repository-read"],
-    wallClockMs: 5_000,
-    redactionRules: [],
-  };
+test("production codex argv constrains nothing about the shape of the final message", () => {
   const argv = buildRunnerArgv(
-    profile,
+    {
+      schemaVersion: 1,
+      profileId: "codex-standard",
+      runnerType: "codex",
+      executable: "codex",
+      accountAlias: "default",
+      quotaPoolId: "pool",
+      tier: "standard",
+      model: "gpt-5.5",
+      effort: "standard",
+      capabilities: ["repository-read"],
+      wallClockMs: 60_000,
+      redactionRules: [],
+    },
     {
       jobId: "job-1",
       taskId: "QK-1",
-      role: "implementer",
+      role: "reviewer",
       route: { profileId: "codex-standard", runnerType: "codex", tier: "standard", effort: "standard", quotaPoolId: "pool" },
       briefPath: "/tmp/artifacts/job-1/brief.md",
       worktreePath: "/tmp/worktree",
@@ -168,38 +120,14 @@ test("codex dispatch argv references an existing result envelope schema", () => 
     "# brief\n",
   );
 
-  const schemaPath = flagValue(argv, "--output-schema");
-  assert.equal(schemaPath, codexResultSchemaPath());
-  assert.equal(statSync(schemaPath ?? "").isFile(), true);
-
-  const schema = JSON.parse(readFileSync(schemaPath ?? "", "utf8")) as {
-    required?: string[];
-    additionalProperties?: boolean;
-    properties?: Record<string, { enum?: string[] }>;
-  };
-  assert.deepEqual(Object.keys(schema.properties ?? {}).toSorted(), [
-    "artifactPaths",
-    "failure",
-    "sessionHandle",
-    "status",
-    "verdict",
-  ]);
-  assert.deepEqual([...(schema.required ?? [])].toSorted(), [
-    "artifactPaths",
-    "failure",
-    "sessionHandle",
-    "status",
-    "verdict",
-  ]);
-  assert.equal(schema.additionalProperties, false);
-  assert.deepEqual([...(schema.properties?.["status"]?.enum ?? [])].toSorted(), [
-    "cancelled",
-    "failure",
-    "permission_denied",
-    "success",
-    "timeout",
-    "usage_limit",
-  ]);
+  // A reviewer under --output-schema had nowhere to put its reasoning: its
+  // final message *was* the envelope. It put a Critical finding into a
+  // 256-character sessionHandle, truncated mid-sentence. Nothing in the argv
+  // may constrain the final message again.
+  assert.equal(argv.includes("--output-schema"), false);
+  assert.equal(argv.includes("-o"), false);
+  // The event stream stays: it is the transcript, not a result contract.
+  assert.equal(argv.includes("--json"), true);
 });
 
 test("codexPromptText points at the brief path for oversized or unreadable briefs", () => {
@@ -210,25 +138,27 @@ test("codexPromptText points at the brief path for oversized or unreadable brief
   assert.match(codexPromptText("/tmp/brief.md", undefined), /\/tmp\/brief\.md/);
 });
 
-test("buildCodexResumeArgv keeps the result contract and continue prompt", () => {
+test("buildCodexResumeArgv keeps the workspace binding and continue prompt, and constrains no output", () => {
   const argv = buildCodexResumeArgv({
     executable: "/usr/bin/codex",
     workspace: "/tmp/worktree",
     sessionHandle: "codex-session-123",
     briefPath: "artifacts/job-1/brief.md",
-    resultPath: "artifacts/job-1/result.json",
-    schemaPath: "schemas/codex-result.schema.json",
-    capabilities: ["repository-read", "repository-write"],
+        capabilities: ["repository-read", "repository-write"],
     effort: "standard",
   });
 
   assert.deepEqual(argv.slice(0, 2), ["/usr/bin/codex", "exec"]);
   assert.equal(flagValue(argv, "-s"), "workspace-write");
   assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=medium");
-  assert.equal(flagValue(argv, "--output-schema"), "schemas/codex-result.schema.json");
+  // Measured 2026-07-24: under --output-schema codex emitted 0 prose messages
+  // and smuggled a Critical finding into a 256-character transport field; the
+  // same brief without it produced 8 substantive messages including two real
+  // Criticals. The flag is dropped, not made optional (QK-RUN-009).
+  assert.equal(argv.includes("--output-schema"), false);
+  assert.equal(argv.includes("-o"), false);
   assert.equal(flagValue(argv, "--color"), "never");
   assert.equal(argv.includes("--json"), true);
-  assert.equal(flagValue(argv, "-o"), "artifacts/job-1/result.json");
 
   const resumeIndex = argv.indexOf("resume");
   assert.notEqual(resumeIndex, -1);
@@ -245,9 +175,7 @@ test("buildCodexResumeArgv maps read-only sandbox and honors an explicit continu
     workspace: "/tmp/worktree",
     sessionHandle: "codex-session-123",
     briefPath: "artifacts/job-1/brief.md",
-    resultPath: "artifacts/job-1/result.json",
-    schemaPath: "schemas/codex-result.schema.json",
-    capabilities: ["repository-read"],
+        capabilities: ["repository-read"],
     effort: "mechanical",
     continuePrompt: "Wrap up now.",
   });
@@ -255,205 +183,4 @@ test("buildCodexResumeArgv maps read-only sandbox and honors an explicit continu
   assert.equal(flagValue(argv, "-s"), "read-only");
   assert.equal(flagValue(argv, "-c"), "model_reasoning_effort=low");
   assert.equal(argv.at(-1), "Wrap up now.");
-});
-
-test("parseCodexResult requires declared artifact evidence and ignores transcript prose", () => {
-  const result = parseCodexResult("done\nsession: prose-only\n", {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {},
-  });
-
-  assert.equal(result.status, "failure");
-  assert.equal(result.sessionHandle, undefined);
-  assert.deepEqual(result.artifactPaths, []);
-  assert.match(result.failure ?? "", /Missing Codex result artifact/);
-});
-
-test("parseCodexResult reads status, session, and artifact paths from the declared artifact", () => {
-  const result = parseCodexResult("transcript noise\n", {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {
-      "artifacts/job-1/result.json": JSON.stringify({
-        status: "success",
-        sessionHandle: "codex-session-456",
-        artifactPaths: ["artifacts/job-1/result.json", "artifacts/job-1/patch.diff"],
-      }),
-    },
-  });
-
-  assert.deepEqual(result, {
-    status: "success",
-    verdict: undefined,
-    sessionHandle: "codex-session-456",
-    artifactPaths: ["artifacts/job-1/result.json", "artifacts/job-1/patch.diff"],
-    failure: undefined,
-    notes: [],
-  });
-});
-
-/**
- * The envelope `status` is transport ("did the job run"); `verdict` is judgment
- * ("what did the reviewer decide"). Before they were separated, a reviewer
- * recommending revision could only write status:"failure", which the supervisor
- * read as a crashed runner and retried — the failed cmp-uimotion-1 campaign
- * retried exactly that way until BUDGET_EXCEEDED, with a complete, well-formed
- * review sitting in the `failure` field. See QK-RUN-008.
- */
-test("parseCodexResult carries a revise verdict as a completed review, not a runner failure", () => {
-  const result = parseCodexResult("transcript noise\n", {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {
-      "artifacts/job-1/result.json": JSON.stringify({
-        status: "success",
-        verdict: "revise",
-        sessionHandle: "codex-session-456",
-        artifactPaths: ["artifacts/job-1/result.json"],
-        failure: null,
-      }),
-    },
-  });
-
-  assert.equal(result.status, "success", "the runner job itself ran to completion");
-  assert.equal(result.verdict, "revise", "the reviewer's judgment must survive transport");
-  assert.equal(result.failure, undefined, "a revise verdict is not a runner failure");
-});
-
-/**
- * The schema tells reviewers to list the envelope itself in artifactPaths, but
- * the 2026-07-24 probe showed two of three codex models writing an explicit
- * empty array anyway. Evidence that a review ran cannot depend on the model
- * remembering to cite it: the declared envelope, which we just read, is that
- * evidence. An absent field already defaulted this way; an explicit [] now
- * matches, so an accepting reviewer that changed no files is not failed for
- * having produced nothing.
- */
-test("parseCodexResult counts the declared envelope as evidence when the model omits it", () => {
-  const result = parseCodexResult("", {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {
-      "artifacts/job-1/result.json": JSON.stringify({
-        status: "success",
-        verdict: "accept",
-        sessionHandle: "s",
-        artifactPaths: [],
-        failure: null,
-      }),
-    },
-  });
-
-  assert.equal(result.status, "success");
-  assert.equal(result.verdict, "accept");
-  assert.deepEqual(result.artifactPaths, ["artifacts/job-1/result.json"]);
-});
-
-test("parseCodexResult carries an accept verdict", () => {
-  const result = parseCodexResult("", {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {
-      "artifacts/job-1/result.json": JSON.stringify({
-        status: "success",
-        verdict: "accept",
-        sessionHandle: "s",
-        artifactPaths: ["artifacts/job-1/result.json"],
-        failure: null,
-      }),
-    },
-  });
-
-  assert.equal(result.status, "success");
-  assert.equal(result.verdict, "accept");
-});
-
-// An implementer job has no verdict to give; only reviewers judge.
-test("parseCodexResult leaves the verdict undefined when the envelope carries none", () => {
-  const result = parseCodexResult("", {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {
-      "artifacts/job-1/result.json": JSON.stringify({
-        status: "success",
-        verdict: null,
-        sessionHandle: "s",
-        artifactPaths: ["artifacts/job-1/result.json"],
-        failure: null,
-      }),
-    },
-  });
-
-  assert.equal(result.status, "success");
-  assert.equal(result.verdict, undefined);
-});
-
-const threadStartedEvent = JSON.stringify({ type: "thread.started", thread_id: "thread-789" });
-
-test("parseCodexResult captures the session handle from --json events when the envelope omits it", () => {
-  const result = parseCodexResult(`${threadStartedEvent}\n{"type":"turn.completed"}\n`, {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {
-      "artifacts/job-1/result.json": JSON.stringify({
-        status: "success",
-        artifactPaths: ["artifacts/job-1/result.json"],
-      }),
-    },
-  });
-
-  assert.equal(result.status, "success");
-  assert.equal(result.sessionHandle, "thread-789");
-  assert.deepEqual(result.notes, []);
-});
-
-test("parseCodexResult prefers the JSONL session handle and notes envelope disagreement", () => {
-  const result = parseCodexResult(`${threadStartedEvent}\n`, {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {
-      "artifacts/job-1/result.json": JSON.stringify({
-        status: "success",
-        sessionHandle: "self-reported-session",
-        artifactPaths: ["artifacts/job-1/result.json"],
-      }),
-    },
-  });
-
-  assert.equal(result.status, "success");
-  assert.equal(result.sessionHandle, "thread-789");
-  assert.deepEqual(result.notes, ["session_handle_mismatch"]);
-});
-
-test("parseCodexResult keeps the JSONL session handle when the result artifact is missing", () => {
-  const result = parseCodexResult(`${threadStartedEvent}\n`, {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {},
-  });
-
-  assert.equal(result.status, "failure");
-  assert.equal(result.sessionHandle, "thread-789");
-  assert.match(result.failure ?? "", /Missing Codex result artifact/);
-});
-
-test("parseCodexResult classifies usage-limit stream errors when the envelope is absent", () => {
-  const stdout = [
-    threadStartedEvent,
-    JSON.stringify({ type: "error", message: "You've hit your usage limit." }),
-  ].join("\n");
-  const result = parseCodexResult(`${stdout}\n`, {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {},
-  });
-
-  assert.equal(result.status, "usage_limit");
-  assert.equal(result.sessionHandle, "thread-789");
-  assert.match(result.failure ?? "", /usage limit/i);
-});
-
-test("parseCodexResult classifies interrupted turns when the envelope is absent", () => {
-  const stdout = [
-    threadStartedEvent,
-    JSON.stringify({ type: "turn.failed", error: { message: "Turn interrupted" } }),
-  ].join("\n");
-  const result = parseCodexResult(`${stdout}\n`, {
-    declaredResultPath: "artifacts/job-1/result.json",
-    files: {},
-  });
-
-  assert.equal(result.status, "cancelled");
-  assert.match(result.failure ?? "", /interrupted/i);
 });

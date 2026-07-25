@@ -276,6 +276,13 @@ test("the interpretation record is retained and names the evidence it rests on",
   assert.equal(record.checks.attempts, 1);
 });
 
+test("the record carries what the interpretation cost, so the cheap-tier claim stays measured", async () => {
+  const { interpreter } = interpreterWith([ok(agentStdout(report()))]);
+  const result = await interpreter.interpret(await facts(), await fixture("claude-reviewer-revise.jsonl"));
+  const record = JSON.parse(await readFile(result.interpretationPath!, "utf8")) as { interpreterCostUsd: number };
+  assert.equal(record.interpreterCostUsd, 0.0049);
+});
+
 test("a failed interpretation still retains its record, so the failure is auditable too", async () => {
   const { interpreter } = interpreterWith([ok("not json at all")]);
   const result = await interpreter.interpret(await facts(), await fixture("claude-reviewer-revise.jsonl"));

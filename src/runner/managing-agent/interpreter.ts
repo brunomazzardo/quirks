@@ -153,7 +153,9 @@ interface AgentEvent {
  * Read the agent's own envelope: `-p --output-format json` emits a JSON array
  * of events whose terminal `result` carries the validated `structured_output`.
  */
-function readAgentReport(stdout: string): { report: ManagingAgentReport } | { error: string } {
+function readAgentReport(
+  stdout: string,
+): { report: ManagingAgentReport; costUsd: number | undefined } | { error: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout.trim());
@@ -177,7 +179,8 @@ function readAgentReport(stdout: string): { report: ManagingAgentReport } | { er
   if (!report) {
     return { error: "the managing agent's answer did not match the required result schema" };
   }
-  return { report };
+  const cost = (terminal as { total_cost_usd?: unknown }).total_cost_usd;
+  return { report, costUsd: typeof cost === "number" ? cost : undefined };
 }
 
 async function listArtifactFiles(artifactDir: string): Promise<readonly string[]> {
@@ -335,6 +338,8 @@ interface InterpretationRecord {
   briefVersion: number;
   transcriptPath: string | undefined;
   transcriptBytes: number;
+  /** What this interpretation cost, so "cheap beside the job" stays a measurement. */
+  interpreterCostUsd: number | undefined;
   report: ManagingAgentReport | null;
   verdict: InterpretedResult["verdict"] | null;
   checks: {
@@ -410,7 +415,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
         ...outcome.reconciled.checks,
         attempts: attempt,
         rejections,
-      }, outcome.reconciled.verdict ?? null);
+      }, outcome.reconciled.verdict ?? null, read.costUsd);
 
       const { reconciled } = outcome;
       return {
@@ -472,6 +477,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
     report: ManagingAgentReport | null,
     checks: InterpretationRecord["checks"],
     verdict: InterpretedResult["verdict"] | null,
+    costUsd?: number,
   ): Promise<string | undefined> {
     const record: InterpretationRecord = {
       schemaVersion: 1,
@@ -482,6 +488,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
       briefVersion: MANAGING_AGENT_BRIEF_VERSION,
       transcriptPath: facts.transcriptPath,
       transcriptBytes: Buffer.byteLength(transcript, "utf8"),
+      interpreterCostUsd: costUsd,
       report,
       verdict,
       checks,
