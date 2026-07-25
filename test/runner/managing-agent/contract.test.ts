@@ -7,6 +7,7 @@ import {
   parseManagingAgentReport,
   quoteSupportedByTranscript,
 } from "../../../src/runner/managing-agent/contract.js";
+import { transcriptAllText } from "../../../src/runner/transcript.js";
 
 function fixture(name: string): Promise<string> {
   return readFile(path.resolve("test/fixtures/real-transcripts", name), "utf8");
@@ -95,6 +96,63 @@ test("re-wrapped whitespace does not break support, because line wrapping is not
     quoteSupportedByTranscript("**Revise.**    I don't think this should be\n accepted as it stands.", transcript),
     true,
   );
+});
+
+/**
+ * Raised as a Critical by the independent cursor review, 2026-07-25, and
+ * confirmed by measurement: the reviewer's brief is *in* the transcript,
+ * because the reviewer opened it with a tool and the tool result was printed.
+ * Reviewer briefs necessarily contain words like "accept" and "revise", so
+ * counting them as the reviewer's own speech let an invented verdict quote the
+ * instructions — silent wrong acceptance, through the one check meant to
+ * prevent it.
+ */
+test("text from the brief the reviewer read cannot support a verdict", async () => {
+  const transcript = await fixture("claude-reviewer-revise.jsonl");
+  // The reviewer opened its brief with a tool, so the brief's own words are in
+  // the transcript. Measured: this phrase was found by the previous check and
+  // is refused by this one.
+  const briefInstruction = "Report every defect you find, with file and line references.";
+  assert.equal(
+    transcriptAllText(transcript).includes(briefInstruction),
+    true,
+    "guard: the brief really is in this transcript",
+  );
+  assert.equal(quoteSupportedByTranscript(briefInstruction, transcript), false);
+});
+
+test("a reviewer job that only described the file cannot have a verdict quoted from its brief", async () => {
+  const transcript = await fixture("claude-no-judgment.jsonl");
+  const briefInstruction = "Do not evaluate its quality, do not look for defects, and do not make any";
+  assert.equal(transcriptAllText(transcript).includes(briefInstruction), true, "guard");
+  assert.equal(quoteSupportedByTranscript(briefInstruction, transcript), false);
+});
+
+/**
+ * Also raised as a Critical, also confirmed. "this should be accepted as it
+ * stands" is a contiguous span inside "I don't think this should be accepted as
+ * it stands". Presence alone cannot tell the two apart, so a quote must at least
+ * start where a sentence starts.
+ */
+test("a fragment lifted out of the middle of a negation cannot support a verdict", async () => {
+  const transcript = await fixture("claude-reviewer-revise.jsonl");
+  assert.equal(quoteSupportedByTranscript("this should be accepted as it stands.", transcript), false);
+});
+
+test("the reviewer's own recommendation still supports its verdict", async () => {
+  // The fix must not make correct verdicts unverifiable: this is the real
+  // sentence, starting where the reviewer started it.
+  const transcript = await fixture("claude-reviewer-revise.jsonl");
+  assert.equal(quoteSupportedByTranscript(REVISE_QUOTE, transcript), true);
+});
+
+test("a quote cannot be stitched across two separate messages", async () => {
+  const transcript = [
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "The loop bound is wrong." }] } }),
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Accept as it stands anyway." }] } }),
+  ].join("\n");
+  assert.equal(quoteSupportedByTranscript("The loop bound is wrong. Accept as it stands anyway.", transcript), false);
+  assert.equal(quoteSupportedByTranscript("Accept as it stands anyway.", transcript), true);
 });
 
 test("an empty or whitespace-only quote is never supported", () => {

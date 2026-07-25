@@ -67,7 +67,14 @@ function statedRecommendation(transcript) {
     if (/\brevise\b/i.test(value)) return { verdict: "revise", quote: value };
   }
   for (const value of strings.toReversed()) {
-    if (/\baccept(ed|s)?\b/i.test(value)) return { verdict: "accept", quote: value };
+    // An explicit recommendation, not the mere presence of the word: a reviewer
+    // writing "I don't think this should be accepted" says the opposite, and a
+    // fake that reads it as approval would hide the exact misread this layer
+    // exists to prevent. Raised by the independent cursor review, 2026-07-25.
+    if (/\b(don't|do not|cannot|can't|should not|shouldn't|not)\b[^.!?]{0,60}\baccept/i.test(value)) continue;
+    if (/\baccept\b[^.!?]{0,40}\b(as it stands|this|the change|it)\b/i.test(value)) {
+      return { verdict: "accept", quote: value };
+    }
   }
   return undefined;
 }

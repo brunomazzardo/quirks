@@ -172,6 +172,22 @@ async function writeTranscript(
   }
 }
 
+/** Whatever the child said before it failed, retained on a best-effort basis. */
+async function salvageTranscript(
+  input: DispatchRunnerJobInput,
+  stdoutPromise: Promise<StreamCollectResult> | undefined,
+): Promise<readonly string[]> {
+  if (!stdoutPromise) return [];
+  try {
+    const collected = await stdoutPromise;
+    const transcript = retainableTranscript(collected.buffer.toString("utf8"));
+    const retained = await writeTranscript(input.artifactDir, input.jobId, transcript);
+    return retained ? [retained] : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<RunnerJobResult> {
   const sessionId = extractFlagValue(input.argv, "--session-id");
   const base = {
@@ -188,6 +204,10 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
   let child: ChildProcess | undefined;
   let timedOut = false;
   let terminationTimer: NodeJS.Timeout | undefined;
+  // Held outside the try so the failure paths can still retain what the runner
+  // managed to say: a job that died mid-stream is one an operator has to be
+  // able to read.
+  let stdoutPromise: Promise<StreamCollectResult> | undefined;
 
   const terminateChild = () => {
     child?.kill("SIGTERM");
@@ -216,7 +236,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       return failureResult(base, "failure", "spawn_error", "Runner child is missing stdout or stderr pipes");
     }
 
-    const stdoutPromise = collectBoundedStream(activeChild.stdout, MAX_STDOUT_BYTES);
+    stdoutPromise = collectBoundedStream(activeChild.stdout, MAX_STDOUT_BYTES);
     const stderrPromise = collectBoundedStream(activeChild.stderr, MAX_STDERR_BYTES);
 
     const [exitCode, stdoutResult, stderrResult] = await new Promise<
@@ -224,7 +244,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
     >((resolve, reject) => {
       child!.once("error", reject);
       activeChild.once("close", (code) => {
-        Promise.all([stdoutPromise, stderrPromise])
+        Promise.all([stdoutPromise!, stderrPromise])
           .then(([stdoutCollected, stderrCollected]) => {
             resolve([code, stdoutCollected, stderrCollected]);
           })
@@ -310,20 +330,29 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
         ? [...parsed.artifactPaths, retainedTranscript]
         : parsed.artifactPaths,
       ...(parsed.failure !== undefined ? { failure: parsed.failure } : {}),
-      ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
+      // A transcript that could not be written is stated rather than silently
+      // missing: every verdict here is checked against a transcript, so its
+      // absence changes what the result can be trusted for.
+      notes: retainedTranscript === undefined && transcript.length > 0
+        ? [...(parsed.notes ?? []), "transcript_not_retained"]
+        : (parsed.notes ?? []),
     });
   } catch (error) {
+    // Retain here too. A spawn or stream error after the child has already
+    // spoken is exactly the case where its own words explain the failure.
+    const salvaged = await salvageTranscript(input, stdoutPromise);
     if (timedOut) {
       return failureResult(
         base,
         "timeout",
         "runner_timeout",
         `Runner exceeded wall-clock timeout of ${input.timeoutMs}ms`,
+        salvaged,
       );
     }
 
     const message = error instanceof Error ? error.message : "Runner dispatch failed";
-    return failureResult(base, "failure", "spawn_error", message);
+    return failureResult(base, "failure", "spawn_error", message, salvaged);
   } finally {
     clearTimeout(timeoutTimer);
     if (terminationTimer) clearTimeout(terminationTimer);

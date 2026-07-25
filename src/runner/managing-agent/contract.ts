@@ -227,35 +227,92 @@ const TYPOGRAPHIC_REPLACEMENTS: readonly (readonly [RegExp, string])[] = [
   [/…/g, "..."],
 ];
 
-function normalizeQuoteText(value: string): string {
+function foldPresentation(value: string): string {
   let normalized = value.normalize("NFKC");
   for (const [pattern, replacement] of TYPOGRAPHIC_REPLACEMENTS) {
     normalized = normalized.replaceAll(pattern, replacement);
   }
-  return normalized
-    .replaceAll(PRESENTATION_CHARACTERS, "")
-    .replaceAll(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+  return normalized.replaceAll(PRESENTATION_CHARACTERS, "").toLowerCase();
+}
+
+function normalizeQuoteText(value: string): string {
+  return foldPresentation(value).replaceAll(/\s+/g, " ").trim();
+}
+
+/** Characters that end a sentence, so what follows begins one. */
+const SENTENCE_TERMINATORS = new Set([".", "!", "?", ":", ";"]);
+
+interface NormalizedHaystack {
+  text: string;
+  /** Offsets in `text` where a sentence, line, or message begins. */
+  starts: ReadonlySet<number>;
+}
+
+/**
+ * Normalize the haystack while remembering where sentences begin.
+ *
+ * Whitespace has to collapse — line wrapping is not evidence — but collapsing it
+ * also erases the difference between "…think this should be accepted" and a
+ * sentence that starts with "This should be accepted". Recording the starts as
+ * offsets keeps both properties at once.
+ */
+function normalizeHaystack(value: string): NormalizedHaystack {
+  const folded = foldPresentation(value);
+  const starts = new Set<number>([0]);
+  let text = "";
+  let pendingBoundary = true;
+  let sawWhitespace = false;
+  let lastMeaningful = "";
+
+  for (const character of folded) {
+    if (/\s/.test(character)) {
+      sawWhitespace = true;
+      if (character === "\n" || character === "\r") pendingBoundary = true;
+      continue;
+    }
+    if (text.length > 0 && sawWhitespace) text += " ";
+    if (pendingBoundary || SENTENCE_TERMINATORS.has(lastMeaningful)) starts.add(text.length);
+    text += character;
+    lastMeaningful = character;
+    pendingBoundary = false;
+    sawWhitespace = false;
+  }
+
+  return { text, starts };
 }
 
 /**
  * Whether a quote genuinely appears in the transcript it claims to come from.
  *
  * This is the mechanism behind "a verdict must be traceable": an interpretation
- * that cannot point at the runner's own words is not an interpretation. Line
- * wrapping, markdown, typographic quotes, and case are normalized away, because
- * none of them are evidence; the words themselves and their order are.
+ * that cannot point at the runner's own words is not an interpretation. Three
+ * things have to hold, and each closes a way an accept could be manufactured:
  *
- * What this checks is presence, not meaning. A quote lifted out of a negation
- * would still be found, so this is a floor under fabrication rather than a
- * guarantee of correct reading; the reading is the model's job, and the
- * retained transcript is what lets a human check it. The real-CLI gate measures
- * the reading itself, against a fixture whose reviewer wrote "I don't think
- * this should be accepted as it stands".
+ * 1. The words must come from the runner's own messages, not from the brief it
+ *    was handed or a file it read. Reviewer briefs say things like "accept the
+ *    code as it stands, or revise it"; quoting the instructions is not evidence
+ *    of a judgment.
+ * 2. The quote must begin where a sentence begins. "this should be accepted as
+ *    it stands" is a contiguous span inside "I don't think this should be
+ *    accepted as it stands", and presence alone cannot tell those apart.
+ * 3. Line wrapping, markdown, typographic quotes, and case are forgiven,
+ *    because none of them are evidence; the words and their order are.
+ *
+ * Both of the first two were raised as Criticals by the independent cursor
+ * review of this change and confirmed against the committed real transcripts.
+ *
+ * What remains unchecked is meaning: a model that quotes a whole negated
+ * sentence and calls it an accept would pass. That is the reading, which is the
+ * model's job — measured by the real-CLI gate against a reviewer who wrote "I
+ * don't think this should be accepted as it stands" — and the retained
+ * transcript is what lets a human check it after the fact.
  */
 export function quoteSupportedByTranscript(quote: string, transcript: string): boolean {
   const needle = normalizeQuoteText(quote);
   if (needle.replaceAll(/\s/g, "").length < MIN_QUOTE_SIGNIFICANT_CHARS) return false;
-  return normalizeQuoteText(transcriptQuoteHaystack(transcript)).includes(needle);
+  const haystack = normalizeHaystack(transcriptQuoteHaystack(transcript));
+  for (let index = haystack.text.indexOf(needle); index !== -1; index = haystack.text.indexOf(needle, index + 1)) {
+    if (haystack.starts.has(index)) return true;
+  }
+  return false;
 }

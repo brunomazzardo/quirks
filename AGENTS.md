@@ -9,14 +9,33 @@ Quirks is a project-agnostic local control plane for planning, dispatching, obse
 - Specs, plans, commits, PRs, and reports are referenced by path/commit/URL. Do not copy their full bodies into task JSON.
 - Real external execution must be bound to an approved campaign envelope, configured runner profile, budget, worktree, and independent review.
 
-## Current state (2026-07-24, post runner repair)
+## Current state (2026-07-25, post managing-agent runner layer)
 
-The real-CLI runner repair `QK-RUN-007`/`QK-RUN-008` is merged to `main` (merge `e65be67`). All three agent CLIs now dispatch, return a result envelope, and carry a reviewer verdict: a real-binary probe went from 4/9 configured profiles to 9/9, and four reviewers across three vendors returned `revise` on defective code and `accept` on correct code, read back through the production parsers. Evidence: `docs/smoke/2026-07-24-runner-boundary-probe.md`.
+The managing-agent runner layer `QK-RUN-009` is implemented on the branch
+`worktree-qk-run-009-managing-agent` and **not yet merged**. The runner now
+splits in two: a launcher that only knows how to start codex, cursor, and claude
+correctly, and a managing agent — one sonnet subprocess per job — that reads the
+retained transcript and produces the structured `RunnerJobResult`. No CLI is
+asked for an envelope any more, and `--output-schema` is gone rather than
+optional. Evidence: `docs/smoke/2026-07-25-managing-agent-probe.md`.
 
-The defects fixed there are worth knowing, because they set the standard for what counts as evidence here: cursor was sent a `--file` flag that does not exist; claude's brief was swallowed by a variadic `--add-dir`; claude depended on a machine-local `verbose` setting; claude had no result contract and a shared result path; a reviewer's verdict had no channel, so `revise` was retried as a crash until the budget drained; no runner was bound to its worktree; a stale envelope could make a failed run succeed. **Every one was invisible to a fully green test suite.**
+The honesty properties this rests on, in the order they matter:
+
+- The agent reports what a runner said. It never judges the work and cannot accept.
+- A verdict must quote the runner's own words, and Quirks verifies the quote
+  against the retained transcript: only the runner's own messages count (not the
+  brief it read), and a quote must begin where a sentence begins.
+- Absence fails closed to `indeterminate`. Nothing maps absence to `accept`.
+- The transcript is always retained, including when a run times out or floods.
+- The agent launches with `--tools ""`, no MCP, no settings, and no skills, so
+  read-only is mechanical rather than promised — and costs $0.0049 instead of
+  $0.145 a call.
+
+The real-CLI runner repair `QK-RUN-007`/`QK-RUN-008` is merged to `main` (merge `e65be67`). Its defects are worth knowing, because they set the standard for what counts as evidence here: cursor was sent a `--file` flag that does not exist; claude's brief was swallowed by a variadic `--add-dir`; claude depended on a machine-local `verbose` setting; claude had no result contract and a shared result path; a reviewer's verdict had no channel, so `revise` was retried as a crash until the budget drained; no runner was bound to its worktree; a stale envelope could make a failed run succeed. **Every one was invisible to a fully green test suite.**
 
 Honest remaining gaps — do not claim a release until these clear:
 
+- The `QK-RUN-009` real-CLI gate covers **6 of 9 profiles**. codex is usage-limited until Jul 28 2026 2:02 PM, so its three cells are owed, never passing. The strict-path deletion has also not been reviewed by codex, which found the most across the five rounds that informed the runner repair.
 - Real host×runner smoke matrix best recorded run is 4/9 cells passed (`docs/smoke/2026-host-matrix.md`); ledger tasks `QK-HOST-004A/B/C` stay `blocked`. This predates the runner repair and is worth re-running.
 - The bounded real campaign is harness-only (`docs/smoke/bounded-campaign-report.md`); `QK-HOST-005A/B` and `QK-RELEASE-REV` stay `blocked`.
 - Campaign completion is memory-only: a run reports `completed` while the durable campaign stays `running` and its tasks stay `claimed`, and budgets reset every invocation (`QK-CTL-012`, P0). Do not trust a reported completion as durable state.
@@ -27,7 +46,7 @@ Nothing has been pushed to any remote. The push gate remains the owner's.
 
 Until the transition criteria in `references/dogfood.md` pass, use the documented Superpowers bootstrap for parent orchestration. Quirks CLIs remain the only mechanical task/campaign authority.
 
-Active workstreams are planned in `docs/superpowers/plans/2026-07-22-post-repair-workstreams.md`. The next architectural step is the managing-agent runner layer, specified in `docs/superpowers/specs/2026-07-24-managing-agent-runner-design.md` (`QK-RUN-009`) and awaiting three owner decisions at its design gate.
+Active workstreams are planned in `docs/superpowers/plans/2026-07-22-post-repair-workstreams.md`. The managing-agent runner layer is specified in `docs/superpowers/specs/2026-07-24-managing-agent-runner-design.md` and planned in `docs/superpowers/plans/2026-07-24-qk-run-009-managing-agent-runner.md`; its design gate is closed with the owner's three decisions.
 
 ## Evidence standard for runner work
 
@@ -35,7 +54,8 @@ Fake-runner tests cannot observe CLI flag validity, sandbox behaviour, or output
 
 - Never accept runner work on fake-runner evidence alone. Probe the real binaries by building argv with the production `buildRunnerArgv` and executing it.
 - A green exit code is not a green result: inspect the envelope body, not just the status.
-- `--output-schema` suppresses codex's reasoning entirely. Measured: 0 prose messages with it, 8 without. Do not constrain a reviewer's final message and then wonder where its findings went.
+- `--output-schema` suppresses codex's reasoning entirely. Measured: 0 prose messages with it, 8 without. It is now **dropped from the launcher and must stay dropped** — do not constrain a reviewer's final message and then wonder where its findings went.
+- Interpretation is a model reading a transcript, so it varies. Measure it rather than assuming: the same codex usage-limit transcript was classified `failure` in one run and `usage_limit` in the next until the brief named the specific values, after which 5/5 runs agreed.
 - Runner transcripts are retained as redacted job evidence; read them when a verdict looks unexplained.
 
 ## Required development discipline
