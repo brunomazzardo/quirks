@@ -232,6 +232,15 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       });
     });
 
+    // Retain before deciding anything, including before the early returns for
+    // timeout and overflow. A run that was killed at its wall clock is exactly
+    // the one an operator needs to read, and the real-CLI probe caught a cursor
+    // implementer timing out with its whole transcript discarded. It is also
+    // what any later interpretation is checked against.
+    const transcript = retainableTranscript(stdoutResult.buffer.toString("utf8"));
+    const retainedTranscript = await writeTranscript(input.artifactDir, input.jobId, transcript);
+    const retainedPaths = retainedTranscript ? [retainedTranscript] : [];
+
     if (stdoutResult.overflow || stderrResult.overflow) {
       return failureResult(
         base,
@@ -240,6 +249,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
         stdoutResult.overflow
           ? `stdout exceeded ${MAX_STDOUT_BYTES} bytes`
           : `stderr exceeded ${MAX_STDERR_BYTES} bytes`,
+        retainedPaths,
       );
     }
 
@@ -249,15 +259,9 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
         "timeout",
         "runner_timeout",
         `Runner exceeded wall-clock timeout of ${input.timeoutMs}ms`,
+        retainedPaths,
       );
     }
-
-    // Retain the transcript before interpreting it. A read-only codex reviewer
-    // cannot write a findings file, so this is frequently the only place its
-    // reasoning exists — and it is what any later interpretation is checked
-    // against.
-    const transcript = retainableTranscript(stdoutResult.buffer.toString("utf8"));
-    const retainedTranscript = await writeTranscript(input.artifactDir, input.jobId, transcript);
 
     const facts: RunnerJobFacts = {
       jobId: input.jobId,

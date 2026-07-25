@@ -75,6 +75,64 @@ test("dispatch classifies hung runners as timeout without interpreting anything"
   assert.equal(interpreter.facts.length, 0);
 });
 
+/**
+ * Found by the real-CLI probe, not by a unit test: a cursor implementer hit its
+ * 30-minute wall clock and the result carried no transcript at all, because the
+ * launcher returned on timeout before retaining anything. A timed-out run is
+ * precisely when an operator needs to see how far the runner got — and "the raw
+ * transcript is always retained" is the honesty constraint the whole
+ * interpretation layer rests on.
+ */
+test("a timed-out runner still retains everything it managed to say", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const script = path.join(artifactDir, "slow.mjs");
+  await writeFile(
+    script,
+    'process.stdout.write("I started the work and got this far\\n");\nsetInterval(() => {}, 1000);\n',
+    "utf8",
+  );
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-slow",
+    profile: fakeProfile,
+    argv: [process.execPath, script],
+    artifactDir,
+    timeoutMs: 400,
+    interpreter: new StubInterpreter(),
+  });
+
+  assert.equal(result.status, "timeout");
+  const retained = result.artifactPaths.find((entry) => entry.includes("transcript-"));
+  assert.ok(retained, "a timeout must not discard what the runner already said");
+  assert.match(await readFile(retained, "utf8"), /I started the work and got this far/);
+});
+
+test("a runner that overflowed the output bound still retains the tail it produced", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const script = path.join(artifactDir, "flood.mjs");
+  await writeFile(
+    script,
+    'process.stdout.write("x".repeat(17 * 1024 * 1024));\n',
+    "utf8",
+  );
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-flood",
+    profile: fakeProfile,
+    argv: [process.execPath, script],
+    artifactDir,
+    timeoutMs: 10_000,
+    interpreter: new StubInterpreter(),
+  });
+
+  assert.equal(result.status, "failure");
+  assert.equal(result.failure?.code, "output_limit_exceeded");
+  assert.ok(
+    result.artifactPaths.some((entry) => entry.includes("transcript-")),
+    "an overflowing runner is still evidence of what it was doing",
+  );
+});
+
 test("dispatch refuses argv without an executable", async () => {
   const result = await dispatchRunnerJob({
     jobId: "job-empty",
