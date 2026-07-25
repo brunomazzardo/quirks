@@ -18,7 +18,8 @@ import {
   type NormalizedTaskRecord,
 } from "./task-brief.js";
 import type { CampaignApproval, CampaignEnvelope, CampaignStatus } from "./types.js";
-import { resultContractPath, reviewerAcceptedAttempt } from "../runner/result-contract.js";
+import { reviewerAcceptedAttempt } from "../runner/result-contract.js";
+import { sanitizeInlineEvidence } from "../prompt/untrusted-content.js";
 import type { RunnerJobResult, RunnerProfile } from "../runner/types.js";
 import type { RepositoryLockHandle } from "../state/types.js";
 import { RepositoryLock } from "../state/repository-lock.js";
@@ -188,6 +189,27 @@ async function loadNormalizedTask(
     );
   }
   return { ...facts, parallelismKeys: data.execution.parallelismKeys ?? [] };
+}
+
+/** The provenance schema's bound for `outcomeReason`. */
+const MAX_OUTCOME_REASON_CHARS = 512;
+const MAX_OUTCOME_EVIDENCE_CHARS = 400;
+
+/**
+ * How a completed review is named in the ledger, with the reviewer's own words.
+ *
+ * The verdict alone tells an operator what happened; the quote tells them why,
+ * and it is the one place that survives the artifact directory. It arrives as
+ * third-party model output, so it is flattened to a single bounded line before
+ * it can pose as ledger structure (QK-RUN-009).
+ */
+function reviewOutcomeReason(reviewer: RunnerJobResult): string {
+  const verdict = reviewer.verdict ?? "indeterminate";
+  const evidence = reviewer.verdictEvidence
+    ? sanitizeInlineEvidence(reviewer.verdictEvidence, MAX_OUTCOME_EVIDENCE_CHARS)
+    : "";
+  const reason = evidence.length > 0 ? `review_${verdict}: ${evidence}` : `review_${verdict}`;
+  return reason.slice(0, MAX_OUTCOME_REASON_CHARS);
 }
 
 function elapsedMs(startedAt: string, finishedAt: string): number {
@@ -592,26 +614,6 @@ export class CampaignSupervisor {
     };
   }
 
-  /**
-   * Job-bound result contract for runners without mechanical envelope
-   * enforcement. Cursor has no --output-schema/-o equivalent, so its brief must
-   * state the exact envelope contract and the job-unique path that
-   * `parseCursorResult` validates strictly (QK-RUN-005). Claude has no such
-   * flag either and `parseClaudeResult` hard-requires the artifact, so leaving
-   * the contract unstated made the envelope a matter of chance (QK-RUN-007).
-   */
-  private briefResultContract(
-    profileId: string,
-    briefPath: string,
-    jobId: string,
-  ): { resultContract: { resultPath: string } } | Record<string, never> {
-    const profile = this.context.profileIndex?.get(profileId);
-    if (!profile) return {};
-    const resultPath = resultContractPath(profile.runnerType, path.dirname(briefPath), jobId);
-    if (resultPath === undefined) return {};
-    return { resultContract: { resultPath } };
-  }
-
   private async dispatchTask(
     run: PreparedRun,
     taskId: string,
@@ -651,7 +653,6 @@ export class CampaignSupervisor {
       skills: briefSkills,
       profiles: briefProfiles,
       ...(this.context.profileIndex?.has(route.profileId) ? { implementerProfileId: route.profileId } : {}),
-      ...this.briefResultContract(route.profileId, briefPath, jobId),
     });
     await writeFile(briefPath, implementerBrief, "utf8");
 
@@ -744,7 +745,6 @@ export class CampaignSupervisor {
         skills: briefSkills,
         profiles: briefProfiles,
         ...(this.context.profileIndex?.has(route.profileId) ? { implementerProfileId: route.profileId } : {}),
-        ...this.briefResultContract(reviewerRoute.profileId, reviewerBriefPath, reviewJobId),
       });
       await writeFile(reviewerBriefPath, reviewerBrief, "utf8");
       reviewer = await this.context.runner.dispatch({
@@ -934,7 +934,7 @@ export class CampaignSupervisor {
     // unable to tell rework from a crash, and contradicted the comment above.
     const outcomeReason = iterationOutcome === "failed" && outcome.reviewer
       ? outcome.reviewer.status === "success"
-        ? `review_${outcome.reviewer.verdict ?? "indeterminate"}`
+        ? reviewOutcomeReason(outcome.reviewer)
         : `review_failed:${outcome.reviewer.status}${outcome.reviewer.failure ? `:${outcome.reviewer.failure.code}` : ""}`
       : undefined;
     await reconcileMutation({

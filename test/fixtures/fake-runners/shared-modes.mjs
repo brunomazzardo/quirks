@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -49,29 +49,30 @@ export async function commitWork(argv) {
 }
 
 /**
- * Result envelope path a brief declares, for runners whose CLI cannot enforce
- * it (claude and cursor). A real job learns its path exactly this way, so the
- * fakes must too: deriving it any other way would let a runner pass here while
- * failing against the real CLI, which is the gap QK-RUN-007 closed.
+ * Prose a fake reviewer states, so a transcript carries a real recommendation
+ * for the interpretation seam to read. The wording is deliberately the awkward
+ * kind a real reviewer produced on 2026-07-25: the word "accepted" appears
+ * inside a negation, so anything scanning for keywords gets it backwards.
  */
-export async function declaredEnvelopePath(briefPath) {
-  if (!briefPath) return undefined;
-  try {
-    const brief = await readFile(briefPath, "utf8");
-    const match = brief.match(/write your result envelope JSON to exactly this path: (.+)$/m);
-    return match?.[1]?.trim();
-  } catch {
-    return undefined;
-  }
-}
+export const FAKE_REVIEW_REVISE_PROSE =
+  "I found an off-by-one at sum.js:3: the loop bound uses <= where it should use <. "
+  + "**Revise.** I don't think this should be accepted as it stands.";
+
+export const FAKE_REVIEW_ACCEPT_PROSE =
+  "I read the diff and found nothing that must be fixed first. **Accept as it stands.**";
 
 /**
- * Verdict a reviewer fake must state. Acceptance is never inferred from a
- * silent success, so a fake standing in for a reviewer has to say it approves
- * just as a real one does. Role is read off the job-unique envelope path.
+ * Whether this invocation is a review, learned the way a real runner learns it:
+ * from the brief it was handed. Reviewer briefs live at `<task>.reviewer.md`
+ * and say "Do not modify code"; codex receives the brief inlined, so the text
+ * is checked as well as the path.
+ *
+ * An implementer that states a verdict is a bad fixture to keep near anything
+ * that reads verdicts (independent claude review, 2026-07-25).
  */
-export function verdictForEnvelopePath(envelopePath) {
-  return envelopePath && /reviewer/i.test(envelopePath) ? "accept" : null;
+export function isReviewJob(argv) {
+  return argv.some((entry) =>
+    /\.reviewer\.md\b/.test(entry) || /do not modify code/i.test(entry));
 }
 
 /** Brief path from a claude argv: the positional prompt, which is a file path. */
@@ -111,22 +112,6 @@ export async function writeArtifact(outDir, contents = '{"status":"ok"}\n', file
   const artifactPath = path.join(outDir, fileName);
   await writeFile(artifactPath, contents, "utf8");
   return artifactPath;
-}
-
-/** Write an envelope to an absolute, brief-declared path. */
-export async function writeDeclaredEnvelope(envelopePath, envelope = {}) {
-  if (!envelopePath) return undefined;
-  await mkdir(path.dirname(envelopePath), { recursive: true });
-  const payload = {
-    status: "success",
-    verdict: verdictForEnvelopePath(envelopePath),
-    sessionHandle: null,
-    artifactPaths: [envelopePath],
-    failure: null,
-    ...envelope,
-  };
-  await writeFile(envelopePath, `${JSON.stringify(payload)}\n`, "utf8");
-  return envelopePath;
 }
 
 export async function writePartialArtifact(outDir) {

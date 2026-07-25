@@ -8,6 +8,8 @@ export interface NormalizeJobResultInput {
   effort: string;
   status: RunnerJobResult["status"];
   verdict?: RunnerJobResult["verdict"];
+  verdictEvidence?: string;
+  interpretationPath?: string;
   sessionHandle: string;
   artifactPaths: readonly string[];
   usage?: RunnerJobResult["usage"];
@@ -25,6 +27,8 @@ export function normalizeJobResult(input: NormalizeJobResultInput): RunnerJobRes
     effort: input.effort,
     status: input.status,
     ...(input.verdict !== undefined ? { verdict: input.verdict } : {}),
+    ...(input.verdictEvidence !== undefined ? { verdictEvidence: input.verdictEvidence } : {}),
+    ...(input.interpretationPath !== undefined ? { interpretationPath: input.interpretationPath } : {}),
     sessionHandle: input.sessionHandle,
     artifactPaths: [...input.artifactPaths],
     usage: { ...input.usage },

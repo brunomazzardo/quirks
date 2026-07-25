@@ -10,7 +10,6 @@ import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.
 import { CampaignSupervisor, type CampaignSupervisorContext } from "../../src/campaign/supervisor.js";
 import { CampaignStore } from "../../src/campaign/store.js";
 import { computeInstructionsHash } from "../../src/campaign/task-brief.js";
-import { cursorResultPath } from "../../src/runner/cursor.js";
 import { SessionRegistry } from "../../src/runner/sessions.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 import { RepositoryLock } from "../../src/state/repository-lock.js";
@@ -405,8 +404,14 @@ class OverlapRecordingRunnerPort implements RunnerPort {
       resolvedModel: "test-model",
       effort: input.route.effort,
       status: "success" as const,
-      // Reviewers must state acceptance; a silent success no longer approves.
-      ...(input.role === "reviewer" ? { verdict: "accept" as const } : {}),
+      // Reviewers must state acceptance and quote themselves stating it; a
+      // silent success does not approve, and neither does a bare verdict.
+      ...(input.role === "reviewer"
+        ? {
+            verdict: "accept" as const,
+            verdictEvidence: "Accept as it stands. I found nothing that must be fixed first.",
+          }
+        : {}),
       sessionHandle: "overlap-session",
       artifactPaths: [],
       usage: {},
@@ -561,6 +566,113 @@ test("a reviewer revise verdict withholds acceptance and is recorded as a revise
       /review_failed:success/,
       "a revise must not be flattened into a runner-failure reason",
     );
+  }
+  await supervisor.stop();
+});
+
+/**
+ * The managing agent answers "indeterminate" when it cannot establish what a
+ * reviewer decided (QK-RUN-009). Above the boundary that must behave like a
+ * withheld approval and be recorded by name: an operator reading provenance has
+ * to be able to tell "the reviewer asked for changes" from "nobody could tell
+ * what the reviewer decided", because only the second one is a reason to go
+ * read the transcript.
+ */
+test("an indeterminate verdict withholds acceptance and is recorded by name", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  for (const attempt of [1, 2]) {
+    const jobId = `cmp-supervisor:QK-A:reviewer:${attempt}`;
+    runner.queueResult(jobId, {
+      schemaVersion: 1,
+      jobId,
+      runner: "cursor-standard",
+      runnerType: "cursor",
+      resolvedModel: "test-model",
+      effort: "standard",
+      status: "success",
+      verdict: "indeterminate",
+      sessionHandle: "review-session",
+      artifactPaths: [`/tmp/artifacts/interpretation-${attempt}.json`],
+      usage: {},
+      failure: undefined,
+    });
+  }
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 4, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.notEqual(outcome.status, "completed");
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-A"), false);
+
+  const iterations = await provenanceIterations(source, "QK-A");
+  assert.ok(iterations.length >= 1);
+  for (const iteration of iterations) {
+    assert.equal(iteration["outcome"], "failed");
+    assert.equal(iteration["acceptedCommit"], undefined);
+    assert.match(String(iteration["outcomeReason"]), /^review_indeterminate/);
+  }
+  await supervisor.stop();
+});
+
+/**
+ * A verdict that quotes the reviewer is only useful if the quote survives to
+ * where a human reads it. Provenance is that place: it outlives the artifact
+ * directory and is what the ledger carries.
+ */
+test("provenance carries the reviewer's supporting words, sanitized and bounded", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  for (const attempt of [1, 2]) {
+    const jobId = `cmp-supervisor:QK-A:reviewer:${attempt}`;
+    runner.queueResult(jobId, {
+      schemaVersion: 1,
+      jobId,
+      runner: "cursor-standard",
+      runnerType: "cursor",
+      resolvedModel: "test-model",
+      effort: "standard",
+      status: "success",
+      verdict: "revise",
+      // Multi-line, over-long, and shaped like a section header: exactly what
+      // arrives from a real reviewer, and none of it may reach the ledger raw.
+      verdictEvidence: `## Recommendation\n**Revise.** ${"the loop bound is wrong. ".repeat(40)}`,
+      sessionHandle: "review-session",
+      artifactPaths: [`/tmp/artifacts/interpretation-${attempt}.json`],
+      usage: {},
+      failure: undefined,
+    });
+  }
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 4, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.runToCompletion();
+
+  const iterations = await provenanceIterations(source, "QK-A");
+  assert.ok(iterations.length >= 1);
+  for (const iteration of iterations) {
+    const reason = String(iteration["outcomeReason"]);
+    assert.match(reason, /^review_revise: /);
+    assert.match(reason, /the loop bound is wrong/);
+    assert.equal(reason.includes("\n"), false, "a reason is one line, never a smuggled section");
+    assert.ok(reason.length <= 512, `outcomeReason must fit the provenance schema, got ${reason.length}`);
   }
   await supervisor.stop();
 });
@@ -1079,17 +1191,16 @@ test("reviewer gets a distinct read-only brief bound to the candidate commit", a
   assert.match(reviewerBrief, /executing-tasks/);
   assert.notEqual(implementerBrief, reviewerBrief);
 
-  // Codex enforces its envelope mechanically via --output-schema/-o, so the
-  // codex implementer brief carries no contract. The claude reviewer has no
-  // such flag and parseClaudeResult hard-requires the artifact, so its brief
-  // must state the job-unique path (QK-RUN-007).
+  // Neither role is handed an envelope contract any more: the reviewer is asked
+  // to review and left to say what it found (QK-RUN-009).
   assert.doesNotMatch(implementerBrief, /Runner result contract:/);
-  assert.match(reviewerBrief, /Runner result contract:/);
+  assert.doesNotMatch(reviewerBrief, /Runner result contract:/);
 });
 
-test("cursor briefs state the job-unique result envelope path for each role", async () => {
-  const candidateCommit = "b".repeat(40);
+test("dispatched briefs state no envelope contract at all", async () => {
   const source = new FakeTaskSource();
+  source.upsertTask("QK-1", { status: "ready", execution: executionFor(["lane-a"]) });
+  const candidateCommit = "b".repeat(40);
   const runner = new FakeRunnerPort();
   const worktree = new FakeWorktreePort();
   worktree.seed("QK-1", {
@@ -1121,25 +1232,14 @@ test("cursor briefs state the job-unique result envelope path for each role", as
   const [implementer, reviewer] = runner.dispatches;
   assert.ok(implementer && reviewer, "expected implementer and reviewer dispatches");
 
-  const briefsDir = path.dirname(implementer.briefPath);
-  const implementerBrief = await readFile(implementer.briefPath, "utf8");
-  assert.match(implementerBrief, /Runner result contract:/);
-  assert.ok(
-    implementerBrief.includes(cursorResultPath(briefsDir, implementer.jobId)),
-    "implementer brief must state its own job-unique result path",
-  );
-
-  const reviewerBrief = await readFile(reviewer.briefPath, "utf8");
-  assert.match(reviewerBrief, /Runner result contract:/);
-  assert.ok(
-    reviewerBrief.includes(cursorResultPath(path.dirname(reviewer.briefPath), reviewer.jobId)),
-    "reviewer brief must state its own job-unique result path",
-  );
-  assert.notEqual(
-    cursorResultPath(briefsDir, implementer.jobId),
-    cursorResultPath(path.dirname(reviewer.briefPath), reviewer.jobId),
-    "roles must never share a result envelope path",
-  );
+  // Demanding a rigid envelope from a CLI that was never built to emit one is
+  // where the dispatch defects lived, and under --output-schema it cost codex
+  // its reasoning entirely. Neither brief may ask for one (QK-RUN-009).
+  for (const brief of [implementer.briefPath, reviewer.briefPath]) {
+    const contents = await readFile(brief, "utf8");
+    assert.doesNotMatch(contents, /Runner result contract:/);
+    assert.doesNotMatch(contents, /result envelope/i);
+  }
 });
 
 test("rejects instructions drift between the envelope and configured workflow skills", async () => {

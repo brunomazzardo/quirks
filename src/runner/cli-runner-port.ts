@@ -4,10 +4,11 @@ import path from "node:path";
 import type { ResolvedRoute } from "../campaign/routing.js";
 import type { RunnerPort } from "../campaign/ports.js";
 import { QuirksError } from "../core/errors.js";
-import { buildClaudeArgv, buildClaudeEnv, claudeArtifactPaths } from "./claude.js";
-import { buildCodexArgv, codexPromptText, codexResultPath, codexResultSchemaPath } from "./codex.js";
-import { buildCursorArgv, cursorResultPath } from "./cursor.js";
+import { buildClaudeArgv, buildClaudeEnv } from "./claude.js";
+import { buildCodexArgv, codexPromptText } from "./codex.js";
+import { buildCursorArgv } from "./cursor.js";
 import { dispatchRunnerJob } from "./dispatcher.js";
+import type { ResultInterpreter } from "./interpretation.js";
 import type { RunnerJobResult, RunnerProfile } from "./types.js";
 
 export interface RunnerDispatchInput {
@@ -72,9 +73,7 @@ export function buildRunnerArgv(
         model: profile.model,
         workspace: input.worktreePath,
         promptText: codexPromptText(input.briefPath, briefContents),
-        resultPath: codexResultPath(artifactDir, input.jobId),
         artifactDir,
-        schemaPath: codexResultSchemaPath(),
         capabilities: profile.capabilities,
         effort: profile.effort,
       });
@@ -99,7 +98,16 @@ export function buildRunnerArgv(
 }
 
 export class CliRunnerPort implements RunnerPort {
-  constructor(private readonly profiles: ReadonlyMap<string, RunnerProfile>) {}
+  constructor(
+    private readonly profiles: ReadonlyMap<string, RunnerProfile>,
+    /**
+     * Required, and deliberately not defaulted. There is exactly one result
+     * path now; a port constructed without an interpreter would be a port that
+     * cannot produce a result, and defaulting one here would hide that from
+     * whoever forgot to wire it.
+     */
+    private readonly interpreter: ResultInterpreter,
+  ) {}
 
   async dispatch(input: RunnerDispatchInput): Promise<RunnerJobResult> {
     const profile = requiredProfile(this.profiles, input.route.profileId);
@@ -110,28 +118,17 @@ export class CliRunnerPort implements RunnerPort {
     const argv = buildRunnerArgv(profile, input, artifactDir, briefContents);
     const dispatchInput = {
       jobId: input.jobId,
+      // The role decides whether a verdict is even asked for. Losing it here
+      // would read every reviewer as an implementer and drop its judgment.
+      role: input.role,
       profile,
       argv,
       artifactDir,
       timeoutMs: profile.wallClockMs,
       cwd: input.worktreePath,
+      interpreter: this.interpreter,
     };
     const env = sanitizedRunnerEnv(profile);
     return dispatchRunnerJob(env ? { ...dispatchInput, env } : dispatchInput);
-  }
-}
-
-export function artifactPathsForRunner(profile: RunnerProfile, artifactDir: string, jobId: string): readonly string[] {
-  switch (profile.runnerType) {
-    case "claude":
-      return claudeArtifactPaths(artifactDir, jobId);
-    case "codex":
-      return [codexResultPath(artifactDir, jobId)];
-    case "cursor":
-      return [cursorResultPath(artifactDir, jobId)];
-    default: {
-      const exhaustive: never = profile.runnerType;
-      return exhaustive;
-    }
   }
 }

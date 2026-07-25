@@ -1,18 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import test from "node:test";
-import { artifactPathsForRunner } from "../../src/runner/cli-runner-port.js";
 import {
   buildClaudeArgv,
   buildClaudeEnv,
   buildClaudeResumeArgv,
   claudeEffort,
-  claudeResultPath,
-  parseClaudeResult,
 } from "../../src/runner/claude.js";
-import type { RunnerProfile } from "../../src/runner/types.js";
 
 const baseInput = {
   executable: "/usr/bin/claude",
@@ -151,48 +144,6 @@ test("claude argv grants the artifact dir alongside the workspace", () => {
   }
 });
 
-// Mirrors codexResultPath and cursorResultPath, both already fixed for this:
-// claude wrote a single shared artifactDir/result.json, so concurrent roles and
-// attempts could clobber (or inherit) another job's envelope. The failed
-// cmp-uimotion-1 campaign left exactly one shared .quirks/briefs/result.json.
-test("claudeResultPath is unique per job so concurrent claude jobs never clobber each other", () => {
-  const first = claudeResultPath("/tmp/artifacts", "job-1");
-  const second = claudeResultPath("/tmp/artifacts", "job-2");
-
-  assert.notEqual(first, second);
-  assert.match(first, /job-1/);
-  assert.match(second, /job-2/);
-});
-
-test("claudeResultPath sanitizes campaign-style job ids into a plain file name", () => {
-  const resultPath = claudeResultPath("/tmp/artifacts", "cmp-1:QK-1:reviewer:2");
-  assert.equal(path.dirname(resultPath), "/tmp/artifacts");
-  assert.doesNotMatch(path.basename(resultPath), /[:/\\]/);
-  assert.notEqual(resultPath, claudeResultPath("/tmp/artifacts", "cmp-1:QK-1:implementer:2"));
-});
-
-test("artifactPathsForRunner declares the job-unique claude result path", () => {
-  const profile: RunnerProfile = {
-    schemaVersion: 1,
-    profileId: "claude-standard",
-    runnerType: "claude",
-    executable: "/usr/bin/claude",
-    accountAlias: "default",
-    quotaPoolId: "pool",
-    tier: "standard",
-    model: "sonnet",
-    effort: "standard",
-    capabilities: ["repository-read"],
-    wallClockMs: 5_000,
-    redactionRules: [],
-  };
-
-  const first = artifactPathsForRunner(profile, "/tmp/artifacts", "job-1");
-  const second = artifactPathsForRunner(profile, "/tmp/artifacts", "job-2");
-  assert.deepEqual(first, [claudeResultPath("/tmp/artifacts", "job-1")]);
-  assert.notDeepEqual(first, second);
-});
-
 test("buildClaudeEnv sets CLAUDE_CONFIG_DIR only when configDir is provided", () => {
   assert.equal(buildClaudeEnv({}), undefined);
   assert.deepEqual(buildClaudeEnv({ configDir: "/home/user/.claude-work" }), {
@@ -213,94 +164,4 @@ test("buildClaudeResumeArgv reuses model effort and workspace posture", () => {
   assert.equal(argv.includes("high"), true);
   assert.equal(argv.includes("--session-id"), false);
   assert.equal(argv.includes("--dangerously-skip-permissions"), false);
-});
-
-test("parseClaudeResult succeeds with structured non-error result and artifact evidence", async () => {
-  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "quirks-claude-artifacts-"));
-  const resultPath = path.join(artifactDir, "result.json");
-  await writeFile(resultPath, '{"status":"ok"}\n', "utf8");
-
-  const stdout = [
-    '{"type":"system","subtype":"init","session_id":"11111111-1111-4111-8111-111111111111"}',
-    '{"type":"result","subtype":"success","session_id":"11111111-1111-4111-8111-111111111111","is_error":false,"result":"Done."}',
-  ].join("\n");
-
-  const parsed = parseClaudeResult(stdout, {
-    exitCode: 0,
-    artifactPaths: [resultPath],
-    sessionId: "11111111-1111-4111-8111-111111111111",
-  });
-
-  assert.equal(parsed.status, "success");
-  assert.equal(parsed.sessionHandle, "11111111-1111-4111-8111-111111111111");
-  assert.deepEqual(parsed.artifactPaths, [resultPath]);
-  assert.equal(parsed.failure, undefined);
-});
-
-test("parseClaudeResult does not treat prose done as success without structured evidence", async () => {
-  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "quirks-claude-artifacts-"));
-  const resultPath = path.join(artifactDir, "result.json");
-  await writeFile(resultPath, '{"status":"ok"}\n', "utf8");
-
-  const parsed = parseClaudeResult("All done. Task complete.\n", {
-    exitCode: 0,
-    artifactPaths: [resultPath],
-    sessionId: "11111111-1111-4111-8111-111111111111",
-  });
-
-  assert.equal(parsed.status, "failure");
-  assert.match(parsed.failure?.message ?? "", /structured terminal result/i);
-});
-
-test("parseClaudeResult rejects permission denials even when exit code is zero", async () => {
-  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "quirks-claude-artifacts-"));
-  const resultPath = path.join(artifactDir, "result.json");
-  await writeFile(resultPath, '{"status":"ok"}\n', "utf8");
-
-  const stdout = [
-    '{"type":"result","subtype":"success","session_id":"11111111-1111-4111-8111-111111111111","is_error":false,"result":"Done.","permission_denials":[{"tool_name":"Bash","tool_use_id":"toolu_1","tool_input":{}}]}',
-  ].join("\n");
-
-  const parsed = parseClaudeResult(stdout, {
-    exitCode: 0,
-    artifactPaths: [resultPath],
-    sessionId: "11111111-1111-4111-8111-111111111111",
-  });
-
-  assert.equal(parsed.status, "permission_denied");
-  assert.equal(parsed.failure?.code, "permission_denied");
-});
-
-test("parseClaudeResult requires on-disk artifact evidence", () => {
-  const stdout = [
-    '{"type":"result","subtype":"success","session_id":"11111111-1111-4111-8111-111111111111","is_error":false,"result":"Done."}',
-  ].join("\n");
-
-  const parsed = parseClaudeResult(stdout, {
-    exitCode: 0,
-    artifactPaths: ["/tmp/does-not-exist/result.json"],
-    sessionId: "11111111-1111-4111-8111-111111111111",
-  });
-
-  assert.equal(parsed.status, "failure");
-  assert.match(parsed.failure?.message ?? "", /artifact/i);
-});
-
-test("parseClaudeResult classifies structured error results as failure", async () => {
-  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "quirks-claude-artifacts-"));
-  const resultPath = path.join(artifactDir, "result.json");
-  await writeFile(resultPath, '{"status":"ok"}\n', "utf8");
-
-  const stdout = [
-    '{"type":"result","subtype":"error","session_id":"11111111-1111-4111-8111-111111111111","is_error":true,"result":"model overloaded"}',
-  ].join("\n");
-
-  const parsed = parseClaudeResult(stdout, {
-    exitCode: 0,
-    artifactPaths: [resultPath],
-    sessionId: "11111111-1111-4111-8111-111111111111",
-  });
-
-  assert.equal(parsed.status, "failure");
-  assert.equal(parsed.failure?.code, "runner_error");
 });

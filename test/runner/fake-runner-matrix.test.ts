@@ -1,35 +1,45 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { classifyFailure } from "../../src/campaign/failures.js";
-import { cursorPromptText, cursorResultContractSection } from "../../src/runner/cursor.js";
 import { dispatchRunnerJob } from "../../src/runner/dispatcher.js";
-import { resultContractPath } from "../../src/runner/result-contract.js";
+import { ManagingAgentInterpreter } from "../../src/runner/managing-agent/interpreter.js";
+import { DEFAULT_INTERPRETER_CONFIG } from "../../src/runner/managing-agent/config.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
+import { StubInterpreter } from "./support/stub-interpreter.js";
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
+/**
+ * What the launcher owes every runner, whatever the CLI says.
+ *
+ * This matrix used to assert parser outcomes per runner per mode. Those parsers
+ * are gone: the CLI is no longer asked to emit an envelope, so there is nothing
+ * vendor-shaped left to parse. What is still vendor-shaped is *starting* the
+ * process and capturing what it produced, and that is what these assert — with
+ * the interpreter stubbed, so a failure here is a launcher failure and never a
+ * model's.
+ */
 const modes = [
   "success",
   "success-no-disk",
+  "review-revise",
+  "review-accept",
+  "review-silent",
   "permission-exit-zero",
   "partial",
   "malformed",
-  "oversized",
   "transient",
   "usage-limit",
-  "silence",
-  "wedge-after-work",
   "non-resumable",
   "fabricated-tests",
 ] as const;
 
 const runners = [
-  { name: "claude", runnerType: "claude" as const, script: "fake-claude.mjs", buildArgv: claudeArgv },
-  { name: "codex", runnerType: "codex" as const, script: "fake-codex.mjs", buildArgv: codexArgv },
-  { name: "cursor", runnerType: "cursor" as const, script: "fake-cursor.mjs", buildArgv: cursorArgv },
+  { name: "claude", runnerType: "claude" as const, script: "fake-claude.mjs" },
+  { name: "codex", runnerType: "codex" as const, script: "fake-codex.mjs" },
+  { name: "cursor", runnerType: "cursor" as const, script: "fake-cursor.mjs" },
 ];
 
 function profile(
@@ -53,149 +63,269 @@ function profile(
   };
 }
 
-async function briefDeclaring(
-  runnerType: RunnerProfile["runnerType"],
-  artifactDir: string,
-  jobId: string,
-): Promise<string> {
-  const briefPath = path.join(artifactDir, "brief.md");
-  const declared = resultContractPath(runnerType, artifactDir, jobId);
-  await writeFile(
-    briefPath,
-    declared === undefined ? "# brief\n" : `# brief\n\n${cursorResultContractSection(declared)}\n`,
-    "utf8",
-  );
-  return briefPath;
-}
-
-function claudeArgv(script: string, mode: string, briefPath: string): readonly string[] {
+function fakeArgv(script: string, mode: string): readonly string[] {
   return [
     process.execPath,
     path.resolve("test/fixtures/fake-runners", script),
-    // Production passes the brief as the positional prompt; without it these
-    // fakes cannot learn their envelope path, exactly as a real job could not.
-    briefPath,
     "--session-id",
     SESSION_ID,
     "--mode",
     mode,
   ];
-}
-
-function codexArgv(script: string, mode: string, resultPath: string): readonly string[] {
-  return [
-    process.execPath,
-    path.resolve("test/fixtures/fake-runners", script),
-    "-o",
-    resultPath,
-    "--session-id",
-    SESSION_ID,
-    "--mode",
-    mode,
-  ];
-}
-
-function cursorArgv(script: string, mode: string, briefPath: string): readonly string[] {
-  // Production wraps the brief path in an instruction; a bare path is not what a
-  // real cursor job receives, and the fake parses the instruction exactly as the
-  // real agent would read it.
-  return claudeArgv(script, mode, cursorPromptText(briefPath));
 }
 
 async function makeTempArtifactDir(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "quirks-runner-artifacts-"));
 }
 
-/**
- * What each mode means, independent of how any runner happens to implement it.
- * "not-success" is used where runners legitimately differ in which non-success
- * status they report, but never in the fact that the job did not succeed.
- */
-function expectedStatus(mode: (typeof modes)[number], canWrite: boolean, runner: string): string {
-  switch (mode) {
-    case "success":
-      return "success";
-    case "success-no-disk":
-      // claude writes no envelope at all in this mode, so there is nothing to
-      // verify and it must fail regardless of posture. codex and cursor write an
-      // envelope with no work artifacts: legitimate for a reviewer that changed
-      // nothing, not for a job that could write and produced nothing.
-      if (runner === "claude") return "not-success";
-      return canWrite ? "not-success" : "success";
-    case "fabricated-tests":
-      // claude and cursor emit a prose claim and no envelope, so they fail on
-      // the missing envelope alone — prose is never evidence. codex writes a
-      // well-formed one, which is success at the transport layer: catching a
-      // runner that lied about its work is the reviewer's job, not the
-      // dispatcher's. A write-capable job must still show artifacts.
-      if (runner !== "codex") return "not-success";
-      return canWrite ? "not-success" : "success";
-    case "usage-limit":
-      return "usage_limit";
-    case "silence":
-    case "wedge-after-work":
-      return "timeout";
-    case "permission-exit-zero":
-      return "permission_denied";
-    default:
-      // partial, malformed, oversized, transient, non-resumable,
-      // fabricated-tests, success-no-disk: all must refuse to claim success.
-      return "not-success";
-  }
-}
-
-function timeoutForMode(mode: (typeof modes)[number]): number {
-  if (mode === "silence" || mode === "wedge-after-work") return 300;
-  if (mode === "oversized") return 2_000;
-  return 5_000;
-}
+/** Modes whose process exits non-zero, which the launcher must report as a fact. */
+const NON_ZERO_EXIT_MODES = new Set(["transient"]);
 
 /**
- * Both capability postures, because they now mean different things: a read-only
- * reviewer that accepts legitimately produces no work artifacts, while a
- * write-capable job claiming success without producing anything has not shown
- * it did the work.
+ * What each mode must actually put in the transcript, per runner.
+ *
+ * Without this the mode dimension was decorative: 36 cells asserted the same
+ * three launcher facts, so a fake could stop distinguishing its modes and the
+ * matrix would stay green (independent claude review, 2026-07-25). The
+ * interpreter reads this text, so it is the part that has to be real.
  */
-const postures = [
-  { name: "read-only", capabilities: ["repository-read"] as readonly string[] },
-  { name: "write-capable", capabilities: ["repository-read", "repository-write"] as readonly string[] },
-];
+const MODE_EVIDENCE: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  claude: {
+    "usage-limit": /rate_limit_event/,
+    "permission-exit-zero": /permission_denials/,
+    "review-revise": /I don't think this should be accepted/,
+    "review-accept": /Accept as it stands/,
+    "review-silent": /It defines one function/,
+    partial: /honest_partial/,
+    transient: /transient_runner/,
+    "fabricated-tests": /All tests passed/,
+  },
+  codex: {
+    "usage-limit": /hit your usage limit/,
+    "permission-exit-zero": /permission denied by sandbox/,
+    "review-revise": /I don't think this should be accepted/,
+    "review-accept": /Accept as it stands/,
+    "review-silent": /It defines one function/,
+    partial: /honest_partial/,
+    transient: /transient_runner/,
+    "fabricated-tests": /All tests passed/,
+  },
+  cursor: {
+    "usage-limit": /rate limit exceeded/,
+    "permission-exit-zero": /permission denied/,
+    "review-revise": /I don't think this should be accepted/,
+    "review-accept": /Accept as it stands/,
+    "review-silent": /It defines one function/,
+    partial: /honest_partial/,
+    transient: /transient_runner/,
+    "fabricated-tests": /All tests passed/,
+  },
+};
 
 for (const runner of runners) {
-  for (const posture of postures) {
-    for (const mode of modes) {
-      test(`fake ${runner.name} (${posture.name}) handles mode ${mode} deterministically`, async () => {
-        const artifactDir = await makeTempArtifactDir();
-        const jobId = `job-${runner.name}-${posture.name}-${mode}`;
-        const argv = runner.runnerType === "codex"
-          ? runner.buildArgv(runner.script, mode, path.join(artifactDir, "result.json"))
-          : runner.buildArgv(runner.script, mode, await briefDeclaring(runner.runnerType, artifactDir, jobId));
-        const result = await dispatchRunnerJob({
-          jobId,
-          profile: profile(runner.runnerType, `fake-${runner.name}`, [...posture.capabilities]),
-          argv,
-          artifactDir,
-          timeoutMs: timeoutForMode(mode),
-        });
+  for (const mode of modes) {
+    test(`the launcher captures what fake ${runner.name} produced in mode ${mode}`, async () => {
+      const artifactDir = await makeTempArtifactDir();
+      const jobId = `job-${runner.name}-${mode}`;
+      const interpreter = new StubInterpreter();
 
-        // The previous assertion was that classifyFailure returns a string,
-        // which it always does — so every runner could map every mode to the
-        // wrong status and this matrix stayed green. That is precisely the
-        // test/production divergence that hid the QK-RUN-007 dispatch defects.
-        const expected = expectedStatus(mode, posture.capabilities.includes("repository-write"), runner.name);
-        if (expected === "not-success") {
-          assert.notEqual(result.status, "success", `${mode} must not report success`);
-        } else {
-          assert.equal(result.status, expected, `${mode} must map to ${expected}`);
-        }
-        if (result.status !== "success") {
-          assert.ok(result.failure?.code, `${mode} must name why it failed`);
-        }
-        assert.equal(typeof classifyFailure(result), "string");
+      const result = await dispatchRunnerJob({
+        jobId,
+        role: mode.startsWith("review-") ? "reviewer" : "implementer",
+        profile: profile(runner.runnerType, `fake-${runner.name}`),
+        argv: fakeArgv(runner.script, mode),
+        artifactDir,
+        timeoutMs: 5_000,
+        interpreter,
       });
-    }
+
+      assert.equal(interpreter.facts.length, 1, "every completed run reaches the interpreter exactly once");
+      const facts = interpreter.facts[0]!;
+      assert.equal(facts.jobId, jobId);
+      assert.equal(facts.runnerType, runner.runnerType);
+      assert.equal(
+        facts.exitCode,
+        NON_ZERO_EXIT_MODES.has(mode) ? 1 : 0,
+        "the exit code is a launcher fact, reported rather than inferred",
+      );
+      assert.equal(facts.sessionId, SESSION_ID);
+
+      // The transcript must be retained before interpretation and must actually
+      // contain what the process said: it is the record every verdict is later
+      // checked against.
+      assert.equal(typeof facts.transcriptPath, "string");
+      const transcript = await readFile(facts.transcriptPath!, "utf8");
+      assert.equal(transcript.length > 0, true, `${mode} produced output that was not retained`);
+      assert.equal(transcript, interpreter.transcripts[0]);
+      assert.equal(result.artifactPaths.includes(facts.transcriptPath!), true);
+
+      // The mode has to be visible in what the runner said, because that text
+      // is the only thing the interpreter gets.
+      const expected = MODE_EVIDENCE[runner.name]?.[mode];
+      if (expected) {
+        assert.match(transcript, expected, `${runner.name}/${mode} must say what happened`);
+      }
+    });
   }
 }
+
+test("a hung runner times out without ever consulting the interpreter", async () => {
+  const interpreter = new StubInterpreter();
+  const result = await dispatchRunnerJob({
+    jobId: "job-hung",
+    profile: profile("claude", "fake-claude"),
+    argv: fakeArgv("fake-claude.mjs", "silence"),
+    artifactDir: await makeTempArtifactDir(),
+    timeoutMs: 300,
+    interpreter,
+  });
+  assert.equal(result.status, "timeout");
+  assert.equal(interpreter.facts.length, 0);
+});
+
+test("an oversized runner is refused by the launcher, not passed on to be read", async () => {
+  const interpreter = new StubInterpreter();
+  const result = await dispatchRunnerJob({
+    jobId: "job-oversized",
+    profile: profile("cursor", "fake-cursor"),
+    argv: fakeArgv("fake-cursor.mjs", "oversized"),
+    artifactDir: await makeTempArtifactDir(),
+    timeoutMs: 5_000,
+    interpreter,
+  });
+  assert.equal(result.status, "failure");
+  assert.equal(result.failure?.code, "output_limit_exceeded");
+  assert.equal(interpreter.facts.length, 0);
+});
+
+/**
+ * The full production path with only the model stubbed: a real dispatch, a real
+ * retained transcript, and the real reconciliation deciding what may be
+ * believed. The fake reviewer's prose is deliberately the awkward kind —
+ * "**Revise.** I don't think this should be accepted as it stands" — so a quote
+ * lifted from it still has to survive the transcript check.
+ */
+for (const runner of runners) {
+  test(`a ${runner.name} reviewer's quoted revise survives the whole path`, async () => {
+    const artifactDir = await makeTempArtifactDir();
+    const interpreter = new ManagingAgentInterpreter(
+      DEFAULT_INTERPRETER_CONFIG,
+      async () => ({
+        exitCode: 0,
+        stdout: JSON.stringify([{
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          structured_output: {
+            status: "success",
+            verdict: "revise",
+            verdictEvidence: "Revise. I don't think this should be accepted as it stands.",
+            findings: [{ severity: "critical", title: "Off-by-one", detail: "sum.js:3" }],
+            artifactPaths: [],
+            sessionHandle: null,
+            failure: null,
+            summary: "The reviewer asked for changes.",
+          },
+        }]),
+        stderr: "",
+      }),
+    );
+
+    const result = await dispatchRunnerJob({
+      jobId: `job-${runner.name}-review`,
+      role: "reviewer",
+      profile: profile(runner.runnerType, `fake-${runner.name}`),
+      argv: fakeArgv(runner.script, "review-revise"),
+      artifactDir,
+      timeoutMs: 5_000,
+      interpreter,
+    });
+
+    assert.equal(result.status, "success");
+    assert.equal(result.verdict, "revise");
+    assert.match(result.verdictEvidence ?? "", /I don't think this should be accepted/);
+    assert.equal(typeof result.interpretationPath, "string");
+  });
+}
+
+test("a quote that is not in the runner's transcript fails the job instead of accepting it", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const interpreter = new ManagingAgentInterpreter(
+    DEFAULT_INTERPRETER_CONFIG,
+    async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify([{
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        structured_output: {
+          status: "success",
+          verdict: "accept",
+          verdictEvidence: "This is excellent work and I approve it without reservation.",
+          findings: [],
+          artifactPaths: [],
+          sessionHandle: null,
+          failure: null,
+          summary: "The reviewer approved.",
+        },
+      }]),
+      stderr: "",
+    }),
+  );
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-fabricated-accept",
+    role: "reviewer",
+    profile: profile("claude", "fake-claude"),
+    argv: fakeArgv("fake-claude.mjs", "review-revise"),
+    artifactDir,
+    timeoutMs: 5_000,
+    interpreter,
+  });
+
+  assert.notEqual(result.verdict, "accept");
+  assert.equal(result.status, "failure");
+  assert.equal(result.failure?.code, "unsupported_verdict");
+});
+
+test("a reviewer that stated no judgment yields indeterminate, never accept", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const interpreter = new ManagingAgentInterpreter(
+    DEFAULT_INTERPRETER_CONFIG,
+    async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify([{
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        structured_output: {
+          status: "success",
+          verdict: "indeterminate",
+          verdictEvidence: "",
+          findings: [],
+          artifactPaths: [],
+          sessionHandle: null,
+          failure: null,
+          summary: "The transcript contains no accept or revise recommendation.",
+        },
+      }]),
+      stderr: "",
+    }),
+  );
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-silent-review",
+    role: "reviewer",
+    profile: profile("cursor", "fake-cursor"),
+    argv: fakeArgv("fake-cursor.mjs", "review-silent"),
+    artifactDir,
+    timeoutMs: 5_000,
+    interpreter,
+  });
+
+  assert.equal(result.verdict, "indeterminate");
+  assert.equal(result.status, "success");
+});
 
 test("fake host emits durable start and attach events", async () => {
   const { execFile } = await import("node:child_process");
@@ -209,4 +339,21 @@ test("fake host emits durable start and attach events", async () => {
 
   const attach = await execFileAsync(process.execPath, [script, "--mode", "attach", "--campaign", "cmp-1"]);
   assert.match(attach.stdout, /host\.attached/);
+});
+
+test("a runner that writes files leaves them where the interpreter can see them", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const interpreter = new StubInterpreter();
+  await writeFile(path.join(artifactDir, "pre-existing.txt"), "x", "utf8");
+
+  await dispatchRunnerJob({
+    jobId: "job-artifacts",
+    profile: profile("claude", "fake-claude", ["repository-read", "repository-write"]),
+    argv: fakeArgv("fake-claude.mjs", "success"),
+    artifactDir,
+    timeoutMs: 5_000,
+    interpreter,
+  });
+
+  assert.equal(interpreter.facts[0]?.artifactDir, artifactDir);
 });

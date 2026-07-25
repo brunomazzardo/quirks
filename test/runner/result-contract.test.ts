@@ -1,49 +1,21 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
-import { claudeResultPath } from "../../src/runner/claude.js";
-import { cursorResultPath } from "../../src/runner/cursor.js";
 import {
+  interpretationPath,
+  parseReviewVerdict,
   redactTranscript,
-  resultContractPath,
   reviewerAcceptedAttempt,
   transcriptPath,
 } from "../../src/runner/result-contract.js";
-
-/**
- * Which runners need the envelope contract stated in the brief, and which get
- * it enforced by the CLI itself.
- *
- * codex writes the envelope mechanically via --output-schema plus -o, so its
- * brief needs no contract. cursor has no equivalent flag (QK-RUN-005). claude
- * has none either, and `parseClaudeResult` hard-requires a non-empty artifact
- * on disk — yet its brief never stated one, so writing the envelope was left to
- * chance. The 2026-07-24 probe caught this directly: four identical claude
- * cells, one silently wrote no envelope.
- */
-test("codex needs no brief-stated result contract because the CLI enforces the envelope", () => {
-  assert.equal(resultContractPath("codex", "/tmp/artifacts", "job-1"), undefined);
-});
-
-test("cursor carries a brief-stated, job-unique result contract", () => {
-  assert.equal(
-    resultContractPath("cursor", "/tmp/artifacts", "job-1"),
-    cursorResultPath("/tmp/artifacts", "job-1"),
-  );
-});
-
-test("claude carries a brief-stated, job-unique result contract", () => {
-  assert.equal(
-    resultContractPath("claude", "/tmp/artifacts", "job-1"),
-    claudeResultPath("/tmp/artifacts", "job-1"),
-  );
-});
 
 /**
  * A reviewer that ran to completion and asked for changes is a completed job
  * with a revise verdict, never a runner failure. Conflating the two is what
  * retried cmp-uimotion-1 to BUDGET_EXCEEDED (QK-RUN-008).
  */
+const ACCEPT_EVIDENCE = "Accept as it stands. I found nothing that must be fixed before this lands.";
+
 test("an attempt whose reviewer returns a revise verdict is not accepted", () => {
   assert.equal(
     reviewerAcceptedAttempt({ status: "success", verdict: "revise" }),
@@ -52,8 +24,11 @@ test("an attempt whose reviewer returns a revise verdict is not accepted", () =>
   );
 });
 
-test("an attempt whose reviewer returns an accept verdict is accepted", () => {
-  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept" }), true);
+test("an attempt whose reviewer returns an accept verdict, quoting it, is accepted", () => {
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "success", verdict: "accept", verdictEvidence: ACCEPT_EVIDENCE }),
+    true,
+  );
 });
 
 test("a reviewer that crashed is not accepted, and stays distinguishable from a revise verdict", () => {
@@ -72,21 +47,75 @@ test("a reviewer that returned no verdict does not accept the attempt", () => {
   assert.equal(reviewerAcceptedAttempt({ status: "success" }), false);
 });
 
-test("only an explicit accept verdict accepts the attempt", () => {
-  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept" }), true);
-  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "revise" }), false);
-  assert.equal(reviewerAcceptedAttempt({ status: "success" }), false);
-  assert.equal(reviewerAcceptedAttempt({ status: "failure", verdict: "accept" }), false);
+/**
+ * An interpretation that could not establish what the reviewer decided says so
+ * (QK-RUN-009). It is a real answer, and it withholds acceptance exactly as a
+ * revise does — the one thing it must never do is read as approval.
+ */
+test("an indeterminate verdict withholds acceptance", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "indeterminate" }), false);
 });
 
-test("result contract paths stay distinct per runner and per job", () => {
-  const paths = [
-    resultContractPath("cursor", "/tmp/artifacts", "job-1"),
-    resultContractPath("cursor", "/tmp/artifacts", "job-2"),
-    resultContractPath("claude", "/tmp/artifacts", "job-1"),
-    resultContractPath("claude", "/tmp/artifacts", "job-2"),
-  ];
-  assert.equal(new Set(paths).size, paths.length, "every runner/job pair needs its own envelope path");
+test("indeterminate is a verdict the contract recognises rather than discards", () => {
+  assert.equal(parseReviewVerdict("indeterminate"), "indeterminate");
+  assert.equal(parseReviewVerdict("undetermined"), undefined);
+  assert.equal(parseReviewVerdict(null), undefined);
+});
+
+/**
+ * Raised by the independent claude review, 2026-07-25: the RunnerJobResult type
+ * says a verdict without evidence "is never an acceptance", but the predicate
+ * checked only status and verdict, so the invariant lived entirely inside the
+ * interpreter's reconciliation. Any other producer — a replay, a future host
+ * adapter, a test double — could accept without it.
+ */
+test("an accept verdict with no supporting evidence does not accept the attempt", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept" }), false);
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept", verdictEvidence: "" }), false);
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "success", verdict: "accept", verdictEvidence: "   " }),
+    false,
+  );
+});
+
+test("an accept verdict carrying evidence passes this predicate, which checks presence not authenticity", () => {
+  assert.equal(
+    reviewerAcceptedAttempt({
+      status: "success",
+      verdict: "accept",
+      verdictEvidence: "Accept as it stands. I found nothing that must be fixed before this lands.",
+    }),
+    true,
+  );
+});
+
+test("only an explicit accept verdict accepts the attempt", () => {
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "success", verdict: "accept", verdictEvidence: ACCEPT_EVIDENCE }),
+    true,
+  );
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "revise" }), false);
+  assert.equal(reviewerAcceptedAttempt({ status: "success" }), false);
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "failure", verdict: "accept", verdictEvidence: ACCEPT_EVIDENCE }),
+    false,
+  );
+});
+
+/**
+ * The interpretation record sits beside the transcript: the transcript is what
+ * the runner said, and this is how that became a structured result. Both are
+ * job-unique for the same reason — .quirks/briefs is shared across campaigns,
+ * so a collision would overwrite another job's evidence.
+ */
+test("interpretation records are job-unique and land beside the transcript", () => {
+  const first = interpretationPath("/tmp/artifacts", "cmp-1:QK-1:reviewer:1");
+  const second = interpretationPath("/tmp/artifacts", "cmp-1:QK-1:reviewer:2");
+
+  assert.notEqual(first, second);
+  assert.equal(path.dirname(first), "/tmp/artifacts");
+  assert.doesNotMatch(path.basename(first), /[:/\\]/);
+  assert.notEqual(first, transcriptPath("/tmp/artifacts", "cmp-1:QK-1:reviewer:1"));
 });
 
 /**

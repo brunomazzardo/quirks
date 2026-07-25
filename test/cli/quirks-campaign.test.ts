@@ -34,10 +34,15 @@ async function writeCampaignRunnerConfig(configDir: string): Promise<void> {
   await mkdir(configDir, { recursive: true });
   const codexExecutable = await executableFakeRunner("fake-codex.mjs", configDir);
   const claudeExecutable = await executableFakeRunner("fake-claude.mjs", configDir);
+  // The managing agent is configured the way an operator configures it and
+  // points at a fake agent binary: a campaign test must exercise the real
+  // interpretation path without spending a real model call on it.
+  const interpreterExecutable = await executableFakeRunner("fake-interpreter.mjs", configDir);
   await writeFile(
     path.join(configDir, "profiles.json"),
     `${JSON.stringify({
       schemaVersion: 1,
+      interpreter: { executable: interpreterExecutable, wallClockMs: 10_000 },
       tierAliases: {
         "fable-principal": { tier: "principal" },
         "composer-standard": { tier: "standard" },

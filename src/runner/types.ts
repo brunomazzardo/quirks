@@ -50,6 +50,14 @@ export interface RunnerJobResult {
    * ran; `verdict` says what a reviewer decided. Absent for implementer jobs.
    */
   verdict?: ReviewVerdict;
+  /**
+   * The reviewer's own words supporting `verdict`, quoted from the transcript
+   * and verified against it. A verdict that arrives without this was not
+   * traceable to anything the reviewer said, and is never an acceptance.
+   */
+  verdictEvidence?: string;
+  /** Retained record of how this result was derived, for later audit. */
+  interpretationPath?: string;
   sessionHandle: string;
   artifactPaths: readonly string[];
   usage: Readonly<Record<string, number>>;

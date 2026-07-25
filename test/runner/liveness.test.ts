@@ -7,6 +7,7 @@ import { computeEnvelopeDigest, stripDigest } from "../../src/campaign/envelope.
 import { CampaignStore } from "../../src/campaign/store.js";
 import { QuirksError } from "../../src/core/errors.js";
 import { probeLiveness, resumeJob } from "../../src/runner/liveness.js";
+import { StubInterpreter } from "./support/stub-interpreter.js";
 import { SessionRegistry } from "../../src/runner/sessions.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
 import { EventJournal } from "../../src/state/event-journal.js";
@@ -225,6 +226,7 @@ test("resumeJob dispatches a runner-native resume and records the session update
     briefPath: "/repo/brief.md",
     artifactDir: "/tmp/artifacts/job-1",
     timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
     dispatch: async (input) => {
       capturedArgv = input.argv;
       return {
@@ -251,7 +253,58 @@ test("resumeJob dispatches a runner-native resume and records the session update
   assert.deepEqual(sessions[0]?.artifactPaths, ["artifacts/job-1/result.json"]);
 });
 
-test("resumeJob builds the codex resume argv with the declared result contract", async () => {
+/**
+ * A resume reuses the job id but built its dispatch without a role, so it
+ * defaulted to "implementer" — and an implementer job never carries a verdict.
+ * A resumed reviewer would therefore have had its judgment discarded. The
+ * session record already knows what the job was.
+ */
+test("a resumed job keeps the role it was dispatched under", async () => {
+  const store = await openMinimalStore();
+  const registry = await SessionRegistry.open(store);
+  const journal = new EventJournal(path.join(store.campaignPath, "role-journal.jsonl"));
+  const artifactPath = await makeArtifact(-10 * STALE_AFTER_MS);
+  await registry.register({
+    jobId: "job-reviewer",
+    role: "reviewer",
+    profileId: fakeProfile.profileId,
+    sessionHandle: "session-abc",
+    pid: 999_999,
+    artifactPaths: [artifactPath],
+  });
+
+  let capturedRole: string | undefined;
+  await resumeJob("job-reviewer", {
+    registry,
+    journal,
+    profile: fakeProfile,
+    workspace: "/repo/workspace",
+    briefPath: "/repo/brief.md",
+    artifactDir: "/tmp/artifacts/job-reviewer",
+    timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
+    dispatch: async (input) => {
+      capturedRole = input.role;
+      return {
+        schemaVersion: 1,
+        jobId: input.jobId,
+        runner: input.profile.profileId,
+        runnerType: input.profile.runnerType,
+        resolvedModel: input.profile.model,
+        effort: input.profile.effort,
+        status: "success",
+        sessionHandle: "session-abc",
+        artifactPaths: [],
+        usage: {},
+        failure: undefined,
+      };
+    },
+  });
+
+  assert.equal(capturedRole, "reviewer");
+});
+
+test("resumeJob builds a codex resume argv bound to the workspace and constraining no output", async () => {
   const store = await openMinimalStore();
   const registry = await SessionRegistry.open(store);
   const journal = new EventJournal(path.join(store.campaignPath, "resume-journal.jsonl"));
@@ -273,6 +326,7 @@ test("resumeJob builds the codex resume argv with the declared result contract",
     briefPath: "/repo/brief.md",
     artifactDir: "/tmp/artifacts/job-1",
     timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
     dispatch: async (input) => {
       capturedArgv = input.argv;
       return {
@@ -293,13 +347,16 @@ test("resumeJob builds the codex resume argv with the declared result contract",
 
   assert.equal(result.status, "success");
   assert.equal(capturedArgv?.[1], "exec");
-  assert.equal(capturedArgv?.includes("--output-schema"), true);
-  const outputIndex = capturedArgv?.indexOf("-o") ?? -1;
-  assert.equal(capturedArgv?.[outputIndex + 1], "/tmp/artifacts/job-1/codex-result-job-1.json");
-  const resumeIndex = capturedArgv?.indexOf("resume") ?? -1;
-  assert.equal(capturedArgv?.[resumeIndex + 1], "codex-session-abc");
-  assert.equal(capturedArgv?.[resumeIndex + 2], "--");
-  assert.match(capturedArgv?.[resumeIndex + 3] ?? "", /\/repo\/brief\.md/);
+  // A resume must not reimpose what the initial dispatch dropped: under
+  // --output-schema codex's final message *is* the envelope, which is what
+  // removed its reasoning entirely (QK-RUN-009).
+  assert.equal(capturedArgv?.includes("--output-schema"), false);
+  assert.equal(capturedArgv?.includes("-o"), false);
+  // The workspace binding is the part that must survive: a resume without -C
+  // restarts in whatever directory the supervisor happens to occupy.
+  const workspaceIndex = capturedArgv?.indexOf("-C") ?? -1;
+  assert.equal(capturedArgv?.[workspaceIndex + 1], "/repo/workspace");
+  assert.equal(capturedArgv?.includes("resume"), true);
 });
 
 test("rejects a second resume attempt for the same job", async () => {
@@ -322,6 +379,7 @@ test("rejects a second resume attempt for the same job", async () => {
     briefPath: "/repo/brief.md",
     artifactDir: "/tmp/artifacts/job-1",
     timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
     dispatch: async (input: { jobId: string; profile: RunnerProfile }) => ({
       schemaVersion: 1 as const,
       jobId: input.jobId,
@@ -365,6 +423,7 @@ test("reports exhausted classification once the one permitted resume has been us
     briefPath: "/repo/brief.md",
     artifactDir: "/tmp/artifacts/job-1",
     timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
     dispatch: async (input) => ({
       schemaVersion: 1,
       jobId: input.jobId,

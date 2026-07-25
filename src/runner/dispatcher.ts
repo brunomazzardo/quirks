@@ -1,12 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { Readable } from "node:stream";
-import { parseClaudeResult, claudeArtifactPaths, claudeResultPath } from "./claude.js";
-import { parseCodexResult } from "./codex.js";
-import { parseCursorResult, cursorResultPath } from "./cursor.js";
+import type { InterpretedResult, ResultInterpreter, RunnerJobFacts } from "./interpretation.js";
 import { normalizeJobResult } from "./job-result.js";
-import { parseReviewVerdict, redactTranscript, transcriptPath, type ReviewVerdict } from "./result-contract.js";
-import type { RunnerJobFailure, RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
+import { redactTranscript, transcriptPath } from "./result-contract.js";
+import type { RunnerJobResult, RunnerJobStatus, RunnerProfile } from "./types.js";
 
 const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
 const MAX_STDERR_BYTES = 1_048_576;
@@ -14,6 +13,7 @@ const KILL_GRACE_MS = 100;
 
 export interface DispatchRunnerJobInput {
   jobId: string;
+  role?: RunnerJobFacts["role"];
   profile: RunnerProfile;
   argv: readonly string[];
   artifactDir: string;
@@ -29,20 +29,16 @@ export interface DispatchRunnerJobInput {
    */
   cwd?: string;
   env?: Readonly<Record<string, string>>;
+  /**
+   * How the runner's output becomes a structured result. The launcher knows how
+   * to start a CLI correctly and nothing about the shape of what it says.
+   */
+  interpreter: ResultInterpreter;
 }
 
 interface StreamCollectResult {
   buffer: Buffer;
   overflow: boolean;
-}
-
-interface ParsedDispatch {
-  status: RunnerJobStatus;
-  verdict?: ReviewVerdict;
-  sessionHandle: string;
-  artifactPaths: readonly string[];
-  failure?: RunnerJobFailure;
-  notes?: readonly string[];
 }
 
 function collectBoundedStream(
@@ -80,51 +76,6 @@ function extractFlagValue(argv: readonly string[], flag: string): string | undef
   return undefined;
 }
 
-function codexDeclaredResultPath(argv: readonly string[]): string | undefined {
-  return extractFlagValue(argv, "-o");
-}
-
-/**
- * Remove any result envelope left by a previous attempt.
- *
- * Result paths are deterministic per job, so a retry, resume, or rerun would
- * otherwise find the prior attempt's file still present — and the parsers prefer
- * a valid envelope over the current invocation's error output. A failing run
- * therefore reported the earlier success, including a stale accept verdict. Each
- * invocation must own its result file.
- */
-async function clearStaleResultEnvelope(input: {
-  jobId: string;
-  profile: RunnerProfile;
-  argv: readonly string[];
-  artifactDir: string;
-}): Promise<void> {
-  const declared = input.profile.runnerType === "codex"
-    ? codexDeclaredResultPath(input.argv)
-    : input.profile.runnerType === "cursor"
-      ? cursorResultPath(input.artifactDir, input.jobId)
-      : claudeResultPath(input.artifactDir, input.jobId);
-  if (!declared) return;
-  try {
-    await rm(declared, { force: true });
-  } catch {
-    // A path we cannot clear is reported by the parser as a missing or stale
-    // envelope; refusing to run here would be worse than proceeding.
-  }
-}
-
-
-async function readDeclaredArtifactFiles(
-  declaredResultPath: string,
-): Promise<Readonly<Record<string, string>>> {
-  try {
-    const contents = await readFile(declaredResultPath, "utf8");
-    return { [declaredResultPath]: contents };
-  } catch {
-    return {};
-  }
-}
-
 function failureResult(
   base: {
     jobId: string;
@@ -149,100 +100,6 @@ function failureResult(
   });
 }
 
-async function parseRunnerOutputAsync(input: {
-  jobId: string;
-  profile: RunnerProfile;
-  argv: readonly string[];
-  artifactDir: string;
-  stdout: string;
-  exitCode: number | null;
-  sessionId?: string;
-}): Promise<ParsedDispatch> {
-  const sessionFallback = input.sessionId ?? "";
-
-  switch (input.profile.runnerType) {
-    case "claude": {
-      const parsed = parseClaudeResult(input.stdout, {
-        exitCode: input.exitCode ?? 1,
-        artifactPaths: claudeArtifactPaths(input.artifactDir, input.jobId),
-        ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
-      });
-      // The claude CLI cannot enforce the envelope, so the verdict is read back
-      // from the brief-declared file the job wrote.
-      const verdict = await readClaudeVerdict(claudeResultPath(input.artifactDir, input.jobId));
-      return {
-        status: parsed.status,
-        ...(verdict !== undefined ? { verdict } : {}),
-        sessionHandle: parsed.sessionHandle || sessionFallback,
-        artifactPaths: parsed.artifactPaths,
-        ...(parsed.failure !== undefined
-          ? { failure: { code: parsed.failure.code, message: parsed.failure.message } }
-          : {}),
-      };
-    }
-    case "codex": {
-      const declaredResultPath = codexDeclaredResultPath(input.argv);
-      if (!declaredResultPath) {
-        return {
-          status: "failure",
-          sessionHandle: sessionFallback,
-          artifactPaths: [],
-          failure: {
-            code: "missing_result_path",
-            message: "Codex argv did not declare a result artifact path",
-          },
-        };
-      }
-
-      const parsed = parseCodexResult(
-        input.stdout,
-        { declaredResultPath, files: await readDeclaredArtifactFiles(declaredResultPath) },
-        { requireWorkArtifacts: input.profile.capabilities.includes("repository-write") },
-      );
-
-      return {
-        status: parsed.status,
-        ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
-        sessionHandle: parsed.sessionHandle ?? sessionFallback,
-        artifactPaths: parsed.artifactPaths,
-        ...(parsed.failure !== undefined
-          ? { failure: { code: codexFailureCode(parsed.status), message: parsed.failure } }
-          : {}),
-        ...(parsed.notes.length > 0 ? { notes: parsed.notes } : {}),
-      };
-    }
-    case "cursor": {
-      // Cursor has no --output-schema/-o equivalent, so the brief instructs
-      // the agent to write the envelope to the job-unique declared path and
-      // the parser validates it strictly.
-      const declaredResultPath = cursorResultPath(input.artifactDir, input.jobId);
-      const parsed = parseCursorResult(
-        input.stdout,
-        { declaredResultPath, files: await readDeclaredArtifactFiles(declaredResultPath) },
-        { requireWorkArtifacts: input.profile.capabilities.includes("repository-write") },
-      );
-      return {
-        status: parsed.status,
-        ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
-        sessionHandle: parsed.sessionHandle ?? sessionFallback,
-        artifactPaths: parsed.artifactPaths,
-        ...(parsed.failure !== undefined
-          ? {
-              failure: {
-                code: parsed.failure.reason,
-                message: parsed.failure.detail ?? parsed.failure.reason,
-              },
-            }
-          : {}),
-      };
-    }
-    default: {
-      const exhaustive: never = input.profile.runnerType;
-      return exhaustive;
-    }
-  }
-}
-
 /**
  * Persist the runner transcript as job evidence; never fail the job for it.
  *
@@ -255,42 +112,84 @@ async function parseRunnerOutputAsync(input: {
  */
 const MAX_RETAINED_TRANSCRIPT_BYTES = 1024 * 1024;
 
-async function retainTranscript(
-  artifactDir: string,
-  jobId: string,
-  stdout: string,
-): Promise<string | undefined> {
-  if (stdout.length === 0) return undefined;
-  const target = transcriptPath(artifactDir, jobId);
+/**
+ * The exact text that will be retained — computed before it is written, because
+ * this is also the text handed to the interpreter. Interpreting raw stdout while
+ * retaining something else would let a verdict quote evidence that no operator
+ * can find in the record afterwards.
+ */
+function retainableTranscript(stdout: string): string {
   const redacted = redactTranscript(stdout);
-  const bounded = redacted.length > MAX_RETAINED_TRANSCRIPT_BYTES
+  return redacted.length > MAX_RETAINED_TRANSCRIPT_BYTES
     ? `[transcript truncated: kept the final ${MAX_RETAINED_TRANSCRIPT_BYTES} bytes]\n${redacted.slice(-MAX_RETAINED_TRANSCRIPT_BYTES)}`
     : redacted;
+}
+
+/** How many same-job attempts keep their own transcript before one is reused. */
+const MAX_TRANSCRIPT_ATTEMPTS = 100;
+
+function numberedTranscriptPath(target: string, attempt: number): string {
+  const extension = path.extname(target);
+  return `${target.slice(0, target.length - extension.length)}.${attempt}${extension}`;
+}
+
+/**
+ * Retain a transcript without ever overwriting an earlier one.
+ *
+ * The path is derived from the job id, and a resume reuses the job id — so a
+ * plain write destroyed the evidence the first attempt's result had been
+ * derived from. The whole design rests on the transcript still being there to
+ * check an interpretation against, so a second attempt takes the next free
+ * name instead.
+ */
+async function writeTranscript(
+  artifactDir: string,
+  jobId: string,
+  transcript: string,
+): Promise<string | undefined> {
+  if (transcript.length === 0) return undefined;
+  const target = transcriptPath(artifactDir, jobId);
   try {
     await mkdir(artifactDir, { recursive: true });
-    await writeFile(target, bounded, { encoding: "utf8", mode: 0o600 });
-    return target;
+    for (let attempt = 0; attempt < MAX_TRANSCRIPT_ATTEMPTS; attempt += 1) {
+      const candidate = attempt === 0 ? target : numberedTranscriptPath(target, attempt);
+      try {
+        // 0600: a transcript can still contain material the redactor does not
+        // recognise. "wx" is what makes this non-destructive.
+        await writeFile(candidate, transcript, { encoding: "utf8", mode: 0o600, flag: "wx" });
+        return candidate;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+    }
+    // A hundred attempts under one job id is pathological. Reuse the last slot
+    // rather than the first, so the original attempt's transcript survives.
+    const last = numberedTranscriptPath(target, MAX_TRANSCRIPT_ATTEMPTS - 1);
+    await writeFile(last, transcript, { encoding: "utf8", mode: 0o600 });
+    return last;
   } catch {
     return undefined;
   }
 }
 
-async function readClaudeVerdict(envelopePath: string): Promise<ReviewVerdict | undefined> {
+/** Whatever the child said before it failed, retained on a best-effort basis. */
+async function salvageTranscript(
+  input: DispatchRunnerJobInput,
+  stdoutPromise: Promise<StreamCollectResult> | undefined,
+): Promise<readonly string[]> {
+  if (!stdoutPromise) return [];
   try {
-    const parsed = JSON.parse(await readFile(envelopePath, "utf8")) as { verdict?: unknown };
-    return parseReviewVerdict(parsed.verdict);
+    const collected = await stdoutPromise;
+    const transcript = retainableTranscript(collected.buffer.toString("utf8"));
+    const retained = await writeTranscript(input.artifactDir, input.jobId, transcript);
+    return retained ? [retained] : [];
   } catch {
-    return undefined;
+    return [];
   }
-}
-
-function codexFailureCode(status: RunnerJobStatus): string {
-  if (status === "usage_limit") return "usage_limit";
-  if (status === "cancelled") return "interrupted";
-  return "runner_error";
 }
 
 export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<RunnerJobResult> {
+  const startedAtMs = Date.now();
   const sessionId = extractFlagValue(input.argv, "--session-id");
   const base = {
     jobId: input.jobId,
@@ -303,16 +202,13 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
     return failureResult(base, "failure", "invalid_argv", "Runner argv must include an executable");
   }
 
-  await clearStaleResultEnvelope({
-    jobId: input.jobId,
-    profile: input.profile,
-    argv: input.argv,
-    artifactDir: input.artifactDir,
-  });
-
   let child: ChildProcess | undefined;
   let timedOut = false;
   let terminationTimer: NodeJS.Timeout | undefined;
+  // Held outside the try so the failure paths can still retain what the runner
+  // managed to say: a job that died mid-stream is one an operator has to be
+  // able to read.
+  let stdoutPromise: Promise<StreamCollectResult> | undefined;
 
   const terminateChild = () => {
     child?.kill("SIGTERM");
@@ -341,7 +237,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       return failureResult(base, "failure", "spawn_error", "Runner child is missing stdout or stderr pipes");
     }
 
-    const stdoutPromise = collectBoundedStream(activeChild.stdout, MAX_STDOUT_BYTES);
+    stdoutPromise = collectBoundedStream(activeChild.stdout, MAX_STDOUT_BYTES);
     const stderrPromise = collectBoundedStream(activeChild.stderr, MAX_STDERR_BYTES);
 
     const [exitCode, stdoutResult, stderrResult] = await new Promise<
@@ -349,13 +245,22 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
     >((resolve, reject) => {
       child!.once("error", reject);
       activeChild.once("close", (code) => {
-        Promise.all([stdoutPromise, stderrPromise])
+        Promise.all([stdoutPromise!, stderrPromise])
           .then(([stdoutCollected, stderrCollected]) => {
             resolve([code, stdoutCollected, stderrCollected]);
           })
           .catch(reject);
       });
     });
+
+    // Retain before deciding anything, including before the early returns for
+    // timeout and overflow. A run that was killed at its wall clock is exactly
+    // the one an operator needs to read, and the real-CLI probe caught a cursor
+    // implementer timing out with its whole transcript discarded. It is also
+    // what any later interpretation is checked against.
+    const transcript = retainableTranscript(stdoutResult.buffer.toString("utf8"));
+    const retainedTranscript = await writeTranscript(input.artifactDir, input.jobId, transcript);
+    const retainedPaths = retainedTranscript ? [retainedTranscript] : [];
 
     if (stdoutResult.overflow || stderrResult.overflow) {
       return failureResult(
@@ -365,6 +270,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
         stdoutResult.overflow
           ? `stdout exceeded ${MAX_STDOUT_BYTES} bytes`
           : `stderr exceeded ${MAX_STDERR_BYTES} bytes`,
+        retainedPaths,
       );
     }
 
@@ -374,24 +280,42 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
         "timeout",
         "runner_timeout",
         `Runner exceeded wall-clock timeout of ${input.timeoutMs}ms`,
+        retainedPaths,
       );
     }
 
-    const stdout = stdoutResult.buffer.toString("utf8");
-    // Retain the transcript before parsing. A read-only codex reviewer cannot
-    // write a findings file, and --output-schema constrains its final message to
-    // the envelope, so this is frequently the only place its reasoning exists.
-    const retainedTranscript = await retainTranscript(input.artifactDir, input.jobId, stdout);
-
-    const parsed = await parseRunnerOutputAsync({
+    const facts: RunnerJobFacts = {
       jobId: input.jobId,
-      profile: input.profile,
-      argv: input.argv,
-      artifactDir: input.artifactDir,
-      stdout,
+      role: input.role ?? "implementer",
+      runnerType: input.profile.runnerType,
+      profileId: input.profile.profileId,
+      model: input.profile.model,
+      capabilities: input.profile.capabilities,
       exitCode,
-      ...(sessionId !== undefined ? { sessionId } : {}),
-    });
+      artifactDir: input.artifactDir,
+      worktreePath: input.cwd ?? input.artifactDir,
+      transcriptPath: retainedTranscript,
+      sessionId,
+      argv: input.argv,
+      startedAtMs,
+    };
+
+    let parsed: InterpretedResult;
+    try {
+      parsed = await input.interpreter.interpret(facts, transcript);
+    } catch (error) {
+      // An interpreter that throws must not take the campaign down with it, and
+      // must not be recorded as a runner failure of its own: the run may have
+      // been perfectly good, and its transcript is still on disk to prove it.
+      const message = error instanceof Error ? error.message : "Result interpretation failed";
+      return failureResult(
+        base,
+        "failure",
+        "interpretation_error",
+        message,
+        retainedTranscript ? [retainedTranscript] : [],
+      );
+    }
 
     return normalizeJobResult({
       jobId: input.jobId,
@@ -401,25 +325,36 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       effort: input.profile.effort,
       status: parsed.status,
       ...(parsed.verdict !== undefined ? { verdict: parsed.verdict } : {}),
+      ...(parsed.verdictEvidence !== undefined ? { verdictEvidence: parsed.verdictEvidence } : {}),
+      ...(parsed.interpretationPath !== undefined ? { interpretationPath: parsed.interpretationPath } : {}),
       sessionHandle: parsed.sessionHandle,
-      artifactPaths: retainedTranscript
+      artifactPaths: retainedTranscript && !parsed.artifactPaths.includes(retainedTranscript)
         ? [...parsed.artifactPaths, retainedTranscript]
         : parsed.artifactPaths,
       ...(parsed.failure !== undefined ? { failure: parsed.failure } : {}),
-      ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
+      // A transcript that could not be written is stated rather than silently
+      // missing: every verdict here is checked against a transcript, so its
+      // absence changes what the result can be trusted for.
+      notes: retainedTranscript === undefined && transcript.length > 0
+        ? [...(parsed.notes ?? []), "transcript_not_retained"]
+        : (parsed.notes ?? []),
     });
   } catch (error) {
+    // Retain here too. A spawn or stream error after the child has already
+    // spoken is exactly the case where its own words explain the failure.
+    const salvaged = await salvageTranscript(input, stdoutPromise);
     if (timedOut) {
       return failureResult(
         base,
         "timeout",
         "runner_timeout",
         `Runner exceeded wall-clock timeout of ${input.timeoutMs}ms`,
+        salvaged,
       );
     }
 
     const message = error instanceof Error ? error.message : "Runner dispatch failed";
-    return failureResult(base, "failure", "spawn_error", message);
+    return failureResult(base, "failure", "spawn_error", message, salvaged);
   } finally {
     clearTimeout(timeoutTimer);
     if (terminationTimer) clearTimeout(terminationTimer);

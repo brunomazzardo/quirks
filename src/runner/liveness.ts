@@ -1,8 +1,9 @@
 import { stat } from "node:fs/promises";
 import { buildClaudeResumeArgv } from "./claude.js";
-import { buildCodexResumeArgv, codexResultPath, codexResultSchemaPath } from "./codex.js";
+import { buildCodexResumeArgv } from "./codex.js";
 import { buildCursorResumeArgv } from "./cursor.js";
 import { dispatchRunnerJob, type DispatchRunnerJobInput } from "./dispatcher.js";
+import type { ResultInterpreter } from "./interpretation.js";
 import type { SessionRecord, SessionRegistry } from "./sessions.js";
 import type { RunnerJobResult, RunnerProfile } from "./types.js";
 import { QuirksError } from "../core/errors.js";
@@ -51,6 +52,8 @@ export interface ResumeJobDeps {
   briefPath: string;
   artifactDir: string;
   timeoutMs: number;
+  /** The same interpretation seam an initial dispatch uses. */
+  interpreter: ResultInterpreter;
   dispatch?: (input: DispatchRunnerJobInput) => Promise<RunnerJobResult>;
 }
 
@@ -166,8 +169,6 @@ function buildResumeArgv(
         workspace: posture.workspace,
         sessionHandle,
         briefPath: posture.briefPath,
-        resultPath: codexResultPath(posture.artifactDir, posture.jobId),
-        schemaPath: codexResultSchemaPath(),
         capabilities: profile.capabilities,
         effort: profile.effort,
       });
@@ -213,9 +214,14 @@ export async function resumeJob(jobId: string, deps: ResumeJobDeps): Promise<Run
   const dispatch = deps.dispatch ?? dispatchRunnerJob;
   const result = await dispatch({
     jobId,
+    // The session record knows what this job was. Without it a resumed reviewer
+    // dispatches as an implementer, and an implementer job carries no verdict —
+    // so its judgment would be silently discarded.
+    role: session.role,
     profile: deps.profile,
     argv,
     artifactDir: deps.artifactDir,
+    interpreter: deps.interpreter,
     // Same binding the initial dispatch needs: claude has no workspace flag, so
     // without this a resumed job restarts in the supervisor's checkout rather
     // than its task worktree.

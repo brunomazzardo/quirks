@@ -10,7 +10,6 @@ import { renderPrompt } from "../prompt/render.js";
 import { loadPlanOutline, type ImmutableSourceRef, type PlanOutline } from "./plan-outline.js";
 import type { JudgmentTier } from "./types.js";
 import type { PromptAction, PromptContextKind } from "../prompt/types.js";
-import { cursorResultContractSection } from "../runner/cursor.js";
 import type { RunnerProfile } from "../runner/types.js";
 
 /** Raw normalized-task record shape returned by a TaskSource `show`. */
@@ -139,14 +138,6 @@ export interface BuildTaskBriefInput {
   skills: Readonly<Record<string, string>>;
   profiles: readonly RunnerProfile[];
   implementerProfileId?: string;
-  /**
-   * Job-bound result envelope contract appended to the dispatched brief.
-   * Set for runners without mechanical envelope enforcement (cursor has no
-   * --output-schema equivalent), so the brief states the exact envelope
-   * JSON contract and the exact per-job path to write it. UI copy prompts
-   * have no dispatched job and never carry it.
-   */
-  resultContract?: { resultPath: string };
 }
 
 function briefRecipeId(role: BuildTaskBriefInput["role"]): PromptAction {
@@ -195,7 +186,8 @@ export async function buildTaskBrief(input: BuildTaskBriefInput): Promise<string
     profiles: input.profiles,
     ...(input.implementerProfileId !== undefined ? { implementerProfileId: input.implementerProfileId } : {}),
   });
-  const prompt = renderPrompt(recipe, context).prompt;
-  if (!input.resultContract) return prompt;
-  return `${prompt}\n\n${cursorResultContractSection(input.resultContract.resultPath)}`;
+  // No result-envelope contract is appended. Demanding a rigid envelope from a
+  // CLI that was never built to emit one is what QK-RUN-009 removed: the
+  // managing agent derives the structure from what the runner actually says.
+  return renderPrompt(recipe, context).prompt;
 }

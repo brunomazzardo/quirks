@@ -1,0 +1,218 @@
+/**
+ * Vendor-agnostic reading of a retained runner transcript.
+ *
+ * These helpers deliberately know nothing about any CLI's event shape. The
+ * runner boundary used to demand a precise envelope from each vendor, and every
+ * defect that drained the cmp-uimotion-1 campaign lived in that demand. What is
+ * left here are the two mechanical facts worth taking from a transcript without
+ * asking a model: which text it contains, and what session it ran under.
+ */
+
+const REPLACEMENT_CHARACTER = "�";
+const SESSION_KEYS = ["session_id", "thread_id", "chatId", "threadId", "sessionId"] as const;
+
+function collectStrings(value: unknown, into: string[]): void {
+  if (typeof value === "string") {
+    into.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) collectStrings(entry, into);
+    return;
+  }
+  if (typeof value === "object" && value !== null) {
+    for (const entry of Object.values(value)) collectStrings(entry, into);
+  }
+}
+
+/**
+ * Separator between authored messages in the haystack.
+ *
+ * A quote must come from one message. Joining with an ordinary newline let a
+ * "contiguous" quote span two unrelated messages once whitespace was
+ * normalized; a NUL cannot survive into any needle, so it is a hard wall.
+ */
+export const AUTHORED_MESSAGE_SEPARATOR = "\n\u0000\n";
+
+function claudeAssistantText(event: Record<string, unknown>, into: string[]): void {
+  const message = event["message"];
+  if (typeof message !== "object" || message === null) return;
+  const content = (message as Record<string, unknown>)["content"];
+  if (!Array.isArray(content)) return;
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) continue;
+    const record = block as Record<string, unknown>;
+    if (record["type"] === "text" && typeof record["text"] === "string") into.push(record["text"]);
+  }
+}
+
+function codexAgentMessage(event: Record<string, unknown>, into: string[]): void {
+  const item = event["item"];
+  if (typeof item !== "object" || item === null) return;
+  const record = item as Record<string, unknown>;
+  if (record["type"] === "agent_message" && typeof record["text"] === "string") into.push(record["text"]);
+}
+
+/**
+ * Only what the runner itself said, and nothing it merely read or was told.
+ *
+ * A transcript carries far more than the agent's own words: tool results, file
+ * contents, and the brief it was handed. Reviewer briefs necessarily contain
+ * phrases like "accept the code as it stands, or revise it", so treating the
+ * whole transcript as the runner's speech let an invented accept verdict quote
+ * the *instructions* and pass verification — silent wrong acceptance through
+ * the one check meant to prevent it. Raised as a Critical by the independent
+ * cursor review of this change, 2026-07-25.
+ *
+ * The shapes below cover claude stream-json, codex `--json`, and cursor's single
+ * JSON document. claude's and cursor's are verified against captured real
+ * transcripts; **codex's is not** — the only committed codex transcript is a
+ * usage-limit failure containing no agent message at all, so the
+ * `item.completed` reader is checked against a fake written to match it, which
+ * is circular. Its real shape is owed until codex's quota resets on Jul 28
+ * (independent claude review, 2026-07-25).
+ *
+ * That matters because narrowing made an unknown load-bearing: an unrecognised
+ * shape yields nothing, so a verdict over it fails closed rather than being
+ * believed — the safe direction, but for codex it would fail *every* review.
+ * `transcriptHasUnreadableChannel` exists so that case names its own cause
+ * instead of looking like a model fabricating a quote.
+ */
+export function transcriptQuoteHaystack(transcript: string): string {
+  const authored: string[] = [];
+  for (const line of transcript.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      // A CLI that prints plain prose is speaking in its own voice.
+      authored.push(line);
+      continue;
+    }
+    const events = Array.isArray(parsed) ? parsed : [parsed];
+    for (const event of events) {
+      if (typeof event !== "object" || event === null) continue;
+      const record = event as Record<string, unknown>;
+      // claude: assistant messages; cursor and claude: the terminal result.
+      if (record["type"] === "assistant") claudeAssistantText(record, authored);
+      if (record["type"] === "result" && typeof record["result"] === "string") {
+        authored.push(record["result"]);
+      }
+      // codex: completed agent messages.
+      if (record["type"] === "item.completed") codexAgentMessage(record, authored);
+    }
+  }
+  return authored.join(AUTHORED_MESSAGE_SEPARATOR);
+}
+
+/**
+ * A transcript that said something we could not attribute to its author.
+ *
+ * Distinguishes "the runner produced nothing" from "the runner spoke in a shape
+ * this module does not know", which are the same silence to the quote check and
+ * very different problems to an operator.
+ */
+export function transcriptHasUnreadableChannel(transcript: string): boolean {
+  return transcript.trim().length > 0
+    && transcriptQuoteHaystack(transcript).trim().length === 0
+    && transcriptAllText(transcript).trim().length > 0;
+}
+
+/** Every string a transcript contains, for tests and diagnostics. */
+export function transcriptAllText(transcript: string): string {
+  const parts: string[] = [];
+  for (const line of transcript.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    try {
+      collectStrings(JSON.parse(trimmed), parts);
+    } catch {
+      parts.push(line);
+    }
+  }
+  return parts.join("\n");
+}
+
+function findSessionHandle(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = findSessionHandle(entry);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of SESSION_KEYS) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.length > 0) return candidate;
+  }
+  for (const entry of Object.values(record)) {
+    const found = findSessionHandle(entry);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/**
+ * The session or thread identifier a transcript reports, or undefined.
+ *
+ * Read mechanically rather than asked of the interpreting agent: a resume
+ * depends on this string being exact, and an identifier is the one thing in a
+ * transcript that has a right answer no reading can improve on.
+ */
+export function transcriptSessionHandle(transcript: string): string | undefined {
+  for (const line of transcript.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    const found = findSessionHandle(parsed);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+function trimReplacementEdges(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === REPLACEMENT_CHARACTER) start += 1;
+  while (end > start && value[end - 1] === REPLACEMENT_CHARACTER) end -= 1;
+  return value.slice(start, end);
+}
+
+export interface TranscriptExcerpt {
+  text: string;
+  elidedBytes: number;
+}
+
+/**
+ * A bounded excerpt of a transcript: head, an explicit elision marker, tail.
+ *
+ * The tail is the larger share because a reviewer's recommendation comes last,
+ * and the head is kept because a run that died on an invalid flag says so in
+ * its first lines. The marker is stated rather than implied: an interpreter
+ * that cannot see the whole transcript must know that, or its "no verdict
+ * found" is a statement about our truncation rather than about the run.
+ */
+export function boundedTranscriptExcerpt(transcript: string, budgetBytes: number): TranscriptExcerpt {
+  const buffer = Buffer.from(transcript, "utf8");
+  if (buffer.byteLength <= budgetBytes) {
+    return { text: transcript, elidedBytes: 0 };
+  }
+  const headBytes = Math.max(1, Math.floor(budgetBytes / 8));
+  const tailBytes = Math.max(1, budgetBytes - headBytes);
+  const head = trimReplacementEdges(buffer.subarray(0, headBytes).toString("utf8"));
+  const tail = trimReplacementEdges(buffer.subarray(buffer.byteLength - tailBytes).toString("utf8"));
+  const elidedBytes = buffer.byteLength - headBytes - tailBytes;
+  return {
+    text: `${head}\n[... ${elidedBytes} bytes of this transcript elided from the middle ...]\n${tail}`,
+    elidedBytes,
+  };
+}

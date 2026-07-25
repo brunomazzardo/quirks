@@ -3,12 +3,11 @@ import { chmod, cp, mkdtemp, readFile, realpath, writeFile } from "node:fs/promi
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { claudeResultPath } from "../../src/runner/claude.js";
 import { buildCodexResumeArgv } from "../../src/runner/codex.js";
-import { cursorResultContractSection } from "../../src/runner/cursor.js";
 import { dispatchRunnerJob } from "../../src/runner/dispatcher.js";
 import { transcriptPath } from "../../src/runner/result-contract.js";
 import type { RunnerProfile } from "../../src/runner/types.js";
+import { StubInterpreter } from "./support/stub-interpreter.js";
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -31,13 +30,10 @@ async function makeTempArtifactDir(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "quirks-runner-artifacts-"));
 }
 
-function fakeClaudeArgv(mode: string, briefPath: string): readonly string[] {
+function fakeClaudeArgv(mode: string): readonly string[] {
   return [
     process.execPath,
     path.resolve("test/fixtures/fake-runners/fake-claude.mjs"),
-    // Production passes the brief as the positional prompt; the fake reads its
-    // declared envelope path out of that brief, exactly as a real job does.
-    briefPath,
     "--session-id",
     SESSION_ID,
     "--mode",
@@ -45,56 +41,109 @@ function fakeClaudeArgv(mode: string, briefPath: string): readonly string[] {
   ];
 }
 
-/** Brief stating the job-unique envelope path, as the supervisor now does. */
-async function briefDeclaring(artifactDir: string, jobId: string): Promise<string> {
-  const briefPath = path.join(artifactDir, "brief.md");
-  await writeFile(
-    briefPath,
-    `# brief\n\n${cursorResultContractSection(claudeResultPath(artifactDir, jobId))}\n`,
-    "utf8",
-  );
-  return briefPath;
-}
-
-async function dispatchFakeClaude(mode: string, timeoutMs = 5_000) {
+async function dispatchFakeClaude(mode: string, timeoutMs = 5_000, interpreter = new StubInterpreter()) {
   const artifactDir = await makeTempArtifactDir();
-  return dispatchRunnerJob({
+  const result = await dispatchRunnerJob({
     jobId: "job-1",
     profile: fakeProfile,
-    argv: fakeClaudeArgv(mode, await briefDeclaring(artifactDir, "job-1")),
+    argv: fakeClaudeArgv(mode),
     artifactDir,
     timeoutMs,
+    interpreter,
   });
+  return { result, interpreter, artifactDir };
 }
 
-test("dispatch spawns argv directly without a shell and normalizes success", async () => {
-  const result = await dispatchFakeClaude("success");
+test("dispatch spawns argv directly without a shell and normalizes the interpreted result", async () => {
+  const { result } = await dispatchFakeClaude("success");
   assert.equal(result.status, "success");
-  assert.match(result.sessionHandle, /./);
-  assert.equal(result.sessionHandle, SESSION_ID);
   assert.equal(result.runner, "fake-claude");
   assert.equal(result.runnerType, "claude");
   assert.equal(result.resolvedModel, "test-model");
   assert.equal(result.effort, "standard");
-  assert.equal(result.artifactPaths.length > 0, true);
   assert.equal(result.failure, undefined);
 });
 
-test("dispatch classifies exit-zero permission denial as permission_denied", async () => {
-  const result = await dispatchFakeClaude("exit-zero-denied");
-  assert.equal(result.status, "permission_denied");
-  assert.equal(result.failure?.code, "permission_denied");
+test("the launcher reports the session id it generated as a fact", async () => {
+  const { interpreter } = await dispatchFakeClaude("success");
+  assert.equal(interpreter.facts[0]?.sessionId, SESSION_ID);
 });
 
-test("dispatch rejects malformed output without treating prose done as success", async () => {
-  const result = await dispatchFakeClaude("malformed");
-  assert.notEqual(result.status, "success");
-  assert.equal(result.status, "failure");
-});
-
-test("dispatch classifies hung runners as timeout", async () => {
-  const result = await dispatchFakeClaude("timeout", 300);
+test("dispatch classifies hung runners as timeout without interpreting anything", async () => {
+  const { result, interpreter } = await dispatchFakeClaude("timeout", 300);
   assert.equal(result.status, "timeout");
+  assert.equal(interpreter.facts.length, 0);
+});
+
+/**
+ * Found by the real-CLI probe, not by a unit test: a cursor implementer hit its
+ * 30-minute wall clock and the result carried no transcript at all, because the
+ * launcher returned on timeout before retaining anything. A timed-out run is
+ * precisely when an operator needs to see how far the runner got — and "the raw
+ * transcript is always retained" is the honesty constraint the whole
+ * interpretation layer rests on.
+ */
+test("a timed-out runner still retains everything it managed to say", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const script = path.join(artifactDir, "slow.mjs");
+  await writeFile(
+    script,
+    'process.stdout.write("I started the work and got this far\\n");\nsetInterval(() => {}, 1000);\n',
+    "utf8",
+  );
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-slow",
+    profile: fakeProfile,
+    argv: [process.execPath, script],
+    artifactDir,
+    timeoutMs: 400,
+    interpreter: new StubInterpreter(),
+  });
+
+  assert.equal(result.status, "timeout");
+  const retained = result.artifactPaths.find((entry) => entry.includes("transcript-"));
+  assert.ok(retained, "a timeout must not discard what the runner already said");
+  assert.match(await readFile(retained, "utf8"), /I started the work and got this far/);
+});
+
+test("a runner that overflowed the output bound still retains the tail it produced", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const script = path.join(artifactDir, "flood.mjs");
+  await writeFile(
+    script,
+    'process.stdout.write("x".repeat(17 * 1024 * 1024));\n',
+    "utf8",
+  );
+
+  const result = await dispatchRunnerJob({
+    jobId: "job-flood",
+    profile: fakeProfile,
+    argv: [process.execPath, script],
+    artifactDir,
+    timeoutMs: 10_000,
+    interpreter: new StubInterpreter(),
+  });
+
+  assert.equal(result.status, "failure");
+  assert.equal(result.failure?.code, "output_limit_exceeded");
+  assert.ok(
+    result.artifactPaths.some((entry) => entry.includes("transcript-")),
+    "an overflowing runner is still evidence of what it was doing",
+  );
+});
+
+test("dispatch refuses argv without an executable", async () => {
+  const result = await dispatchRunnerJob({
+    jobId: "job-empty",
+    profile: fakeProfile,
+    argv: [],
+    artifactDir: await makeTempArtifactDir(),
+    timeoutMs: 1_000,
+    interpreter: new StubInterpreter(),
+  });
+  assert.equal(result.status, "failure");
+  assert.equal(result.failure?.code, "invalid_argv");
 });
 
 const codexProfile: RunnerProfile = {
@@ -114,7 +163,7 @@ async function executableFakeCodex(): Promise<string> {
   return target;
 }
 
-test("dispatch executes codex resume argv against the declared result path", async () => {
+test("dispatch executes codex resume argv and interprets what it produced", async () => {
   const executable = await executableFakeCodex();
   const artifactDir = await makeTempArtifactDir();
   const argv = buildCodexResumeArgv({
@@ -122,41 +171,26 @@ test("dispatch executes codex resume argv against the declared result path", asy
     workspace: artifactDir,
     sessionHandle: "codex-session-abc",
     briefPath: path.join(artifactDir, "brief.md"),
-    resultPath: path.join(artifactDir, "codex-result.json"),
-    schemaPath: "schemas/codex-result.schema.json",
     capabilities: ["repository-read", "repository-write"],
     effort: "standard",
   });
 
+  const interpreter = new StubInterpreter();
   const result = await dispatchRunnerJob({
     jobId: "job-codex-resume",
     profile: codexProfile,
     argv,
     artifactDir,
     timeoutMs: 5_000,
-  });
-
-  assert.notEqual(result.failure?.code, "missing_result_path");
-  assert.equal(result.status, "success");
-  assert.equal(result.artifactPaths.length > 0, true);
-});
-
-test("dispatch prefers the codex --json session handle and notes envelope disagreement", async () => {
-  const executable = await executableFakeCodex();
-  const artifactDir = await makeTempArtifactDir();
-  const resultPath = path.join(artifactDir, "codex-result.json");
-
-  const result = await dispatchRunnerJob({
-    jobId: "job-codex-mismatch",
-    profile: codexProfile,
-    argv: [executable, "-o", resultPath, "--mode", "session-mismatch"],
-    artifactDir,
-    timeoutMs: 5_000,
+    interpreter,
   });
 
   assert.equal(result.status, "success");
-  assert.equal(result.sessionHandle, "jsonl-session-999");
-  assert.deepEqual(result.notes, ["session_handle_mismatch"]);
+  // A resume must not reimpose a result contract: the flags that suppressed
+  // codex's reasoning are gone from the resume path too.
+  assert.equal(argv.includes("--output-schema"), false);
+  assert.equal(argv.includes("-o"), false);
+  assert.equal(interpreter.facts.length, 1);
 });
 
 /**
@@ -180,6 +214,7 @@ test("dispatch runs the child in the job's worktree so claude is bound to it", a
     artifactDir,
     cwd: worktree,
     timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
   });
 
   const transcript = await readFile(transcriptPath(artifactDir, "job-cwd"), "utf8");
@@ -192,42 +227,56 @@ test("dispatch runs the child in the job's worktree so claude is bound to it", a
   assert.ok(result.jobId === "job-cwd");
 });
 
-/**
- * Result paths are deterministic per job, so a retry, a resume, or a rerun finds
- * the previous attempt's envelope still on disk. The parsers prefer any valid
- * envelope over the current invocation's error output, so a failing run was
- * reported as the earlier success. Codex demonstrated it by pairing a current
- * turn.failed event with an older accepting envelope; both codex and cursor
- * returned success. The invocation must own its result file.
- */
-test("a stale result envelope from a previous attempt cannot make a failed run succeed", async () => {
+test("the worktree the launcher bound is a fact the interpreter is told", async () => {
   const artifactDir = await makeTempArtifactDir();
-  const resultPath = path.join(artifactDir, "codex-result.json");
-  // An older, accepting envelope left behind by a previous attempt.
-  await writeFile(
-    resultPath,
-    JSON.stringify({
-      status: "success",
-      verdict: "accept",
-      sessionHandle: "stale-session",
-      artifactPaths: [resultPath],
-      failure: null,
-    }),
-    "utf8",
-  );
+  const worktree = await mkdtemp(path.join(os.tmpdir(), "quirks-runner-worktree-"));
+  const interpreter = new StubInterpreter();
+  await dispatchRunnerJob({
+    jobId: "job-facts-cwd",
+    profile: fakeProfile,
+    argv: fakeClaudeArgv("success"),
+    artifactDir,
+    cwd: worktree,
+    timeoutMs: 5_000,
+    interpreter,
+  });
+  assert.equal(interpreter.facts[0]?.worktreePath, worktree);
+});
 
-  // This invocation fails without writing any envelope of its own.
-  const failing = path.join(artifactDir, "failing-codex.mjs");
-  await writeFile(failing, "process.exitCode = 1;\n", "utf8");
+/**
+ * A resume reuses the job id, and the transcript path is derived from it. The
+ * first version of this overwrote the earlier attempt's transcript, quietly
+ * destroying the evidence a verdict had been derived from — while the whole
+ * design rests on "the raw transcript is always retained, so any interpretation
+ * can be audited after the fact".
+ */
+test("a second run under the same job id keeps the first transcript rather than overwriting it", async () => {
+  const artifactDir = await makeTempArtifactDir();
+  const first = path.join(artifactDir, "first.mjs");
+  const second = path.join(artifactDir, "second.mjs");
+  await writeFile(first, 'process.stdout.write("FIRST ATTEMPT SAID THIS\\n");\n', "utf8");
+  await writeFile(second, 'process.stdout.write("SECOND ATTEMPT SAID THIS\\n");\n', "utf8");
 
-  const result = await dispatchRunnerJob({
-    jobId: "job-stale",
-    profile: codexProfile,
-    argv: [process.execPath, failing, "-o", resultPath],
+  const one = await dispatchRunnerJob({
+    jobId: "job-resumed",
+    profile: fakeProfile,
+    argv: [process.execPath, first],
     artifactDir,
     timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
+  });
+  const two = await dispatchRunnerJob({
+    jobId: "job-resumed",
+    profile: fakeProfile,
+    argv: [process.execPath, second],
+    artifactDir,
+    timeoutMs: 5_000,
+    interpreter: new StubInterpreter(),
   });
 
-  assert.notEqual(result.status, "success", "a failed invocation must not inherit an old envelope");
-  assert.notEqual(result.verdict, "accept", "a stale accept must never be reused");
+  const firstPath = one.artifactPaths.find((entry) => entry.includes("transcript-"))!;
+  const secondPath = two.artifactPaths.find((entry) => entry.includes("transcript-"))!;
+  assert.notEqual(firstPath, secondPath, "the second attempt must not claim the first attempt's file");
+  assert.match(await readFile(firstPath, "utf8"), /FIRST ATTEMPT SAID THIS/);
+  assert.match(await readFile(secondPath, "utf8"), /SECOND ATTEMPT SAID THIS/);
 });
