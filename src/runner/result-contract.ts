@@ -14,10 +14,16 @@ import { cursorResultPath } from "./cursor.js";
  * runner and retried. The cmp-uimotion-1 campaign retried exactly that way
  * until BUDGET_EXCEEDED while holding two complete, well-formed reviews.
  */
-export type ReviewVerdict = "accept" | "revise";
+/**
+ * `indeterminate` is a first-class answer, not a missing one. When a reviewer's
+ * judgment cannot be established from what it actually said, recording that
+ * fact is honest; recording nothing invites a later reader to supply "accept"
+ * by default, which is the fail-open this whole boundary exists to prevent.
+ */
+export type ReviewVerdict = "accept" | "revise" | "indeterminate";
 
 export function parseReviewVerdict(raw: unknown): ReviewVerdict | undefined {
-  return raw === "accept" || raw === "revise" ? raw : undefined;
+  return raw === "accept" || raw === "revise" || raw === "indeterminate" ? raw : undefined;
 }
 
 /**
@@ -86,6 +92,20 @@ export function transcriptPath(artifactDir: string, jobId: string): string {
   const safeJobId = jobId.replace(/[^A-Za-z0-9._-]/g, "-");
   const digest = createHash("sha256").update(jobId).digest("hex").slice(0, 8);
   return path.join(artifactDir, `transcript-${safeJobId}-${digest}.jsonl`);
+}
+
+/**
+ * Job-unique path for the retained interpretation record.
+ *
+ * Interpretation is never the only record: the transcript says what the runner
+ * said, and this says how that became a structured result — which model read
+ * it, under which brief, what it quoted, and which mechanical checks fired.
+ * Without it, a verdict is an assertion; with it, a verdict is auditable.
+ */
+export function interpretationPath(artifactDir: string, jobId: string): string {
+  const safeJobId = jobId.replace(/[^A-Za-z0-9._-]/g, "-");
+  const digest = createHash("sha256").update(jobId).digest("hex").slice(0, 8);
+  return path.join(artifactDir, `interpretation-${safeJobId}-${digest}.json`);
 }
 
 /** Redact secret-shaped text before a transcript is written to disk. */

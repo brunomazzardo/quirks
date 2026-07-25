@@ -8,6 +8,7 @@ import { buildClaudeArgv, buildClaudeEnv, claudeArtifactPaths } from "./claude.j
 import { buildCodexArgv, codexPromptText, codexResultPath, codexResultSchemaPath } from "./codex.js";
 import { buildCursorArgv, cursorResultPath } from "./cursor.js";
 import { dispatchRunnerJob } from "./dispatcher.js";
+import type { ResultInterpreter } from "./interpretation.js";
 import type { RunnerJobResult, RunnerProfile } from "./types.js";
 
 export interface RunnerDispatchInput {
@@ -99,7 +100,10 @@ export function buildRunnerArgv(
 }
 
 export class CliRunnerPort implements RunnerPort {
-  constructor(private readonly profiles: ReadonlyMap<string, RunnerProfile>) {}
+  constructor(
+    private readonly profiles: ReadonlyMap<string, RunnerProfile>,
+    private readonly interpreter?: ResultInterpreter,
+  ) {}
 
   async dispatch(input: RunnerDispatchInput): Promise<RunnerJobResult> {
     const profile = requiredProfile(this.profiles, input.route.profileId);
@@ -110,11 +114,15 @@ export class CliRunnerPort implements RunnerPort {
     const argv = buildRunnerArgv(profile, input, artifactDir, briefContents);
     const dispatchInput = {
       jobId: input.jobId,
+      // The role decides whether a verdict is even asked for. Losing it here
+      // would read every reviewer as an implementer and drop its judgment.
+      role: input.role,
       profile,
       argv,
       artifactDir,
       timeoutMs: profile.wallClockMs,
       cwd: input.worktreePath,
+      ...(this.interpreter !== undefined ? { interpreter: this.interpreter } : {}),
     };
     const env = sanitizedRunnerEnv(profile);
     return dispatchRunnerJob(env ? { ...dispatchInput, env } : dispatchInput);
