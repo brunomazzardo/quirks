@@ -402,6 +402,13 @@ interface InterpretationRecord {
   /** What this interpretation cost, so "cheap beside the job" stays a measurement. */
   interpreterCostUsd: number | undefined;
   report: ManagingAgentReport | null;
+  /**
+   * Answers that were refused, kept so a rejection can be diagnosed from the
+   * record. The real-CLI gate refused a correct cursor verdict and this file
+   * said only *that* it was refused, so the cause had to be found by re-running
+   * the model — which is exactly what a retained record exists to avoid.
+   */
+  rejectedReports: readonly ManagingAgentReport[];
   verdict: InterpretedResult["verdict"] | null;
   checks: {
     quoteSupported: boolean;
@@ -425,6 +432,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
     const argv = buildInterpreterArgv(this.config, MANAGING_AGENT_SYSTEM_BRIEF);
     const env = buildClaudeEnv(this.config.configDir ? { configDir: this.config.configDir } : {});
     const rejections: string[] = [];
+    const rejectedReports: ManagingAgentReport[] = [];
     let corrective: string | undefined;
 
     for (let attempt = 1; attempt <= MAX_INTERPRETATION_ATTEMPTS; attempt += 1) {
@@ -470,10 +478,12 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
         // Retrying cannot help: the agent would have to quote text we are
         // unable to attribute. Fail once, name the cause, keep the transcript.
         rejections.push(outcome.reason);
+        rejectedReports.push(read.report);
         break;
       }
       if (outcome.kind === "reject") {
         rejections.push(outcome.reason);
+        rejectedReports.push(read.report);
         corrective = outcome.reason;
         continue;
       }
@@ -482,7 +492,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
         ...outcome.reconciled.checks,
         attempts: attempt,
         rejections,
-      }, outcome.reconciled.verdict ?? null, read.costUsd);
+      }, outcome.reconciled.verdict ?? null, rejectedReports, read.costUsd);
 
       const { reconciled } = outcome;
       return {
@@ -500,7 +510,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
       };
     }
 
-    return this.failedInterpretation(facts, transcript, rejections);
+    return this.failedInterpretation(facts, transcript, rejections, rejectedReports);
   }
 
   /**
@@ -513,6 +523,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
     facts: RunnerJobFacts,
     transcript: string,
     rejections: readonly string[],
+    rejectedReports: readonly ManagingAgentReport[] = [],
   ): Promise<InterpretedResult> {
     const unreadable = rejections.some((reason) => reason.includes("transcript reader"));
     const unsupportedVerdict = rejections.every((reason) => reason.includes("does not appear in the transcript"));
@@ -522,7 +533,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
       droppedArtifactPaths: [],
       attempts: MAX_INTERPRETATION_ATTEMPTS,
       rejections,
-    }, null);
+    }, null, rejectedReports);
 
     return {
       status: "failure",
@@ -547,6 +558,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
     report: ManagingAgentReport | null,
     checks: InterpretationRecord["checks"],
     verdict: InterpretedResult["verdict"] | null,
+    rejectedReports: readonly ManagingAgentReport[] = [],
     costUsd?: number,
   ): Promise<string | undefined> {
     const record: InterpretationRecord = {
@@ -560,6 +572,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
       transcriptBytes: Buffer.byteLength(transcript, "utf8"),
       interpreterCostUsd: costUsd,
       report,
+      rejectedReports: [...rejectedReports],
       verdict,
       checks,
       at: this.now(),

@@ -242,6 +242,51 @@ test("an empty or whitespace-only quote is never supported", () => {
   assert.equal(quoteSupportedByTranscript("      ", "anything"), false);
 });
 
+/**
+ * Measured by the real-CLI gate, 2026-07-25: a cursor reviewer ended with
+ * "### Recommendation\n\n**Revise it.**" and the managing agent quoted exactly
+ * that. The minimum-length floor refused it, so a correct verdict became a
+ * failed job — the same over-constraint this change exists to remove, this time
+ * inflicted on how briefly a reviewer is allowed to speak.
+ *
+ * A short quote is still evidence when it is a whole statement standing where a
+ * statement starts.
+ */
+test("a short but complete recommendation is supported", () => {
+  const transcript = JSON.stringify({
+    type: "result",
+    result: "### Defects\n\n1. Off-by-one.\n\n### Recommendation\n\n**Revise it.**",
+  });
+  assert.equal(quoteSupportedByTranscript("Revise it.", transcript, "revise"), true);
+});
+
+test("a short fragment that is not a whole statement is still refused", () => {
+  const transcript = JSON.stringify({ type: "result", result: "Everything is ok here, mostly." });
+  assert.equal(quoteSupportedByTranscript("ok here", transcript, "accept"), false);
+  assert.equal(quoteSupportedByTranscript("is ok", transcript, "accept"), false);
+});
+
+test("a short accept is bound by polarity within its own statement", () => {
+  const inStatement = JSON.stringify({
+    type: "result",
+    result: "I cannot sign this off — accept it.",
+  });
+  assert.equal(quoteSupportedByTranscript("accept it.", inStatement, "accept"), false);
+
+  // The limit, stated rather than implied: polarity reaches back to the start of
+  // the statement a quote belongs to, not through everything said before it. A
+  // reviewer who refuses in one sentence and approves in the next has
+  // contradicted itself, and reading that contradiction is the model's job —
+  // widening the rule instead would refuse legitimate approvals that happen to
+  // follow a negative sentence ("The tests do not cover X yet. Accept as it
+  // stands."), which fails correct work into a paused lane.
+  const acrossSentences = JSON.stringify({
+    type: "result",
+    result: "I cannot sign this off. Accept it.",
+  });
+  assert.equal(quoteSupportedByTranscript("Accept it.", acrossSentences, "accept"), true);
+});
+
 test("a quote too short to identify anything is not supported", () => {
   // "ok" appears in almost any transcript. A fragment that short is not
   // evidence that a reviewer decided anything.

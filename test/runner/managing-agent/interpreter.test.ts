@@ -343,6 +343,18 @@ test("the record carries what the interpretation cost, so the cheap-tier claim s
   assert.equal(record.interpreterCostUsd, 0.0049);
 });
 
+test("a refused answer is kept in the record, so a rejection can be diagnosed without re-running the model", async () => {
+  const fabricated = report({ verdict: "accept", verdictEvidence: "Looks great to me, shipping it as is." });
+  const { interpreter } = interpreterWith([ok(agentStdout(fabricated))]);
+  const result = await interpreter.interpret(await facts(), await fixture("claude-reviewer-revise.jsonl"));
+  const record = JSON.parse(await readFile(result.interpretationPath!, "utf8")) as {
+    rejectedReports: { verdictEvidence: string; verdict: string }[];
+  };
+  assert.equal(record.rejectedReports.length, 2);
+  assert.equal(record.rejectedReports[0]?.verdictEvidence, "Looks great to me, shipping it as is.");
+  assert.equal(record.rejectedReports[0]?.verdict, "accept");
+});
+
 test("a failed interpretation still retains its record, so the failure is auditable too", async () => {
   const { interpreter } = interpreterWith([ok("not json at all")]);
   const result = await interpreter.interpret(await facts(), await fixture("claude-reviewer-revise.jsonl"));

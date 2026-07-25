@@ -42,6 +42,70 @@ const DEFECTIVE_SOURCE = `export function sumFirstN(values, n) {
 }
 `;
 
+/**
+ * Code a reviewer can honestly accept, so the gate exercises both verdicts.
+ *
+ * Every earlier run produced only `revise`, which left the accept path — the
+ * one a false rejection turns into a paused lane, and the one a false
+ * acceptance lands unapproved work through — unmeasured against a real CLI.
+ */
+const SOUND_SOURCE = `/**
+ * Sum the first \`n\` elements of \`values\`.
+ *
+ * @param {readonly number[]} values numbers to sum from
+ * @param {number} n how many leading elements to sum; an integer in [0, values.length]
+ * @returns {number} the sum, 0 when n is 0
+ * @throws {TypeError} when values is not an array of finite numbers
+ * @throws {RangeError} when n is not an integer within range
+ */
+export function sumFirstN(values, n) {
+  if (!Array.isArray(values)) {
+    throw new TypeError("values must be an array");
+  }
+  if (!Number.isInteger(n) || n < 0 || n > values.length) {
+    throw new RangeError(\`n must be an integer in [0, \${values.length}]\`);
+  }
+  let total = 0;
+  for (let index = 0; index < n; index += 1) {
+    const value = values[index];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new TypeError(\`values[\${index}] must be a finite number\`);
+    }
+    total += value;
+  }
+  return total;
+}
+`;
+
+const SOUND_TESTS = `import assert from "node:assert/strict";
+import test from "node:test";
+import { sumFirstN } from "./sum.js";
+
+test("sums the first n elements", () => {
+  assert.equal(sumFirstN([10, 20, 30], 2), 30);
+});
+
+test("sums the whole array when n is its length", () => {
+  assert.equal(sumFirstN([1, 2, 3], 3), 6);
+});
+
+test("returns 0 when n is 0", () => {
+  assert.equal(sumFirstN([1, 2, 3], 0), 0);
+});
+
+test("rejects n beyond the array", () => {
+  assert.throws(() => sumFirstN([1, 2], 3), RangeError);
+});
+
+test("rejects a non-integer n", () => {
+  assert.throws(() => sumFirstN([1, 2], 1.5), RangeError);
+});
+
+test("rejects non-numeric elements", () => {
+  assert.throws(() => sumFirstN(["1", 2], 2), TypeError);
+});
+`;
+
 const REVIEW_BRIEF = `# Review brief
 
 Review \`sum.js\` in this repository.
@@ -49,6 +113,18 @@ Review \`sum.js\` in this repository.
 Report every defect you find, with file and line references. Finish your final
 message with an explicit recommendation in your own words: accept the code as
 it stands, or revise it.
+
+You are read-only. Do not modify any file.
+`;
+
+const SOUND_REVIEW_BRIEF = `# Review brief
+
+Review \`sum.js\` in this repository. Its tests are in \`sum.test.js\`.
+
+Report any defect that must be fixed before this lands, with file and line
+references. Finish your final message with an explicit recommendation in your
+own words: accept the code as it stands, or revise it. Recommend accept if you
+find nothing that must be fixed first.
 
 You are read-only. Do not modify any file.
 `;
@@ -81,9 +157,11 @@ function run(command, commandArgs, options = {}) {
   });
 }
 
-async function scratchRepository() {
+async function scratchRepository(expectedVerdict = "revise") {
   const root = await mkdtemp(path.join(os.tmpdir(), "quirks-probe-repo-"));
-  await writeFile(path.join(root, "sum.js"), DEFECTIVE_SOURCE, "utf8");
+  const sound = expectedVerdict === "accept";
+  await writeFile(path.join(root, "sum.js"), sound ? SOUND_SOURCE : DEFECTIVE_SOURCE, "utf8");
+  if (sound) await writeFile(path.join(root, "sum.test.js"), SOUND_TESTS, "utf8");
   await run("git", ["init", "-q", "."], { cwd: root });
   await run("git", ["add", "-A"], { cwd: root });
   await run("git", [
@@ -101,18 +179,22 @@ function roleFor(profile) {
   return profile.capabilities.includes("repository-write") ? "implementer" : "reviewer";
 }
 
-async function probeProfile(profile, interpreter) {
+async function probeProfile(profile, interpreter, expectedVerdict = "revise") {
   const started = Date.now();
   const role = roleFor(profile);
-  const worktreePath = await scratchRepository();
+  const worktreePath = await scratchRepository(expectedVerdict);
   const artifactDir = await mkdtemp(path.join(os.tmpdir(), "quirks-probe-artifacts-"));
   const briefPath = path.join(artifactDir, "brief.md");
   // No envelope contract anywhere in the brief: the point of QK-RUN-009 is that
   // the CLI is left to speak naturally and the agent derives the structure.
-  await writeFile(briefPath, role === "reviewer" ? REVIEW_BRIEF : IMPLEMENT_BRIEF, "utf8");
+  await writeFile(
+    briefPath,
+    role !== "reviewer" ? IMPLEMENT_BRIEF : expectedVerdict === "accept" ? SOUND_REVIEW_BRIEF : REVIEW_BRIEF,
+    "utf8",
+  );
 
   const port = new CliRunnerPort(new Map([[profile.profileId, profile]]), interpreter);
-  const jobId = `probe:${profile.profileId}:${role}:1`;
+  const jobId = `probe:${profile.profileId}:${role}:${expectedVerdict}:1`;
 
   const failures = [];
   let result;
@@ -156,18 +238,20 @@ async function probeProfile(profile, interpreter) {
   if (!record) failures.push("no interpretation record was retained");
 
   if (role === "reviewer") {
-    // The file under review has a real off-by-one, so a reviewer that accepts
-    // it has either not read it or has been misread. Both are gate failures.
-    if (result.verdict !== "revise") {
-      failures.push(`verdict ${result.verdict ?? "(none)"} — expected revise on a file with a real off-by-one`);
+    // A reviewer given a real off-by-one cannot honestly accept, and one given
+    // sound, tested, documented code should not be refused. Both directions are
+    // gate conditions: a false accept lands unapproved work, and a false
+    // rejection pauses a lane over nothing.
+    if (result.verdict !== expectedVerdict) {
+      failures.push(`verdict ${result.verdict ?? "(none)"} — expected ${expectedVerdict} for this input`);
     }
     if (!result.verdictEvidence) {
       failures.push("verdict carried no supporting quote");
-    } else if (!quoteSupportedByTranscript(result.verdictEvidence, transcript)) {
-      failures.push("the verdict quote is not present in the retained transcript");
+    } else if (!quoteSupportedByTranscript(result.verdictEvidence, transcript, result.verdict)) {
+      failures.push("the verdict quote is not present in the retained transcript, or contradicts the verdict");
     }
     const findings = record?.report?.findings ?? [];
-    if (findings.length === 0) {
+    if (expectedVerdict === "revise" && findings.length === 0) {
       failures.push("no findings survived interpretation");
     }
   } else if (result.verdict !== undefined) {
@@ -179,6 +263,7 @@ async function probeProfile(profile, interpreter) {
     runnerType: profile.runnerType,
     model: profile.model,
     role,
+    expectedVerdict: role === "reviewer" ? expectedVerdict : null,
     pass: failures.length === 0,
     status: result.status,
     verdict: result.verdict ?? null,
@@ -201,7 +286,10 @@ async function mapWithConcurrency(items, limit, worker) {
     while (next < items.length) {
       const index = next++;
       results[index] = await worker(items[index]);
-      process.stderr.write(`  ${results[index].pass ? "PASS" : "FAIL"} ${results[index].profileId}\n`);
+      const cell = results[index];
+      process.stderr.write(
+        `  ${cell.pass ? "PASS" : "FAIL"} ${cell.profileId}${cell.expectedVerdict ? ` (${cell.expectedVerdict})` : ""}\n`,
+      );
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, pump));
@@ -225,8 +313,14 @@ async function main() {
     `probing ${selected.length} profile(s) with interpreter ${config.executable} (${config.model})\n`,
   );
 
-  const results = await mapWithConcurrency(selected, args.concurrency, (profile) =>
-    probeProfile(profile, interpreter));
+  // Reviewer profiles are probed twice: once on code that must be refused, once
+  // on code that should be accepted.
+  const cells = selected.flatMap((profile) =>
+    roleFor(profile) === "reviewer"
+      ? [{ profile, expectedVerdict: "revise" }, { profile, expectedVerdict: "accept" }]
+      : [{ profile, expectedVerdict: "revise" }]);
+  const results = await mapWithConcurrency(cells, args.concurrency, (cell) =>
+    probeProfile(cell.profile, interpreter, cell.expectedVerdict));
 
   const passed = results.filter((entry) => entry.pass).length;
   const report = {
@@ -238,14 +332,14 @@ async function main() {
   };
   if (args.out) await writeFile(args.out, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
-  process.stdout.write(`\n| Profile | Runner | Model | Role | Status | Verdict | Findings | Quote in transcript | Result |\n`);
-  process.stdout.write(`|---|---|---|---|---|---|---|---|---|\n`);
+  process.stdout.write(`\n| Profile | Runner | Model | Role | Expected | Status | Verdict | Findings | Quote in transcript | Result |\n`);
+  process.stdout.write(`|---|---|---|---|---|---|---|---|---|---|\n`);
   for (const entry of results) {
     const quoteOk = entry.role === "reviewer"
       ? (entry.failures.some((failure) => failure.includes("quote")) ? "no" : "yes")
       : "n/a";
     process.stdout.write(
-      `| \`${entry.profileId}\` | ${entry.runnerType} | ${entry.model} | ${entry.role} | ${entry.status ?? "—"} | ${entry.verdict ?? "—"} | ${entry.findingsCount} | ${quoteOk} | ${entry.pass ? "**PASS**" : `**FAIL** — ${entry.failures.join("; ")}`} |\n`,
+      `| \`${entry.profileId}\` | ${entry.runnerType} | ${entry.model} | ${entry.role} | ${entry.expectedVerdict ?? "—"} | ${entry.status ?? "—"} | ${entry.verdict ?? "—"} | ${entry.findingsCount} | ${quoteOk} | ${entry.pass ? "**PASS**" : `**FAIL** — ${entry.failures.join("; ")}`} |\n`,
     );
   }
   process.stdout.write(`\n${passed}/${results.length} passed\n`);

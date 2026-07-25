@@ -207,6 +207,17 @@ export function parseManagingAgentReport(raw: unknown): ManagingAgentReport | un
 const MIN_QUOTE_SIGNIFICANT_CHARS = 12;
 
 /**
+ * The floor for a quote that is a whole statement.
+ *
+ * Measured by the real-CLI gate: a cursor reviewer's entire recommendation was
+ * "**Revise it.**", quoted exactly, and the longer floor refused it — turning a
+ * correct verdict into a failed job. A reviewer is allowed to be brief; what a
+ * short quote must not be is a fragment torn out of something longer, so it has
+ * to begin where a statement begins and end where one ends.
+ */
+const MIN_COMPLETE_STATEMENT_CHARS = 6;
+
+/**
  * Words that turn an approval into a refusal, and how far ahead they reach.
  *
  * Round 4 of independent review measured the gap this closes: once separator
@@ -382,10 +393,17 @@ export function quoteSupportedByTranscript(
   verdict?: "accept" | "revise" | "indeterminate",
 ): boolean {
   const needle = normalizeQuoteText(quote);
-  if (needle.replaceAll(/\s/g, "").length < MIN_QUOTE_SIGNIFICANT_CHARS) return false;
+  const significant = needle.replaceAll(/\s/g, "").length;
+  if (significant < MIN_COMPLETE_STATEMENT_CHARS) return false;
+  // A short quote has to be a statement in its own right; a long one only has to
+  // start where one does.
+  const mustBeWholeStatement = significant < MIN_QUOTE_SIGNIFICANT_CHARS;
+  if (mustBeWholeStatement && !SENTENCE_TERMINATORS.has(needle.at(-1) ?? "")) return false;
+
   const haystack = normalizeHaystack(transcriptQuoteHaystack(transcript));
   for (let index = haystack.text.indexOf(needle); index !== -1; index = haystack.text.indexOf(needle, index + 1)) {
     if (!haystack.starts.has(index)) continue;
+    if (mustBeWholeStatement && !haystack.hardStarts.has(index)) continue;
     if (verdict === "accept" && refusalLeadsInto(haystack, index, needle)) continue;
     return true;
   }
