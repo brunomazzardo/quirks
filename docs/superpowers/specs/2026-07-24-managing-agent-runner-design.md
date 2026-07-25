@@ -112,8 +112,14 @@ One extra agent invocation per job. Interpretation is mechanical, so the managin
 5. **Retire the strict paths** — brief-stated contracts and the fake-runner mimicry they forced, once the agent path carries real traffic.
 6. **Real-CLI gate** — the probe from `QK-RUN-007` extended to assert verdict and findings survive interpretation, across all nine profiles.
 
-## Open questions for the owner
+## Decisions (owner, 2026-07-24) — design gate closed
 
-- **Interpretation model:** sonnet by default. Worth a cheaper tier, or is sonnet already the floor for reading a messy transcript honestly?
-- **Failure of the managing agent itself:** retry once, then fall back to today's schema path, or fail the job outright? Falling back is more available; failing is more honest.
-- **Scope of retirement (step 5):** delete the strict paths, or keep them behind a flag for a while as a comparison baseline?
+1. **Sonnet interprets.** One sonnet call per job. The task is to read the retained transcript, extract the verdict, quote the evidence supporting it, and decline when the evidence is absent. Cheap beside the job it interprets. Haiku was rejected for this specific reason: the load-bearing behaviour is *refusing to guess*, and that is where a smaller model drifts invisibly.
+
+2. **Retry once, then fail with the transcript kept.** One retry absorbs a transient API error; a second failure fails the job honestly. There is deliberately **no fallback to the schema path** — with `--output-schema` dropped there is no envelope left to parse, so the spec's original fallback option was vacuous. Re-running the whole job under the schema was rejected: it pays twice and re-imposes the constraint measured above as suppressing the reviewer's reasoning. The raw transcript is retained either way, so a failed interpretation costs automation, never the work.
+
+3. **Delete the strict envelope paths** once the agent path carries real traffic. That removes the brief-stated contracts, the strict parsers, and the fake-runner mimicry they forced — the surface where tonight's defects actually lived, and the mechanism by which the fakes drifted from reality. A flagged comparison baseline was rejected: two live result paths mean two sets of fakes to keep faithful, which is precisely the condition that produced the test/production divergence. Honesty is carried instead by transcript retention plus the requirement that a verdict quote its supporting evidence.
+
+## Sequencing note
+
+Codex hit a ChatGPT usage limit on 2026-07-24 (resets Jul 28). It was the reviewer that found the most across five rounds, so slices touching interpretation honesty are better reviewed once it is back; cursor and claude remain available in the meantime.
