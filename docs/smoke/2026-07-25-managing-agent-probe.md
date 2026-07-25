@@ -85,14 +85,98 @@ against exactly that transcript. This is the case that argues for a model rather
 than a parser at this boundary, and it is why the interpreter is sonnet rather
 than haiku (owner decision 1).
 
-Note what the quote check does and does not do: it verifies the words are
-present, not that they were read correctly. A quote lifted out of a negation
-would still be found. It is a floor under fabrication, and the retained
-transcript is what lets a human check the reading.
+Note what the quote check did and did not do *at this point*: it verified the
+words were present, not that they were read correctly, and a quote lifted out of
+a negation would still be found. The independent review took that limitation
+apart — see run 3, where lifting was closed and the remaining limits are stated
+as they now stand.
 
 ## Run 2 — after the deletion (commit `4d33d0d`)
 
-<!-- filled in below -->
+| Profile | Runner | Model | Role | Status | Verdict | Findings | Quote in transcript | Result |
+|---|---|---|---|---|---|---|---|---|
+| `personal-claude-sonnet-impl` | claude | sonnet | implementer | success | — | 0 | n/a | **PASS** |
+| `personal-claude-opus-review` | claude | opus | reviewer | success | revise | 6 | yes | **PASS** |
+| `work-claude-sonnet-impl` | claude | sonnet | implementer | success | — | 0 | n/a | **PASS** |
+| `work-claude-opus-review` | claude | opus | reviewer | success | revise | 6 | yes | **PASS** |
+| `personal-codex-*` (3 profiles) | codex | gpt-5.5 / terra / sol | — | usage_limit | — | 0 | n/a | **OWED** |
+| `personal-cursor-composer-impl` | cursor | composer-2.5 | implementer | success | — | 0 | n/a | **PASS** |
+| `personal-cursor-grok-review` | cursor | cursor-grok-4.5-high | reviewer | success | revise | 2 | yes | **PASS** |
+
+**6/9 passed** — every reachable cell. The cursor implementer that timed out in
+run 1 fixed the defect and committed normally here.
+
+### Model variance in transport status, and what fixed it
+
+The same codex usage-limit transcript came back as `status: "failure"` in run 1
+and `status: "usage_limit"` in run 2. Transport classification is a model
+judgment now, and `usage_limit` is the one the campaign acts on: it pauses and
+retries after the reset instead of spending the next attempt against a quota
+that is still out.
+
+The brief now names the specific values and says why they matter. Measured
+after that change, against the real codex usage-limit fixture:
+
+| Runs | `status` | `verdict` |
+|---|---|---|
+| 5 of 5 | `usage_limit` | `indeterminate` |
+
+Worth remembering for anything else delegated to this layer: a model reading a
+transcript is not a parser, and its consistency is something to measure rather
+than assume.
+
+## Run 3 — after the independent review's Criticals were fixed (commit `9deb268`)
+
+The cursor review of this change found two ways to authenticate a verdict the
+reviewer never gave. Both were confirmed against the committed real transcripts
+before being fixed:
+
+1. **Brief text counted as the reviewer's own words.** A reviewer opens its
+   brief with a tool, so the brief is in the transcript. The quote check
+   collected every string it could find, so `"Report every defect you find, with
+   file and line references."` — an instruction — passed as evidence. Evidence
+   is now restricted to runner-authored channels.
+2. **A fragment lifted from mid-sentence passed.** `"this should be accepted as
+   it stands"` is a contiguous span inside `"I don't think this should be
+   accepted as it stands"`. A match must now begin where a sentence begins.
+
+The risk in fixing this was making *correct* verdicts unverifiable, so the gate
+was re-run against the real CLIs:
+
+| Profile | Runner | Model | Role | Status | Verdict | Findings | Quote in transcript | Result |
+|---|---|---|---|---|---|---|---|---|
+| `personal-claude-sonnet-impl` | claude | sonnet | implementer | success | — | 0 | n/a | **PASS** |
+| `personal-claude-opus-review` | claude | opus | reviewer | success | revise | 4 | yes | **PASS** |
+| `work-claude-sonnet-impl` | claude | sonnet | implementer | success | — | 0 | n/a | **PASS** |
+| `work-claude-opus-review` | claude | opus | reviewer | success | revise | 5 | yes | **PASS** |
+| `personal-codex-*` (3 profiles) | codex | gpt-5.5 / terra / sol | — | usage_limit | — | 0 | n/a | **OWED** |
+| `personal-cursor-composer-impl` | cursor | composer-2.5 | implementer | success | — | 0 | n/a | **PASS** |
+| `personal-cursor-grok-review` | cursor | cursor-grok-4.5-high | reviewer | success | revise | 1 | yes | **PASS** |
+
+**6/9 passed** — three real reviewers across two vendors still produced quotes
+that verify under the tightened rule.
+
+### What the quote check still does not do
+
+It checks that the runner said those words, in that order, starting where a
+sentence starts. It does not check that they were *read* correctly: a model that
+quotes a whole negated sentence and calls it an accept would pass. That reading
+is the model's job — measured above, on a reviewer who wrote "I don't think this
+should be accepted as it stands" — and the retained transcript is what lets a
+human check it afterwards.
+
+Findings are likewise not verified against the transcript. They do not drive
+acceptance; they are reported evidence, and an invented one would pollute the
+audit record without landing any work.
+
+## Independent review
+
+| Reviewer | Vendor | Verdict | Outcome |
+|---|---|---|---|
+| `cursor-grok-4.5-high` | cursor | **revise** | 2 Criticals, 4 Importants, 2 Minors. Both Criticals confirmed and fixed in `9deb268`; Importants 3–5 fixed in the same commit; Important 6 (gate incomplete) is this document's own owed record. |
+| claude opus (personal) | claude | see below | Dispatched against the fixed range with the two Criticals named, to check the fixes rather than re-report them. |
+| claude opus (work account) | claude | not obtained | The work account has not accepted the workspace trust dialog for this repository, so the run produced no output. Not a finding about the change. |
+| codex | codex | **owed** | Usage-limited until Jul 28 2026 2:02 PM. |
 
 ## Owed
 
@@ -104,4 +188,6 @@ recorded as owed, never as passing.
 
 The same limit means the strict-path deletion has not yet been reviewed by
 codex, which found the most across the five review rounds that informed
-`QK-RUN-007`/`QK-RUN-008`.
+`QK-RUN-007`/`QK-RUN-008`. Given that the cursor review of this change found two
+Criticals in the one check the design's honesty rests on, that owed review is
+worth collecting before this is treated as settled.
