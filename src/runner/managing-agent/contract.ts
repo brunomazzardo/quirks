@@ -239,12 +239,17 @@ function normalizeQuoteText(value: string): string {
   return foldPresentation(value).replaceAll(/\s+/g, " ").trim();
 }
 
-/** Characters that end a sentence, so what follows begins one. */
-const SENTENCE_TERMINATORS = new Set([".", "!", "?", ":", ";"]);
+/** Punctuation after which a new statement can begin. */
+const STATEMENT_TERMINATORS = new Set([".", "!", "?", ":", ";"]);
+
+/** Whether a character can carry meaning, as opposed to marking up what does. */
+function isWordCharacter(character: string): boolean {
+  return /[\p{L}\p{N}]/u.test(character);
+}
 
 interface NormalizedHaystack {
   text: string;
-  /** Offsets in `text` where a sentence, line, or message begins. */
+  /** Offsets in `text` where a statement, line, or message begins. */
   starts: ReadonlySet<number>;
 }
 
@@ -263,18 +268,35 @@ function normalizeHaystack(value: string): NormalizedHaystack {
   let pendingBoundary = true;
   let sawWhitespace = false;
   let lastMeaningful = "";
+  let tokenHasWord = false;
+  let tokenLength = 0;
 
   for (const character of folded) {
     if (/\s/.test(character)) {
       sawWhitespace = true;
+      // A terminator only ends a statement when whitespace follows it, so a
+      // path like `sum.js:3:the` does not open one mid-token.
+      if (STATEMENT_TERMINATORS.has(lastMeaningful)) pendingBoundary = true;
       if (character === "\n" || character === "\r") pendingBoundary = true;
+      // A standalone marker token — a table pipe, an em dash, a bullet — is a
+      // separator, so what follows it starts fresh. "Verdict — Accept as it
+      // stands" is a verdict stated after a dash, not mid-sentence.
+      if (tokenLength > 0 && !tokenHasWord) pendingBoundary = true;
+      tokenHasWord = false;
+      tokenLength = 0;
       continue;
     }
     if (text.length > 0 && sawWhitespace) text += " ";
-    if (pendingBoundary || SENTENCE_TERMINATORS.has(lastMeaningful)) starts.add(text.length);
+    if (pendingBoundary) starts.add(text.length);
     text += character;
+    tokenLength += 1;
+    if (isWordCharacter(character)) tokenHasWord = true;
+    // Markers carry no meaning, so a verdict written as a list item, a block
+    // quote, a table cell, or after a dash still begins where its words do.
+    // Measured: rejecting those failed ordinary reviewer formatting into a
+    // paused lane (independent claude review, 2026-07-25).
+    pendingBoundary = pendingBoundary && !isWordCharacter(character);
     lastMeaningful = character;
-    pendingBoundary = false;
     sawWhitespace = false;
   }
 
@@ -292,17 +314,23 @@ function normalizeHaystack(value: string): NormalizedHaystack {
  *    was handed or a file it read. Reviewer briefs say things like "accept the
  *    code as it stands, or revise it"; quoting the instructions is not evidence
  *    of a judgment.
- * 2. The quote must begin where a sentence begins. "this should be accepted as
- *    it stands" is a contiguous span inside "I don't think this should be
- *    accepted as it stands", and presence alone cannot tell those apart.
+ * 2. The quote must begin at a statement boundary: the start of a message, a
+ *    line, or the first words after `.`/`!`/`?`/`:`/`;` followed by space —
+ *    with any leading markup (`-`, `>`, `|`, quotes, brackets) skipped, since a
+ *    verdict written as a list item is still a verdict. "this should be
+ *    accepted as it stands" is a contiguous span inside "I don't think this
+ *    should be accepted as it stands", and presence alone cannot tell those
+ *    apart.
  * 3. Line wrapping, markdown, typographic quotes, and case are forgiven,
  *    because none of them are evidence; the words and their order are.
  *
  * Both of the first two were raised as Criticals by the independent cursor
  * review of this change and confirmed against the committed real transcripts.
  *
- * What remains unchecked is meaning: a model that quotes a whole negated
- * sentence and calls it an accept would pass. That is the reading, which is the
+ * What remains unchecked is meaning, and the boundary rule is a punctuation
+ * rule rather than a grammar one: a model that quotes a whole negated sentence
+ * and calls it an accept passes, and so would a lift that happens to start
+ * right after an abbreviation's full stop. That is the reading, which is the
  * model's job — measured by the real-CLI gate against a reviewer who wrote "I
  * don't think this should be accepted as it stands" — and the retained
  * transcript is what lets a human check it after the fact.

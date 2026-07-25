@@ -253,6 +253,41 @@ test("a usage limit the runner reported is carried through as a usage limit", as
   assert.equal(result.failure?.code, "usage_limit");
 });
 
+/**
+ * Narrowing the haystack to runner-authored channels made an unknown
+ * load-bearing: if a vendor's message shape is not one this reader knows, every
+ * verdict over it fails the quote check. That must not look like the model
+ * fabricating a quote, because the fault is ours and the fix is here — raised
+ * by the independent claude review, 2026-07-25, about codex specifically, whose
+ * real message shape is owed until its quota resets.
+ */
+test("a transcript whose author channel cannot be read says so, instead of blaming the model", async () => {
+  const unknownShape = JSON.stringify({
+    type: "unknown.event",
+    payload: { note: "The reviewer said plenty here, in a shape we do not know." },
+  });
+  const { interpreter, recorded } = interpreterWith([ok(agentStdout(report({
+    verdict: "revise",
+    verdictEvidence: "The reviewer said plenty here, in a shape we do not know.",
+  })))]);
+
+  const result = await interpreter.interpret(await facts(), unknownShape);
+  assert.equal(result.status, "failure");
+  assert.equal(result.failure?.code, "unreadable_transcript_channel");
+  assert.match(result.failure?.message ?? "", /transcript reader/);
+  assert.equal(recorded.calls, 1, "retrying cannot help when the fault is ours");
+  assert.notEqual(result.verdict, "revise");
+});
+
+test("a genuinely fabricated quote is still reported as fabrication, not as our gap", async () => {
+  const { interpreter } = interpreterWith([ok(agentStdout(report({
+    verdict: "accept",
+    verdictEvidence: "Looks great to me, shipping it as is.",
+  })))]);
+  const result = await interpreter.interpret(await facts(), await fixture("claude-reviewer-revise.jsonl"));
+  assert.equal(result.failure?.code, "unsupported_verdict");
+});
+
 test("interpretation is retried exactly once, then fails with the transcript kept", async () => {
   const { interpreter, recorded } = interpreterWith([new Error("api error: overloaded")]);
   const jobFacts = await facts();

@@ -9,7 +9,7 @@ import type {
   RunnerJobFacts,
 } from "../interpretation.js";
 import { interpretationPath } from "../result-contract.js";
-import { transcriptSessionHandle } from "../transcript.js";
+import { transcriptHasUnreadableChannel, transcriptSessionHandle } from "../transcript.js";
 import type { RunnerJobFailure, RunnerJobStatus } from "../types.js";
 import {
   MANAGING_AGENT_BRIEF_VERSION,
@@ -294,7 +294,8 @@ interface ReconciledResult {
 
 type Reconciliation =
   | { kind: "ok"; reconciled: ReconciledResult }
-  | { kind: "reject"; reason: string };
+  | { kind: "reject"; reason: string }
+  | { kind: "unreadable"; reason: string };
 
 async function reconcile(
   report: ManagingAgentReport,
@@ -311,6 +312,19 @@ async function reconcile(
         // The whole traceability rule lives here: a verdict we cannot find in
         // the runner's own words is not a verdict. Failing closed is what keeps
         // an invented accept from landing work nobody approved.
+        //
+        // Unless we could not read the runner's words at all — then the fault
+        // is ours, and saying so beats blaming the model for a fabrication it
+        // did not commit.
+        if (transcriptHasUnreadableChannel(transcript)) {
+          return {
+            kind: "unreadable",
+            reason:
+              `no runner-authored message could be read from this ${facts.runnerType} transcript, `
+              + "so no verdict can be supported by it. This is a gap in Quirks' transcript reader, "
+              + "not a fault of the run.",
+          };
+        }
         return {
           kind: "reject",
           reason:
@@ -448,6 +462,12 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
       }
 
       const outcome = await reconcile(read.report, facts, transcript);
+      if (outcome.kind === "unreadable") {
+        // Retrying cannot help: the agent would have to quote text we are
+        // unable to attribute. Fail once, name the cause, keep the transcript.
+        rejections.push(outcome.reason);
+        break;
+      }
       if (outcome.kind === "reject") {
         rejections.push(outcome.reason);
         corrective = outcome.reason;
@@ -490,6 +510,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
     transcript: string,
     rejections: readonly string[],
   ): Promise<InterpretedResult> {
+    const unreadable = rejections.some((reason) => reason.includes("transcript reader"));
     const unsupportedVerdict = rejections.every((reason) => reason.includes("does not appear in the transcript"));
     const recordPath = await this.retainRecord(facts, transcript, null, {
       quoteSupported: false,
@@ -505,7 +526,9 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
       artifactPaths: recordPath !== undefined ? [recordPath] : [],
       ...(recordPath !== undefined ? { interpretationPath: recordPath } : {}),
       failure: {
-        code: unsupportedVerdict && rejections.length > 0 ? "unsupported_verdict" : "interpretation_failed",
+        code: unreadable
+          ? "unreadable_transcript_channel"
+          : unsupportedVerdict && rejections.length > 0 ? "unsupported_verdict" : "interpretation_failed",
         message: `Managing agent could not interpret this job after ${MAX_INTERPRETATION_ATTEMPTS} attempts: ${
           rejections.join(" | ").slice(0, MAX_FAILURE_MESSAGE_CHARS)
         }`,

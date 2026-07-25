@@ -139,6 +139,45 @@ test("a fragment lifted out of the middle of a negation cannot support a verdict
   assert.equal(quoteSupportedByTranscript("this should be accepted as it stands.", transcript), false);
 });
 
+/**
+ * Measured by the independent claude review, 2026-07-25: the first version of
+ * the boundary rule rejected a verdict written as a list item, a block quote, a
+ * table cell, or after an em dash — all ordinary reviewer formatting. A
+ * rejection is not a downgrade to indeterminate: it fails the job, and the
+ * supervisor counts that as a lane fault. Over-constraining the reviewer is the
+ * exact failure this whole change exists to remove, so it must not reappear in
+ * the check that polices it.
+ */
+for (const [label, line] of [
+  ["a list item", "- **Accept as it stands.** I found nothing that must be fixed first."],
+  ["a dashed list item", "* Accept as it stands. I found nothing that must be fixed first."],
+  ["a block quote", "> Accept as it stands. I found nothing that must be fixed first."],
+  ["a table cell", "| Verdict | Accept as it stands. I found nothing that must be fixed first. |"],
+  ["an em-dash lead-in", "Verdict — Accept as it stands. I found nothing that must be fixed first."],
+  ["a numbered item", "1. Accept as it stands. I found nothing that must be fixed first."],
+  ["a parenthesis", "(Accept as it stands. I found nothing that must be fixed first.)"],
+] as const) {
+  test(`a verdict written as ${label} still supports itself`, () => {
+    const transcript = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: `## Verdict\n${line}` }] },
+    });
+    assert.equal(
+      quoteSupportedByTranscript("Accept as it stands. I found nothing that must be fixed first.", transcript),
+      true,
+      `${label} must not fail a correct verdict`,
+    );
+  });
+}
+
+test("skipping markers does not let a quote start mid-word", () => {
+  const transcript = JSON.stringify({
+    type: "assistant",
+    message: { content: [{ type: "text", text: "I do not think this should be accepted as it stands." }] },
+  });
+  assert.equal(quoteSupportedByTranscript("this should be accepted as it stands.", transcript), false);
+});
+
 test("the reviewer's own recommendation still supports its verdict", async () => {
   // The fix must not make correct verdicts unverifiable: this is the real
   // sentence, starting where the reviewer started it.

@@ -30,7 +30,13 @@ function transcriptFrom(prompt) {
   return prompt.slice(start + "[BEGIN UNTRUSTED TRANSCRIPT]".length, end);
 }
 
-/** Every decoded string the transcript holds, longest last. */
+/**
+ * Only what the runner itself said — the same channels production reads.
+ *
+ * Collecting every string, including tool results and the brief, is the exact
+ * hole the independent reviews found in production. A fake that keeps it would
+ * quietly pass work the real path refuses.
+ */
 function transcriptStrings(transcript) {
   const found = [];
   for (const line of transcript.split("\n")) {
@@ -43,15 +49,33 @@ function transcriptStrings(transcript) {
       found.push(trimmed);
       continue;
     }
-    const stack = [parsed];
-    while (stack.length > 0) {
-      const value = stack.pop();
-      if (typeof value === "string") found.push(value);
-      else if (Array.isArray(value)) stack.push(...value);
-      else if (value && typeof value === "object") stack.push(...Object.values(value));
+    for (const event of Array.isArray(parsed) ? parsed : [parsed]) {
+      if (!event || typeof event !== "object") continue;
+      if (event.type === "assistant") {
+        for (const block of event.message?.content ?? []) {
+          if (block?.type === "text" && typeof block.text === "string") found.push(block.text);
+        }
+      }
+      if (event.type === "result" && typeof event.result === "string") found.push(event.result);
+      if (event.type === "item.completed" && event.item?.type === "agent_message"
+        && typeof event.item.text === "string") {
+        found.push(event.item.text);
+      }
     }
   }
   return found.toSorted((a, b) => a.length - b.length);
+}
+
+/**
+ * A transport status the transcript actually reports, so campaign-level tests
+ * can exercise more than "success". Production asks a model for this; the fake
+ * reads the obvious signals rather than hardcoding one.
+ */
+function statedStatus(transcript) {
+  if (/usage limit|rate limit|quota/i.test(transcript)) return "usage_limit";
+  if (/permission[_ ]den/i.test(transcript)) return "permission_denied";
+  if (/\bcancell?ed\b|\binterrupted\b/i.test(transcript)) return "cancelled";
+  return "success";
 }
 
 /**
@@ -86,8 +110,9 @@ async function main() {
   const stated = statedRecommendation(transcript);
   const canQuote = (stated?.quote ?? "").replaceAll(/\s/g, "").length >= MIN_QUOTE_CHARS;
 
+  const status = statedStatus(transcript);
   const structured = {
-    status: "success",
+    status,
     // A reviewer that stated nothing quotable is indeterminate, never accept:
     // absence is not approval here either.
     verdict: isReviewer ? (canQuote ? stated.verdict : "indeterminate") : null,
@@ -95,7 +120,9 @@ async function main() {
     findings: [],
     artifactPaths: [],
     sessionHandle: null,
-    failure: null,
+    failure: status === "success"
+      ? null
+      : { code: status, message: `The transcript reports ${status}.` },
     summary: isReviewer ? "Fake interpretation of a review job." : "Fake interpretation of an implementer job.",
   };
 
