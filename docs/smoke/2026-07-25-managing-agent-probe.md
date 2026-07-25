@@ -187,6 +187,46 @@ then changed, so this is the run against the code that would actually merge.
 **6/9 passed** — every reachable cell, with three real reviewers across two
 vendors quoting themselves through the final boundary rule.
 
+## Run 5 — the merge candidate, both verdicts (commit `1b2dde6`)
+
+Every run above probed reviewers only on code that must be refused, so the
+accept path — the one where a false rejection pauses a lane and a false
+acceptance lands unapproved work — had never been measured against a real CLI.
+Reviewer profiles are now probed twice.
+
+| Profile | Runner | Model | Role | Expected | Status | Verdict | Findings | Quote in transcript | Result |
+|---|---|---|---|---|---|---|---|---|---|
+| `personal-claude-sonnet-impl` | claude | sonnet | implementer | — | success | — | 0 | n/a | **PASS** |
+| `personal-claude-opus-review` | claude | opus | reviewer | revise | success | revise | 4 | yes | **PASS** |
+| `personal-claude-opus-review` | claude | opus | reviewer | accept | success | accept | 0 | yes | **PASS** |
+| `work-claude-sonnet-impl` | claude | sonnet | implementer | — | success | — | 0 | n/a | **PASS** |
+| `work-claude-opus-review` | claude | opus | reviewer | revise | success | revise | 4 | yes | **PASS** |
+| `work-claude-opus-review` | claude | opus | reviewer | accept | success | accept | 4 | yes | **PASS** |
+| `personal-codex-*` (5 cells) | codex | gpt-5.5 / terra / sol | — | — | usage_limit | — | 0 | n/a | **OWED** |
+| `personal-cursor-composer-impl` | cursor | composer-2.5 | implementer | — | success | — | 0 | n/a | **PASS** |
+| `personal-cursor-grok-review` | cursor | cursor-grok-4.5-high | reviewer | revise | success | revise | 3 | yes | **PASS** |
+| `personal-cursor-grok-review` | cursor | cursor-grok-4.5-high | reviewer | accept | success | accept | 0 | yes | **PASS** |
+
+**9/14 cells passed — every reachable one**, across three vendors and both
+verdicts, each verdict quoting words the reviewer actually wrote.
+
+### What adding the accept case found
+
+The first run of it failed a cell that had passed four times: a cursor reviewer
+ended with `### Recommendation` / `**Revise it.**`, the managing agent quoted
+exactly that, and the minimum-quote-length floor refused it. A correct verdict
+became a failed job, and the supervisor counts a failed job as a lane fault.
+
+Two things were wrong, and only one of them was the rule:
+
+1. A reviewer is allowed to be brief. The floor now drops for a quote that is a
+   whole statement — beginning where a statement begins and ending where one
+   ends — while a torn-out fragment still needs the longer form.
+2. Diagnosing it required re-running the model, because the retained record kept
+   only *that* an answer had been refused, not the answer. The record now keeps
+   refused reports. An audit record that cannot explain a rejection is not doing
+   its job.
+
 ## What each review round cost and found
 
 Every round found something the round before it missed, which is the same
@@ -197,10 +237,16 @@ pattern the runner repair produced across five rounds:
 | 1 | cursor grok-4.5-high | 2 Criticals in the quote check: brief text counted as the reviewer's own words, and a fragment lifted from mid-sentence. Plus the error path that could return without retaining a transcript. |
 | 2 | claude opus (work) | The same first Critical, reproduced end to end on the no-judgment fixture. Then: acceptance did not require its evidence; the single-object wire shape was untested; `.quirks/briefs` is shared, so another job's file could be attributed here. |
 | 3 | claude opus (personal) | Verified rounds 1–2's fixes were real, then measured what they broke: the boundary rule rejected list items, block quotes, table cells, and em-dash lead-ins — failing a correct verdict into a paused lane. Also: codex's authored channel is unverified, and narrowing made that unknown load-bearing. |
+| 4 | cursor grok-4.5-high | No Criticals. The separator rule that fixed round 3 re-admitted a mid-clause lift whenever punctuation sat inside the negation ("I don't think — this should be accepted"). Fixed by binding polarity rather than narrowing the boundary again, since narrowing is what round 3 was about. |
 
-The gate did its own share: run 1 caught a timed-out run whose transcript was
-discarded, and comparing runs 1 and 2 caught transport status varying between
-`failure` and `usage_limit` for the same transcript.
+The gate did its own share, and kept doing it: run 1 caught a timed-out run
+whose transcript was discarded, comparing runs 1 and 2 caught transport status
+varying between `failure` and `usage_limit` for the same transcript, and run 5
+caught the quote floor refusing a reviewer for being brief.
+
+The pattern is the one the runner repair produced across five rounds, and it is
+the argument for the owed codex pass rather than against it: **every round
+found something the round before it missed.**
 
 ## Independent review
 

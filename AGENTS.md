@@ -35,7 +35,7 @@ The real-CLI runner repair `QK-RUN-007`/`QK-RUN-008` is merged to `main` (merge 
 
 Honest remaining gaps — do not claim a release until these clear:
 
-- The `QK-RUN-009` real-CLI gate covers **6 of 9 profiles**. codex is usage-limited until Jul 28 2026 2:02 PM, so its three cells are owed, never passing. The strict-path deletion has also not been reviewed by codex, which found the most across the five rounds that informed the runner repair.
+- The `QK-RUN-009` real-CLI gate covers **6 of 9 profiles** (9 of 14 cells, since reviewers are probed on both verdicts). codex is usage-limited until Jul 28 2026 2:02 PM, so its five cells are owed, never passing. The strict-path deletion has also not been reviewed by codex, which found the most across the five rounds that informed the runner repair — and four review rounds on this change each found something the previous round missed.
 - Real host×runner smoke matrix best recorded run is 4/9 cells passed (`docs/smoke/2026-host-matrix.md`); ledger tasks `QK-HOST-004A/B/C` stay `blocked`. This predates the runner repair and is worth re-running.
 - The bounded real campaign is harness-only (`docs/smoke/bounded-campaign-report.md`); `QK-HOST-005A/B` and `QK-RELEASE-REV` stay `blocked`.
 - Campaign completion is memory-only: a run reports `completed` while the durable campaign stays `running` and its tasks stay `claimed`, and budgets reset every invocation (`QK-CTL-012`, P0). Do not trust a reported completion as durable state.
