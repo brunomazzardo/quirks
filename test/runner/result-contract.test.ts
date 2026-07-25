@@ -4,6 +4,7 @@ import test from "node:test";
 import { claudeResultPath } from "../../src/runner/claude.js";
 import { cursorResultPath } from "../../src/runner/cursor.js";
 import {
+  parseReviewVerdict,
   redactTranscript,
   resultContractPath,
   reviewerAcceptedAttempt,
@@ -70,6 +71,21 @@ test("a reviewer that crashed is not accepted, and stays distinguishable from a 
  */
 test("a reviewer that returned no verdict does not accept the attempt", () => {
   assert.equal(reviewerAcceptedAttempt({ status: "success" }), false);
+});
+
+/**
+ * An interpretation that could not establish what the reviewer decided says so
+ * (QK-RUN-009). It is a real answer, and it withholds acceptance exactly as a
+ * revise does — the one thing it must never do is read as approval.
+ */
+test("an indeterminate verdict withholds acceptance", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "indeterminate" }), false);
+});
+
+test("indeterminate is a verdict the contract recognises rather than discards", () => {
+  assert.equal(parseReviewVerdict("indeterminate"), "indeterminate");
+  assert.equal(parseReviewVerdict("undetermined"), undefined);
+  assert.equal(parseReviewVerdict(null), undefined);
 });
 
 test("only an explicit accept verdict accepts the attempt", () => {

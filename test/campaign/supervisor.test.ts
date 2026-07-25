@@ -566,6 +566,113 @@ test("a reviewer revise verdict withholds acceptance and is recorded as a revise
 });
 
 /**
+ * The managing agent answers "indeterminate" when it cannot establish what a
+ * reviewer decided (QK-RUN-009). Above the boundary that must behave like a
+ * withheld approval and be recorded by name: an operator reading provenance has
+ * to be able to tell "the reviewer asked for changes" from "nobody could tell
+ * what the reviewer decided", because only the second one is a reason to go
+ * read the transcript.
+ */
+test("an indeterminate verdict withholds acceptance and is recorded by name", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  for (const attempt of [1, 2]) {
+    const jobId = `cmp-supervisor:QK-A:reviewer:${attempt}`;
+    runner.queueResult(jobId, {
+      schemaVersion: 1,
+      jobId,
+      runner: "cursor-standard",
+      runnerType: "cursor",
+      resolvedModel: "test-model",
+      effort: "standard",
+      status: "success",
+      verdict: "indeterminate",
+      sessionHandle: "review-session",
+      artifactPaths: [`/tmp/artifacts/interpretation-${attempt}.json`],
+      usage: {},
+      failure: undefined,
+    });
+  }
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 4, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  const outcome = await supervisor.runToCompletion();
+
+  assert.notEqual(outcome.status, "completed");
+  assert.equal(outcome.completedJobs.some((job) => job.taskId === "QK-A"), false);
+
+  const iterations = await provenanceIterations(source, "QK-A");
+  assert.ok(iterations.length >= 1);
+  for (const iteration of iterations) {
+    assert.equal(iteration["outcome"], "failed");
+    assert.equal(iteration["acceptedCommit"], undefined);
+    assert.match(String(iteration["outcomeReason"]), /^review_indeterminate/);
+  }
+  await supervisor.stop();
+});
+
+/**
+ * A verdict that quotes the reviewer is only useful if the quote survives to
+ * where a human reads it. Provenance is that place: it outlives the artifact
+ * directory and is what the ledger carries.
+ */
+test("provenance carries the reviewer's supporting words, sanitized and bounded", async () => {
+  const source = new FakeTaskSource();
+  source.upsertTask("QK-A", { status: "ready", execution: executionFor(["lane-a"]) });
+  const runner = new FakeRunnerPort();
+  for (const attempt of [1, 2]) {
+    const jobId = `cmp-supervisor:QK-A:reviewer:${attempt}`;
+    runner.queueResult(jobId, {
+      schemaVersion: 1,
+      jobId,
+      runner: "cursor-standard",
+      runnerType: "cursor",
+      resolvedModel: "test-model",
+      effort: "standard",
+      status: "success",
+      verdict: "revise",
+      // Multi-line, over-long, and shaped like a section header: exactly what
+      // arrives from a real reviewer, and none of it may reach the ledger raw.
+      verdictEvidence: `## Recommendation\n**Revise.** ${"the loop bound is wrong. ".repeat(40)}`,
+      sessionHandle: "review-session",
+      artifactPaths: [`/tmp/artifacts/interpretation-${attempt}.json`],
+      usage: {},
+      failure: undefined,
+    });
+  }
+  const context = await testContext({
+    taskIds: ["QK-A"],
+    taskRevisions: { "QK-A": source.taskRevision("QK-A") },
+    budgets: { maxTasks: 4, maxConcurrency: 1, maxWallClockMs: 3_600_000, maxRetries: 2, laneFailureThreshold: 2 },
+    routing: standardRoute(["QK-A"]),
+    source,
+    runner,
+  });
+  const supervisor = await CampaignSupervisor.open(context);
+  await recordApproval(context);
+  await supervisor.runToCompletion();
+
+  const iterations = await provenanceIterations(source, "QK-A");
+  assert.ok(iterations.length >= 1);
+  for (const iteration of iterations) {
+    const reason = String(iteration["outcomeReason"]);
+    assert.match(reason, /^review_revise: /);
+    assert.match(reason, /the loop bound is wrong/);
+    assert.equal(reason.includes("\n"), false, "a reason is one line, never a smuggled section");
+    assert.ok(reason.length <= 512, `outcomeReason must fit the provenance schema, got ${reason.length}`);
+  }
+  await supervisor.stop();
+});
+
+/**
  * An implementer that reports success while committing nothing leaves the
  * worktree at the base commit. The supervisor substituted that base as the
  * candidate, so a reviewer was dispatched against an empty diff, and a verdict
