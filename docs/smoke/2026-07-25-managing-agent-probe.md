@@ -169,13 +169,46 @@ Findings are likewise not verified against the transcript. They do not drive
 acceptance; they are reported evidence, and an invented one would pollute the
 audit record without landing any work.
 
+## Run 4 — the merge candidate (commit `77fc37f`)
+
+The reviews above were each read against a range that the next round of fixes
+then changed, so this is the run against the code that would actually merge.
+
+| Profile | Runner | Model | Role | Status | Verdict | Findings | Quote in transcript | Result |
+|---|---|---|---|---|---|---|---|---|
+| `personal-claude-sonnet-impl` | claude | sonnet | implementer | success | — | 0 | n/a | **PASS** |
+| `personal-claude-opus-review` | claude | opus | reviewer | success | revise | 3 | yes | **PASS** |
+| `work-claude-sonnet-impl` | claude | sonnet | implementer | success | — | 0 | n/a | **PASS** |
+| `work-claude-opus-review` | claude | opus | reviewer | success | revise | 7 | yes | **PASS** |
+| `personal-codex-*` (3 profiles) | codex | gpt-5.5 / terra / sol | — | usage_limit | — | 0 | n/a | **OWED** |
+| `personal-cursor-composer-impl` | cursor | composer-2.5 | implementer | success | — | 0 | n/a | **PASS** |
+| `personal-cursor-grok-review` | cursor | cursor-grok-4.5-high | reviewer | success | revise | 2 | yes | **PASS** |
+
+**6/9 passed** — every reachable cell, with three real reviewers across two
+vendors quoting themselves through the final boundary rule.
+
+## What each review round cost and found
+
+Every round found something the round before it missed, which is the same
+pattern the runner repair produced across five rounds:
+
+| Round | Reviewer | Found |
+|---|---|---|
+| 1 | cursor grok-4.5-high | 2 Criticals in the quote check: brief text counted as the reviewer's own words, and a fragment lifted from mid-sentence. Plus the error path that could return without retaining a transcript. |
+| 2 | claude opus (work) | The same first Critical, reproduced end to end on the no-judgment fixture. Then: acceptance did not require its evidence; the single-object wire shape was untested; `.quirks/briefs` is shared, so another job's file could be attributed here. |
+| 3 | claude opus (personal) | Verified rounds 1–2's fixes were real, then measured what they broke: the boundary rule rejected list items, block quotes, table cells, and em-dash lead-ins — failing a correct verdict into a paused lane. Also: codex's authored channel is unverified, and narrowing made that unknown load-bearing. |
+
+The gate did its own share: run 1 caught a timed-out run whose transcript was
+discarded, and comparing runs 1 and 2 caught transport status varying between
+`failure` and `usage_limit` for the same transcript.
+
 ## Independent review
 
 | Reviewer | Vendor | Verdict | Outcome |
 |---|---|---|---|
 | `cursor-grok-4.5-high` | cursor | **revise** | 2 Criticals, 4 Importants, 2 Minors. Both Criticals confirmed and fixed in `9deb268`; Importants 3–5 fixed in the same commit; Important 6 (gate incomplete) is this document's own owed record. |
-| claude opus (personal) | claude | see below | Dispatched against the fixed range with the two Criticals named, to check the fixes rather than re-report them. |
-| claude opus (work account) | claude | not obtained | The work account has not accepted the workspace trust dialog for this repository, so the run produced no output. Not a finding about the change. |
+| claude opus (work) | claude | **revise** | 1 Critical (the same one), 5 Importants, 6 Minors. All resolved except the owed codex coverage, which is this document's own record. |
+| claude opus (personal) | claude | **revise** | 0 Criticals. 4 Importants on what the fixes broke; all resolved. |
 | codex | codex | **owed** | Usage-limited until Jul 28 2026 2:02 PM. |
 
 ## Owed
