@@ -404,8 +404,14 @@ class OverlapRecordingRunnerPort implements RunnerPort {
       resolvedModel: "test-model",
       effort: input.route.effort,
       status: "success" as const,
-      // Reviewers must state acceptance; a silent success no longer approves.
-      ...(input.role === "reviewer" ? { verdict: "accept" as const } : {}),
+      // Reviewers must state acceptance and quote themselves stating it; a
+      // silent success does not approve, and neither does a bare verdict.
+      ...(input.role === "reviewer"
+        ? {
+            verdict: "accept" as const,
+            verdictEvidence: "Accept as it stands. I found nothing that must be fixed first.",
+          }
+        : {}),
       sessionHandle: "overlap-session",
       artifactPaths: [],
       usage: {},

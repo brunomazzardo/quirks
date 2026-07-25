@@ -84,6 +84,8 @@ async function facts(
     transcriptPath: path.join(dirs.artifactDir, "transcript-job.jsonl"),
     sessionId: undefined,
     argv: ["claude", "-p"],
+    // Far enough back that files written during the test count as this job's.
+    startedAtMs: Date.now() - 1_000,
     ...overrides,
   };
 }
@@ -135,6 +137,29 @@ test("the job prompt goes on stdin, never in argv where ps can read it", async (
   await interpreter.interpret(jobFacts, await fixture("claude-reviewer-revise.jsonl"));
   assert.match(recorded.prompts[0] ?? "", /BEGIN UNTRUSTED TRANSCRIPT/);
   assert.equal(buildInterpreterArgv(DEFAULT_INTERPRETER_CONFIG, "brief").some((entry) => entry.includes("UNTRUSTED")), false);
+});
+
+/**
+ * Both wire shapes are real, measured against claude 2.1.220 on 2026-07-25:
+ * with the production interpreter argv the CLI returns a JSON **array** of
+ * events, while a plain `claude -p --output-format json` returns a **single
+ * object**. Production accepts both; only the array was covered, so a later
+ * tidy-up of that branch would have stayed green and broken every job.
+ * Raised by the independent claude review.
+ */
+test("a single-object answer is read as readily as an array of events", async () => {
+  const single = JSON.stringify({
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    session_id: "agent-session",
+    result: JSON.stringify(report()),
+    structured_output: report(),
+  });
+  const { interpreter } = interpreterWith([ok(single)]);
+  const result = await interpreter.interpret(await facts(), await fixture("claude-reviewer-revise.jsonl"));
+  assert.equal(result.status, "success");
+  assert.equal(result.verdict, "revise");
 });
 
 test("a reviewer verdict quoted from the real transcript survives interpretation", async () => {

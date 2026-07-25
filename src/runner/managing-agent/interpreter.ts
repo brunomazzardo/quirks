@@ -37,6 +37,7 @@ import {
  */
 
 const MAX_AGENT_STDOUT_BYTES = 8 * 1024 * 1024;
+const AGENT_KILL_GRACE_MS = 100;
 const MAX_ARTIFACT_FILES_LISTED = 100;
 const MAX_FAILURE_MESSAGE_CHARS = 2048;
 /** One retry, then fail with the transcript kept (owner decision 2). */
@@ -90,7 +91,8 @@ export function buildInterpreterArgv(
 }
 
 function collectBounded(stdout: string, maxBytes: number): string {
-  return Buffer.byteLength(stdout, "utf8") > maxBytes ? stdout.slice(0, maxBytes) : stdout;
+  const buffer = Buffer.from(stdout, "utf8");
+  return buffer.byteLength > maxBytes ? buffer.subarray(0, maxBytes).toString("utf8") : stdout;
 }
 
 const defaultSpawnAgent: SpawnAgent = async (input) => {
@@ -107,8 +109,13 @@ const defaultSpawnAgent: SpawnAgent = async (input) => {
     let stdout = "";
     let stderr = "";
     let settled = false;
+    // SIGTERM, then SIGKILL, mirroring the launcher: the retry spawns straight
+    // after this rejects, so a wedged interpreter would otherwise outlive the
+    // job it was reading.
+    let killTimer: NodeJS.Timeout | undefined;
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
+      killTimer = setTimeout(() => child.kill("SIGKILL"), AGENT_KILL_GRACE_MS);
       if (!settled) {
         settled = true;
         reject(new Error(`Managing agent exceeded ${input.timeoutMs}ms`));
@@ -119,6 +126,7 @@ const defaultSpawnAgent: SpawnAgent = async (input) => {
     child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
     child.once("error", (error) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (!settled) {
         settled = true;
         reject(error);
@@ -126,6 +134,7 @@ const defaultSpawnAgent: SpawnAgent = async (input) => {
     });
     child.once("close", (code) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (!settled) {
         settled = true;
         resolve({
@@ -150,8 +159,14 @@ interface AgentEvent {
 }
 
 /**
- * Read the agent's own envelope: `-p --output-format json` emits a JSON array
- * of events whose terminal `result` carries the validated `structured_output`.
+ * Read the agent's own envelope.
+ *
+ * Measured against claude 2.1.220 on 2026-07-25: with the argv this module
+ * builds, `-p --output-format json` returns a JSON **array** of events whose
+ * terminal `result` carries the validated `structured_output`; a plainer
+ * invocation returns that result as a **single object**. Both shapes are
+ * accepted, and both are covered by tests, because the difference is the CLI's
+ * to make and not ours to depend on.
  */
 function readAgentReport(
   stdout: string,
@@ -183,14 +198,37 @@ function readAgentReport(
   return { report, costUsd: typeof cost === "number" ? cost : undefined };
 }
 
-async function listArtifactFiles(artifactDir: string): Promise<readonly string[]> {
+/**
+ * Slack on the start time, for filesystem timestamp granularity and clock skew.
+ */
+const ARTIFACT_MTIME_SLACK_MS = 2_000;
+
+/**
+ * Files this job plausibly produced: present in its artifact directory, and not
+ * older than the run.
+ *
+ * `.quirks/briefs` is shared by every job of every campaign, so listing it
+ * whole pasted other tasks' filenames into the prompt and let another job's
+ * file be attributed to this one (independent claude review, 2026-07-25).
+ */
+async function listArtifactFiles(
+  artifactDir: string,
+  startedAtMs: number,
+): Promise<readonly string[]> {
   try {
     const entries = await readdir(artifactDir, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isFile())
-      .map((entry) => path.join(artifactDir, entry.name))
-      .toSorted()
-      .slice(0, MAX_ARTIFACT_FILES_LISTED);
+    const candidates: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const candidate = path.join(artifactDir, entry.name);
+      try {
+        const stats = await stat(candidate);
+        if (stats.mtimeMs >= startedAtMs - ARTIFACT_MTIME_SLACK_MS) candidates.push(candidate);
+      } catch {
+        continue;
+      }
+    }
+    return candidates.toSorted().slice(0, MAX_ARTIFACT_FILES_LISTED);
   } catch {
     return [];
   }
@@ -224,8 +262,13 @@ async function verifiedArtifactPaths(
     }
     try {
       const stats = await stat(candidate);
-      if (stats.isFile()) kept.push(candidate);
-      else dropped.push(candidate);
+      // Same rule as the listing: a file older than the run belongs to whatever
+      // job wrote it, not to this one.
+      if (stats.isFile() && stats.mtimeMs >= facts.startedAtMs - ARTIFACT_MTIME_SLACK_MS) {
+        kept.push(candidate);
+      } else {
+        dropped.push(candidate);
+      }
     } catch {
       dropped.push(candidate);
     }
@@ -360,7 +403,7 @@ export class ManagingAgentInterpreter implements ResultInterpreter {
   ) {}
 
   async interpret(facts: RunnerJobFacts, transcript: string): Promise<InterpretedResult> {
-    const artifactFiles = await listArtifactFiles(facts.artifactDir);
+    const artifactFiles = await listArtifactFiles(facts.artifactDir, facts.startedAtMs);
     const argv = buildInterpreterArgv(this.config, MANAGING_AGENT_SYSTEM_BRIEF);
     const env = buildClaudeEnv(this.config.configDir ? { configDir: this.config.configDir } : {});
     const rejections: string[] = [];

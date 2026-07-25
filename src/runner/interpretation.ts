@@ -36,6 +36,14 @@ export interface RunnerJobFacts {
   sessionId: string | undefined;
   /** The exact command line the launcher ran. */
   argv: readonly string[];
+  /**
+   * When the launcher started this job, in epoch milliseconds.
+   *
+   * The artifact directory is `.quirks/briefs`, shared across every job and
+   * campaign, so "a file in the artifact dir" is not the same as "a file this
+   * job produced". A file older than the run is someone else's evidence.
+   */
+  startedAtMs: number;
 }
 
 export interface ReviewFinding {

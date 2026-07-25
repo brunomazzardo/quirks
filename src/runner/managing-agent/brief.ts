@@ -71,7 +71,12 @@ export const MANAGING_AGENT_SYSTEM_BRIEF = [
  * reportable while making the boundary unforgeable.
  */
 function neutralizeTranscriptMarkers(value: string): string {
-  return value.replaceAll(/\[(BEGIN|END) UNTRUSTED TRANSCRIPT/g, "($1 UNTRUSTED TRANSCRIPT");
+  // Case- and spacing-insensitive: "[end untrusted transcript]" closed the
+  // block just as well as the exact marker did (independent claude review,
+  // 2026-07-25). The elision note is neutralized for the same reason.
+  return value
+    .replaceAll(/\[\s*(BEGIN|END)\s+UNTRUSTED\s+TRANSCRIPT/gi, "($1 UNTRUSTED TRANSCRIPT")
+    .replaceAll(/\[\s*\.\.\./g, "(...");
 }
 
 export interface InterpretationPromptInput {

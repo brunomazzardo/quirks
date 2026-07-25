@@ -81,6 +81,47 @@ async function makeTempArtifactDir(): Promise<string> {
 /** Modes whose process exits non-zero, which the launcher must report as a fact. */
 const NON_ZERO_EXIT_MODES = new Set(["transient"]);
 
+/**
+ * What each mode must actually put in the transcript, per runner.
+ *
+ * Without this the mode dimension was decorative: 36 cells asserted the same
+ * three launcher facts, so a fake could stop distinguishing its modes and the
+ * matrix would stay green (independent claude review, 2026-07-25). The
+ * interpreter reads this text, so it is the part that has to be real.
+ */
+const MODE_EVIDENCE: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  claude: {
+    "usage-limit": /rate_limit_event/,
+    "permission-exit-zero": /permission_denials/,
+    "review-revise": /I don't think this should be accepted/,
+    "review-accept": /Accept as it stands/,
+    "review-silent": /It defines one function/,
+    partial: /honest_partial/,
+    transient: /transient_runner/,
+    "fabricated-tests": /All tests passed/,
+  },
+  codex: {
+    "usage-limit": /hit your usage limit/,
+    "permission-exit-zero": /permission denied by sandbox/,
+    "review-revise": /I don't think this should be accepted/,
+    "review-accept": /Accept as it stands/,
+    "review-silent": /It defines one function/,
+    partial: /honest_partial/,
+    transient: /transient_runner/,
+    "fabricated-tests": /All tests passed/,
+  },
+  cursor: {
+    "usage-limit": /rate limit exceeded/,
+    "permission-exit-zero": /permission denied/,
+    "review-revise": /I don't think this should be accepted/,
+    "review-accept": /Accept as it stands/,
+    "review-silent": /It defines one function/,
+    partial: /honest_partial/,
+    transient: /transient_runner/,
+    "fabricated-tests": /All tests passed/,
+  },
+};
+
 for (const runner of runners) {
   for (const mode of modes) {
     test(`the launcher captures what fake ${runner.name} produced in mode ${mode}`, async () => {
@@ -117,6 +158,13 @@ for (const runner of runners) {
       assert.equal(transcript.length > 0, true, `${mode} produced output that was not retained`);
       assert.equal(transcript, interpreter.transcripts[0]);
       assert.equal(result.artifactPaths.includes(facts.transcriptPath!), true);
+
+      // The mode has to be visible in what the runner said, because that text
+      // is the only thing the interpreter gets.
+      const expected = MODE_EVIDENCE[runner.name]?.[mode];
+      if (expected) {
+        assert.match(transcript, expected, `${runner.name}/${mode} must say what happened`);
+      }
     });
   }
 }

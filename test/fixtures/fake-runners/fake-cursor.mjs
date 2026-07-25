@@ -3,6 +3,7 @@ import {
   FAKE_REVIEW_ACCEPT_PROSE,
   FAKE_REVIEW_REVISE_PROSE,
   hangForever,
+  isReviewJob,
   oversizedPayload,
   parseRunnerArgs,
   wedgeAfterWork,
@@ -16,6 +17,13 @@ import {
 // the whole review in `result`. It writes no envelope: cursor never had an
 // --output-schema equivalent, and production no longer asks for one.
 
+/** An implementer reports work; only a reviewer states a recommendation. */
+function defaultSuccessProse() {
+  return isReviewJob(process.argv)
+    ? FAKE_REVIEW_ACCEPT_PROSE
+    : "Done: the work is complete and committed.";
+}
+
 function emitResult(sessionId, extra = {}) {
   process.stdout.write(`${JSON.stringify({
     type: "result",
@@ -24,7 +32,7 @@ function emitResult(sessionId, extra = {}) {
     session_id: sessionId,
     threadId: sessionId,
     duration_ms: 12,
-    result: "Done: the work is complete and committed. Accept as it stands.",
+    result: defaultSuccessProse(),
     ...extra,
   })}\n`);
 }

@@ -27,17 +27,20 @@ export function parseReviewVerdict(raw: unknown): ReviewVerdict | undefined {
  * changes is a completed job that withholds acceptance — not a runner failure,
  * and so never a retryable runner error.
  *
- * Acceptance requires an explicit accept. Treating an absent verdict as accept
- * was fail-open: cursor and claude do not mechanically require the field, so a
- * reviewer could omit it and be read as approving. Adding a channel for revise
- * while defaulting its absence to accept would reintroduce the very
- * silent-wrong-acceptance class this was meant to remove.
+ * Acceptance requires an explicit accept *and* the words that support it.
+ * Treating an absent verdict as accept was fail-open, and so is treating an
+ * unsupported one: the type says a verdict without evidence was never traceable
+ * to anything the reviewer said, but that invariant used to live only inside the
+ * interpreter's reconciliation, so any other producer of a result — a replay, a
+ * host adapter, a test double — could accept without it. Stating it here makes
+ * it true of every path (independent claude review, 2026-07-25).
  */
 export function reviewerAcceptedAttempt(
-  reviewer: { status: string; verdict?: ReviewVerdict | undefined },
+  reviewer: { status: string; verdict?: ReviewVerdict | undefined; verdictEvidence?: string | undefined },
 ): boolean {
   if (reviewer.status !== "success") return false;
-  return reviewer.verdict === "accept";
+  if (reviewer.verdict !== "accept") return false;
+  return (reviewer.verdictEvidence ?? "").trim().length > 0;
 }
 
 /**

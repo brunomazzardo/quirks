@@ -3,6 +3,7 @@ import {
   FAKE_REVIEW_ACCEPT_PROSE,
   FAKE_REVIEW_REVISE_PROSE,
   hangForever,
+  isReviewJob,
   oversizedPayload,
   parseRunnerArgs,
   wedgeAfterWork,
@@ -14,6 +15,13 @@ import {
 // reads one: since QK-RUN-009 the CLI is left to speak naturally and a managing
 // agent derives the structured result. What this fake owes the launcher is the
 // real stream-json event shape, its exit code, and prose that means something.
+
+/** An implementer reports work; only a reviewer states a recommendation. */
+function defaultSuccessProse() {
+  return isReviewJob(process.argv)
+    ? FAKE_REVIEW_ACCEPT_PROSE
+    : "Done: the work is complete and committed.";
+}
 
 function emitInit(sessionId) {
   process.stdout.write(`${JSON.stringify({
@@ -31,7 +39,7 @@ function emitAssistantText(sessionId, text) {
   })}\n`);
 }
 
-function emitSuccessResult(sessionId, result = "Done: the work is complete and committed. Accept as it stands.", extra = {}) {
+function emitSuccessResult(sessionId, result = defaultSuccessProse(), extra = {}) {
   process.stdout.write(`${JSON.stringify({
     type: "result",
     subtype: "success",

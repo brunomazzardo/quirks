@@ -29,7 +29,7 @@ function emitSuccess(sessionId) {
     subtype: "success",
     session_id: sessionId,
     is_error: false,
-    result: "Done: I replaced src/message.txt with the approved message and committed it. Accept as it stands.",
+    result: "Done: I replaced src/message.txt with the approved message and committed it.",
   })}\n`);
 }
 

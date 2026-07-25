@@ -61,6 +61,20 @@ export const FAKE_REVIEW_REVISE_PROSE =
 export const FAKE_REVIEW_ACCEPT_PROSE =
   "I read the diff and found nothing that must be fixed first. **Accept as it stands.**";
 
+/**
+ * Whether this invocation is a review, learned the way a real runner learns it:
+ * from the brief it was handed. Reviewer briefs live at `<task>.reviewer.md`
+ * and say "Do not modify code"; codex receives the brief inlined, so the text
+ * is checked as well as the path.
+ *
+ * An implementer that states a verdict is a bad fixture to keep near anything
+ * that reads verdicts (independent claude review, 2026-07-25).
+ */
+export function isReviewJob(argv) {
+  return argv.some((entry) =>
+    /\.reviewer\.md\b/.test(entry) || /do not modify code/i.test(entry));
+}
+
 /** Brief path from a claude argv: the positional prompt, which is a file path. */
 export function briefPathFromArgv(argv) {
   return argv.find((entry) => entry.endsWith(".md"));

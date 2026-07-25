@@ -14,6 +14,8 @@ import {
  * with a revise verdict, never a runner failure. Conflating the two is what
  * retried cmp-uimotion-1 to BUDGET_EXCEEDED (QK-RUN-008).
  */
+const ACCEPT_EVIDENCE = "Accept as it stands. I found nothing that must be fixed before this lands.";
+
 test("an attempt whose reviewer returns a revise verdict is not accepted", () => {
   assert.equal(
     reviewerAcceptedAttempt({ status: "success", verdict: "revise" }),
@@ -22,8 +24,11 @@ test("an attempt whose reviewer returns a revise verdict is not accepted", () =>
   );
 });
 
-test("an attempt whose reviewer returns an accept verdict is accepted", () => {
-  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept" }), true);
+test("an attempt whose reviewer returns an accept verdict, quoting it, is accepted", () => {
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "success", verdict: "accept", verdictEvidence: ACCEPT_EVIDENCE }),
+    true,
+  );
 });
 
 test("a reviewer that crashed is not accepted, and stays distinguishable from a revise verdict", () => {
@@ -57,11 +62,44 @@ test("indeterminate is a verdict the contract recognises rather than discards", 
   assert.equal(parseReviewVerdict(null), undefined);
 });
 
+/**
+ * Raised by the independent claude review, 2026-07-25: the RunnerJobResult type
+ * says a verdict without evidence "is never an acceptance", but the predicate
+ * checked only status and verdict, so the invariant lived entirely inside the
+ * interpreter's reconciliation. Any other producer — a replay, a future host
+ * adapter, a test double — could accept without it.
+ */
+test("an accept verdict with no supporting evidence does not accept the attempt", () => {
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept" }), false);
+  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept", verdictEvidence: "" }), false);
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "success", verdict: "accept", verdictEvidence: "   " }),
+    false,
+  );
+});
+
+test("an accept verdict that quotes the reviewer accepts the attempt", () => {
+  assert.equal(
+    reviewerAcceptedAttempt({
+      status: "success",
+      verdict: "accept",
+      verdictEvidence: "Accept as it stands. I found nothing that must be fixed before this lands.",
+    }),
+    true,
+  );
+});
+
 test("only an explicit accept verdict accepts the attempt", () => {
-  assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "accept" }), true);
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "success", verdict: "accept", verdictEvidence: ACCEPT_EVIDENCE }),
+    true,
+  );
   assert.equal(reviewerAcceptedAttempt({ status: "success", verdict: "revise" }), false);
   assert.equal(reviewerAcceptedAttempt({ status: "success" }), false);
-  assert.equal(reviewerAcceptedAttempt({ status: "failure", verdict: "accept" }), false);
+  assert.equal(
+    reviewerAcceptedAttempt({ status: "failure", verdict: "accept", verdictEvidence: ACCEPT_EVIDENCE }),
+    false,
+  );
 });
 
 /**

@@ -189,6 +189,7 @@ async function salvageTranscript(
 }
 
 export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<RunnerJobResult> {
+  const startedAtMs = Date.now();
   const sessionId = extractFlagValue(input.argv, "--session-id");
   const base = {
     jobId: input.jobId,
@@ -296,6 +297,7 @@ export async function dispatchRunnerJob(input: DispatchRunnerJobInput): Promise<
       transcriptPath: retainedTranscript,
       sessionId,
       argv: input.argv,
+      startedAtMs,
     };
 
     let parsed: InterpretedResult;

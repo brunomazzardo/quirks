@@ -5,6 +5,7 @@ import {
   FAKE_REVIEW_ACCEPT_PROSE,
   FAKE_REVIEW_REVISE_PROSE,
   hangForever,
+  isReviewJob,
   oversizedPayload,
   parseRunnerArgs,
   wedgeAfterWork,
@@ -49,7 +50,7 @@ async function main() {
       await commitWork(process.argv);
       await writeArtifact(outDir);
       emitThread(sessionId);
-      emitAgentMessage("Done: the change is committed. Accept as it stands.");
+      emitAgentMessage(isReviewJob(process.argv) ? FAKE_REVIEW_ACCEPT_PROSE : "Done: the change is committed.");
       emitTurnCompleted();
       return;
     }
