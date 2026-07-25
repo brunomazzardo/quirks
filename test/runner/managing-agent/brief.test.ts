@@ -19,6 +19,7 @@ const facts: RunnerJobFacts = {
   worktreePath: "/worktree",
   transcriptPath: "/artifacts/transcript-job.jsonl",
   sessionId: "session-1",
+  argv: ["claude", "-p", "--model", "opus"],
 };
 
 function prompt(overrides: Partial<Parameters<typeof buildInterpretationPrompt>[0]> = {}): string {

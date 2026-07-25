@@ -9,7 +9,8 @@
  * entirely (0 prose messages with `--output-schema`, 8 without).
  */
 
-import type { RunnerProfile } from "./types.js";
+import type { ReviewVerdict } from "./result-contract.js";
+import type { RunnerJobFailure, RunnerJobStatus, RunnerProfile } from "./types.js";
 
 /**
  * What the launcher observed, stated by Quirks rather than by any model.
@@ -33,6 +34,8 @@ export interface RunnerJobFacts {
   transcriptPath: string | undefined;
   /** Session id the launcher generated, where the CLI takes one. */
   sessionId: string | undefined;
+  /** The exact command line the launcher ran. */
+  argv: readonly string[];
 }
 
 export interface ReviewFinding {
@@ -41,4 +44,29 @@ export interface ReviewFinding {
   detail: string;
   file?: string;
   line?: number;
+}
+
+export interface InterpretedResult {
+  status: RunnerJobStatus;
+  verdict?: ReviewVerdict;
+  /** The reviewer's own words supporting the verdict, verified against the transcript. */
+  verdictEvidence?: string;
+  findings?: readonly ReviewFinding[];
+  /** Retained record of how this result was derived, for later audit. */
+  interpretationPath?: string;
+  sessionHandle: string;
+  artifactPaths: readonly string[];
+  failure?: RunnerJobFailure;
+  notes?: readonly string[];
+}
+
+/**
+ * Turns what a runner actually produced into a structured result.
+ *
+ * The transcript passed in is the retained, redacted one — the same text an
+ * operator can read back later. Interpreting anything else would mean deriving
+ * a verdict from evidence that no longer exists.
+ */
+export interface ResultInterpreter {
+  interpret(facts: RunnerJobFacts, transcript: string): Promise<InterpretedResult>;
 }
