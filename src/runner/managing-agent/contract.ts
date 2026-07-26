@@ -231,7 +231,23 @@ const MIN_COMPLETE_STATEMENT_CHARS = 6;
  * Binding polarity instead attacks the actual failure: an `accept` may not rest
  * on words that a refusal was in the middle of saying.
  */
-const REFUSAL_CUES = /\b(?:don't|do not|doesn't|does not|cannot|can't|won't|will not|shouldn't|should not|isn't|is not|not|never|refuse|refused|reject|rejected|unless)\b/;
+/**
+ * A refusal must be a refusal *of the work*, not any negation in the sentence.
+ *
+ * A bare `not` matched every ordinary approving sentence a reviewer writes:
+ * "those check failures are not regressions", "not introduced by this change",
+ * "no issues, not a blocker". The 2026-07-26 QK-UI-008 review was a real accept,
+ * evidenced and correct, and both quotes the interpreter offered were rejected
+ * for containing the word "not" — the campaign paused on a verdict everyone
+ * agreed with. Negation is how reviewers say a change is *clean*.
+ *
+ * Bare negation is therefore gone; a negation only counts when it lands on
+ * approval itself ("not accept", "never approved"). The laundering case this
+ * guard exists for still fails: "I don't think — this should be accepted" is
+ * caught by `don't` in the run-up, as are the other phrase forms.
+ */
+const REFUSAL_CUES =
+  /\b(?:don't|do not|doesn't|does not|cannot|can't|won't|will not|shouldn't|should not|wouldn't|would not|isn't|is not|refuses?|refused|rejects?|rejected|unless|not\s+(?:accept\w*|approv\w*|ready|suitable|mergeable)|never\s+(?:accept\w*|approv\w*))\b/;
 const APPROVAL_LOOKBACK_CHARS = 120;
 
 /**

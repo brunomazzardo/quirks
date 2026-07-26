@@ -358,3 +358,35 @@ test("a non-object report is rejected", () => {
 test("a failure with a missing code is rejected rather than half-read", () => {
   assert.equal(parseManagingAgentReport(validReport({ failure: { message: "it broke" } })), undefined);
 });
+
+/**
+ * Regression from the 2026-07-26 QK-UI-008 campaign, which paused on a verdict
+ * everyone agreed with.
+ *
+ * The reviewer approved the change and said so plainly, but every quote it could
+ * offer contained the word "not" — because that is how a reviewer says a change
+ * is clean. A bare negation counted as a refusal cue, so both attempts were
+ * rejected as unsupported and the accept degraded to indeterminate.
+ */
+test("an approving sentence is not a refusal merely for containing a negation", () => {
+  const transcript = "The same 3 path-with-spaces CLI failures exist on 18d8021, and a11y /"
+    + " table-performance / approval Playwright specs all passed there. That supports the accept"
+    + " verdict — those check failures are not regressions from QK-UI-008.";
+  const quote = "That supports the accept verdict — those check failures are not regressions from QK-UI-008.";
+
+  assert.equal(quoteSupportedByTranscript(quote, transcript, "accept"), true);
+});
+
+test("a negation landing on approval itself still refuses an accept", () => {
+  const transcript = "I reviewed the diff carefully. I would not accept this as it stands.";
+  const quote = "I would not accept this as it stands.";
+
+  assert.equal(quoteSupportedByTranscript(quote, transcript, "accept"), false);
+});
+
+test("a refusal in the run-up still cannot launder approving words into an accept", () => {
+  const transcript = "I don't think — this should be accepted as it stands.";
+  const quote = "this should be accepted as it stands.";
+
+  assert.equal(quoteSupportedByTranscript(quote, transcript, "accept"), false);
+});
