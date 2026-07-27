@@ -257,14 +257,32 @@ one), and `workstream` — which `AGENTS.md` already uses in prose and remains t
 alternative if the longer word reads better. The system is then **goal → task → run**: what I
 am trying to achieve, what needs doing, and when agents did it.
 
-### D18 — Where tasks come from: `quirks create`, and no plan document
+### D18 — Where tasks come from: a skill brainstorms, the CLI records
 
 The flow collapses from four artifacts to two.
 
 ```
 before   idea → brainstorm → spec → PLAN → tasks
-after    idea → quirks create → spec + goal + tasks
+after    idea → brainstorm SKILL (interactive, with the operator)
+              → spec  →  quirks goal new  →  quirks task propose ×N
 ```
+
+#### The CLI is never interactive
+
+**Agents run this CLI, and an interactive prompt is a hung overnight run.** Every command
+must work headless: flags and files in, JSON out, no question it waits on. The CLI is
+**agent-first in goal, scope, and shape** — a human using it directly is the secondary case,
+not the design centre.
+
+So the interactivity lives where a human already is: **in the skill**, running inside a session.
+The skill asks the questions, writes the spec, and then calls the CLI to record the outcome —
+`quirks goal new --title … --why <spec-path>`, then `quirks task propose` per task. No new
+top-level verb: `goal new` is the recording step, not a conversation.
+
+This has one consequence the spec must not gloss: **`quirks run`'s `[y/N]` is itself
+interactive.** An agent dispatching a run would hang on it. It takes `--yes`, and an agent
+passing `--yes` is exercising the operator's delegation, not approving on its own authority —
+the approval happened when the operator said to run it, or in the run planner.
 
 **The plan document goes.** It numbered work that tasks already carry — `deliverables`,
 `acceptanceCriteria`, `verification`, `dependsOn` — written twice in two places that then
@@ -277,9 +295,8 @@ plans; they became stubs because the tasks carried the content.
 
 **Quirks owns its own brainstorm.** Superpowers' brainstorming skill states its terminal
 state as *"The ONLY skill you invoke after brainstorming is writing-plans"* — it is hardwired
-to end in a plan document. Ours ends in **tasks**. `quirks create` runs the interactive
-question-asking, writes the spec, creates the goal (the spec is its `why`), and derives the
-tasks under it.
+to end in a plan document. Ours ends in **tasks**: it asks the questions, writes the spec,
+creates the goal with that spec as its `why`, and derives the tasks under it.
 
 **The task schema stops being Superpowers'.** `workflow.family` is `"const": "superpowers"`
 today and `workflow.phase` includes `plan`. Both change: Quirks owns the family, and `plan`
@@ -620,7 +637,13 @@ disagrees:
 
 ## Implementation order
 
-0. **QK-RUN-012 first — its code survives the reboot.** `src/runner/watchdog.ts` carries **zero**
+0a. **QK-RBT-001a — the authoring skills, first of everything.** Brainstorm, design, and
+   breakdown (D18), plus `quirks goal new` and non-interactive `task propose`. This is the
+   bootstrap: until decisions become goals and tasks, every later step is designed in prose
+   that nothing tracks — which is the failure this whole product exists to prevent, and which
+   this specification is currently an instance of. Build the thing that remembers, first.
+
+0. **QK-RUN-012 — its code survives the reboot.** `src/runner/watchdog.ts` carries **zero**
    mentions of envelope, approval, digest, budget, or capability; it is process monitoring, and
    the reboot makes it more central, not less. Both defects are bare `catch` blocks collapsing
    distinct failures into a benign default — `processAlive` reporting an `EPERM` probe as a dead
