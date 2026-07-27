@@ -68,6 +68,20 @@ Spec: [`specs/runs-goals-and-reports.md`](specs/runs-goals-and-reports.md)
 | D18 | `needs design` / `needs breakdown` are flags; agent subtasks are neither | spec | — |
 | D18 | Quirks owns its task schema and its own brainstorm skill | spec | — |
 
+## 2026-07-27 — Step 1 build session (v2, this repo)
+
+Decisions made brainstorming the store and the `goal`/`task` verbs. Recorded here only until
+step 3 loads them in.
+
+| | Decision | Where | Ledger |
+|---|---|---|---|
+| S1 | **The task-id prefix is the goal id.** `QK-SRV-003` belongs to goal `QK-SRV`; a goal-less task is a bare number (`QK-014`). Closes the "Task ids" open question below. | — | — |
+| S2 | **`task propose` creates a live task; there is no acceptance state.** Lifecycle: `open → claimed → completed`, plus `blocked` from any non-terminal state. `blocked` remembers the status it interrupted; `release` restores it (claimed → open; blocked → what it interrupted). `complete` is permissive — any non-completed state, so a hand-finished task never needs ceremony. | — | — |
+| S3 | **Task schema trimmed.** v1's `kind`, `priority`, `source`, `workflow`, `execution`, `provenance`, `coordination` are dropped; `effort`/`risk` stay as optional free text; `revision` is CLI-derived and bumped on every write, never operator-supplied. Ordering is `dependsOn` plus the run planner — priority fields go stale and lie. | — | — |
+| S4 | **Output is TTY-sensitive on reads, JSON everywhere else.** `list`/`show` render tables on a TTY; JSON when piped or under `--json`; write verbs always emit the resulting object as JSON. Nothing prompts, ever. | — | — |
+| S5 | **Store: `.quirks/goals.json` + `.quirks/tasks.json`**, versioned envelopes, temp+rename writes. Corrupt is distinguished from absent and reported loudly — the carried defect lands as a test from day one. | — | — |
+| S6 | **Steps 1–3 the CLI opens the store directly**, behind the one module boundary the Hono routes take over at step 4. Not the forbidden fallback — there is no daemon to race yet — and no second path in is ever added. | — | — |
+
 ## Sequencing
 
 From [`FOUNDING.md`](FOUNDING.md). The order exists so the system can hold its own intent as
@@ -105,8 +119,8 @@ not vigilance** — each belongs as an acceptance criterion on the component tha
 - **Multi-repo × runs** — whether a run can span repositories.
 - **`--yes`** — an agent holding it can start any run, and nothing distinguishes the operator's
   delegation from an agent deciding on its own.
-- **Task ids** — v1 grew 20 goal prefixes across 138 tasks by convention. v2 should decide
-  whether the prefix *is* the goal id or goals are named independently.
+- ~~**Task ids**~~ — **resolved 2026-07-27 (S1):** the prefix *is* the goal id; goal-less
+  tasks are bare numbers under the plain `QK-` namespace.
 
 ## The chicken and egg
 
