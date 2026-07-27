@@ -13,6 +13,13 @@ answer: a markdown file nobody is required to read is how intent gets lost in th
 
 ---
 
+## Superseded by the v2 founding document
+
+`specs/2026-07-27-quirks-v2-founding.md` (2026-07-27) decides to **build fresh rather than
+convert**: 42% of v1's source files touch the layer being deleted, and the knowledge in these
+specs — not the code — is the asset. Every decision below still holds; it is the implementation
+they were going to be applied to that changes. The founding document is the entry point.
+
 ## 2026-07-27 — Native app and service split
 
 Spec: [`specs/2026-07-27-native-app-and-service-split-design.md`](specs/2026-07-27-native-app-and-service-split-design.md)
