@@ -1,7 +1,7 @@
 # Runs, not campaigns — removing the permission layer (QK-RBT-001)
 
 Status: proposed, owner-directed (Bruno, 2026-07-27). Revises parts of
-`2026-07-27-native-app-and-service-split-design.md` — see "Amendments" at the end.
+`specs/native-app-and-service.md` — see "Amendments" at the end.
 
 ## What this is
 
@@ -599,7 +599,7 @@ product since the beginning; this is the correction.
 
 ## Amendments to the native app and service split design
 
-That spec (`2026-07-27-native-app-and-service-split-design.md`) stands except where it now
+That spec (`specs/native-app-and-service.md`) stands except where it now
 disagrees:
 
 1. **D8's "the CLI's command surface is frozen" is withdrawn.** It was written to protect the

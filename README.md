@@ -4,7 +4,7 @@ A local control plane for planning, dispatching, and understanding agent work ac
 repositories.
 
 **This is v2, built from scratch.** Start with
-[`docs/superpowers/specs/2026-07-27-quirks-v2-founding.md`](docs/superpowers/specs/2026-07-27-quirks-v2-founding.md)
+[`docs/FOUNDING.md`](docs/FOUNDING.md)
 — it is self-contained and links everything else.
 
 ## The two problems

@@ -227,23 +227,33 @@ The order exists so the system can hold its own intent as early as possible:
 7. **Harness + model tables.**
 8. **The native app.**
 
-## Reference — everything is in `~/code/quirks` at `a2be6f0`
+## Reference
 
-| Document | What it holds |
+**In this repo** — the documents are the asset; they are all that was carried from v1.
+
+| | |
 |---|---|
-| `docs/superpowers/DECISIONS.md` | **All 33 decisions**, with where each is recorded |
-| `docs/superpowers/specs/2026-07-27-runs-not-campaigns-design.md` | Runs, goals, brief, report, execution model — the deepest source |
-| `docs/superpowers/specs/2026-07-27-native-app-and-service-split-design.md` | Native app, Bun service, wire format, credentials |
-| `docs/handoffs/2026-07-27-reboot-continuation.md` | The audit numbers and the gotchas found by doing |
-| `docs/superpowers/specs/2026-07-24-managing-agent-runner-design.md` | The managing-agent layer and its honesty properties |
-| `docs/superpowers/plans/superseded/README.md` | What was retired and why |
-| `docs/smoke/2026-07-25-managing-agent-probe.md` | Real-CLI evidence for the runner |
-| `docs/smoke/2026-host-matrix.md` | Real host×runner matrix (best run 4/9) |
-| `src/runner/{claude,codex,cursor}.ts` | **Argv knowledge worth reading before rewriting** — cursor was sent a `--file` flag that does not exist; claude's brief was swallowed by a variadic `--add-dir`; claude depended on a machine-local `verbose` setting |
+| `docs/DECISIONS.md` | All 33 decisions, with where each is recorded |
+| `docs/specs/runs-goals-and-reports.md` | Runs, goals, the brief, the report, the execution model — the deepest source |
+| `docs/specs/native-app-and-service.md` | Native app, Bun service, wire format, credentials |
+| `docs/specs/managing-agent-runner.md` | The managing-agent layer and its honesty properties |
+| `docs/specs/daemon-lifecycle.md` | Bind-or-attach, socket-not-pid liveness, rotated logs |
+| `docs/evidence/v1-audit.md` | The audit numbers and the gotchas found by doing |
+| `docs/evidence/managing-agent-probe.md` | Real-CLI evidence for the runner |
+| `docs/evidence/runner-boundary-probe.md` | Runner boundary findings |
+| `docs/evidence/host-matrix.md` | Real host×runner matrix (best run 4/9) |
+
+**In v1, for code reference only** — `~/code/quirks`, and `origin/v1` on the remote:
+
+| | |
+|---|---|
+| `src/runner/{claude,codex,cursor}.ts` | **Read before rewriting.** cursor was sent a `--file` flag that does not exist; claude's brief was swallowed by a variadic `--add-dir`; claude depended on a machine-local `verbose` setting |
 | `hosts/{claude,codex,cursor}/discover.mjs` | Harness discovery, for `quirks harness` |
-| `skills/` | Six v1 skills to rewrite, not copy |
-| `~/code/game/pilot/.claude/skills/overnight-orchestration` | The behavior named as the target |
-| `~/code/game/pilot/.claude/skills/overnight-issue-worker` | Gate sequence, PARTIAL bar, phase boundary |
+| `skills/` | Six skills to **rewrite, not copy** |
+
+**Outside both** — the behavior named as the target:
+`~/code/game/pilot/.claude/skills/overnight-orchestration` and `overnight-issue-worker`
+(gate sequence, PARTIAL bar, phase boundary).
 
 ### Measured facts, so v2 does not re-derive them
 

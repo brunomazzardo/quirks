@@ -69,9 +69,9 @@ operator's delegation rather than approving on its own authority.
 
 | | |
 |---|---|
-| `docs/superpowers/DECISIONS.md` | **Start here.** All 33 decisions, where each is recorded, whether it has become work. |
-| `docs/superpowers/specs/2026-07-27-runs-not-campaigns-design.md` | The reboot: runs, goals, the brief, the report, the execution model |
-| `docs/superpowers/specs/2026-07-27-native-app-and-service-split-design.md` | The native app and the Bun service/CLI |
+| `docs/DECISIONS.md` | **Start here.** All 33 decisions, where each is recorded, whether it has become work. |
+| `docs/specs/runs-goals-and-reports.md` | The reboot: runs, goals, the brief, the report, the execution model |
+| `docs/specs/native-app-and-service.md` | The native app and the Bun service/CLI |
 | `docs/superpowers/plans/superseded/README.md` | What was retired and what replaced it |
 | `~/code/game/pilot/.claude/skills/overnight-orchestration` | The behavior the owner named as the target |
 | `~/code/game/pilot/.claude/skills/overnight-issue-worker` | Its gate sequence, PARTIAL definition, phase boundary |

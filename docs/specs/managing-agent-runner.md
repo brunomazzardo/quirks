@@ -15,7 +15,7 @@ Structure stops being something we beg a third-party model to emit and becomes s
 
 ## Why — the evidence from 2026-07-24
 
-Six real dispatch defects landed in one night's probing (`docs/smoke/2026-07-24-runner-boundary-probe.md`), and the pattern behind them is a boundary that requires exact conformance from tools that were never built to conform:
+Six real dispatch defects landed in one night's probing (`docs/evidence/runner-boundary-probe.md`), and the pattern behind them is a boundary that requires exact conformance from tools that were never built to conform:
 
 - Cursor was sent `--file`, a flag it does not have. Every dispatch died in a second.
 - Claude's brief was swallowed by a variadic `--add-dir`.
