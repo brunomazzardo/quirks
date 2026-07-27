@@ -244,5 +244,34 @@ function buildUnsupportedRequest(
         idempotencyKey: `C-1:${taskId}:propose:evt-unsupported`,
         input: { task: { id: "QK-2" } },
       };
+    case "list-goals":
+      return { schemaVersion: 1, operation: "list-goals", input: {} };
+    case "show-goal":
+      return { schemaVersion: 1, operation: "show-goal", goalId: "QK-NONE", input: {} };
+    case "propose-goal":
+      return {
+        schemaVersion: 1,
+        operation: "propose-goal",
+        goalId: "QK-NONE",
+        idempotencyKey: `C-1:QK-NONE:propose-goal:evt-unsupported`,
+        input: {
+          goal: {
+            id: "QK-NONE",
+            title: "unsupported probe",
+            state: "active",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+        },
+      };
+    case "update-goal":
+      return {
+        schemaVersion: 1,
+        operation: "update-goal",
+        goalId: "QK-NONE",
+        expectedNativeRevision: nativeRevision,
+        idempotencyKey: `C-1:QK-NONE:update-goal:evt-unsupported`,
+        input: { title: "unsupported probe" },
+      };
   }
 }

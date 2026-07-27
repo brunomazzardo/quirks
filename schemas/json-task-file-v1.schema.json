@@ -11,9 +11,39 @@
       "maxItems": 1024,
       "uniqueTaskIds": true,
       "items": { "$ref": "#/$defs/nativeTask" }
+    },
+    "goals": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nativeGoal" }
     }
   },
   "$defs": {
+    "nativeGoal": {
+      "type": "object",
+      "required": ["id", "title", "state", "createdAt", "updatedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "maxLength": 64
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "why": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "whyRef": { "$ref": "#/$defs/sourceRef" },
+        "doneWhen": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+        },
+        "state": { "enum": ["active", "done", "abandoned"] },
+        "stateReason": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "taskId": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",

@@ -19,7 +19,11 @@
         "block",
         "release",
         "propose",
-        "verify"
+        "verify",
+        "list-goals",
+        "show-goal",
+        "propose-goal",
+        "update-goal"
       ]
     },
     "error": {

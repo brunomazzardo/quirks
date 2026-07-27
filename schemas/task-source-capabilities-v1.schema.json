@@ -36,7 +36,7 @@
     "operations": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 16,
+      "maxItems": 32,
       "uniqueItems": true,
       "items": {
         "enum": [
@@ -51,7 +51,11 @@
           "block",
           "release",
           "propose",
-          "verify"
+          "verify",
+          "list-goals",
+          "show-goal",
+          "propose-goal",
+          "update-goal"
         ]
       }
     },

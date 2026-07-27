@@ -10,10 +10,43 @@ export type TaskSourceOperation =
   | "block"
   | "release"
   | "propose"
-  | "verify";
+  | "verify"
+  | "list-goals"
+  | "show-goal"
+  | "propose-goal"
+  | "update-goal";
 
-export type ReadOperation = "capabilities" | "validate" | "list" | "show" | "verify";
-export type MutationOperation = Exclude<TaskSourceOperation, ReadOperation>;
+export type ReadOperation =
+  | "capabilities"
+  | "validate"
+  | "list"
+  | "show"
+  | "verify"
+  | "list-goals"
+  | "show-goal";
+
+/** Goal mutations carry a goalId rather than a taskId, so they are their own family. */
+export type GoalMutationOperation = "propose-goal" | "update-goal";
+export type MutationOperation = Exclude<TaskSourceOperation, ReadOperation | GoalMutationOperation>;
+
+export type GoalState = "active" | "done" | "abandoned";
+
+/**
+ * The asserted goal record. Its `state` is a claim someone made, never a
+ * rollup: every member task can complete while the goal is not achieved,
+ * which is what `doneWhen` exists to decide.
+ */
+export interface NativeGoal {
+  readonly id: string;
+  readonly title: string;
+  readonly why?: string;
+  readonly whyRef?: unknown;
+  readonly doneWhen?: readonly string[];
+  readonly state: GoalState;
+  readonly stateReason?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
 
 type EmptyInput = Readonly<Record<string, never>>;
 
@@ -30,6 +63,16 @@ interface InputByOperation {
   block: { reason: string; unblockCondition: string };
   release: { campaignId: string };
   propose: { task: unknown };
+  "list-goals": { state?: GoalState };
+  "show-goal": EmptyInput;
+  "propose-goal": { goal: NativeGoal };
+  "update-goal": {
+    title?: string;
+    why?: string;
+    doneWhen?: readonly string[];
+    state?: GoalState;
+    stateReason?: string;
+  };
 }
 
 interface RequestBase<O extends TaskSourceOperation> {
@@ -39,8 +82,18 @@ interface RequestBase<O extends TaskSourceOperation> {
 }
 
 type SourceWideReadRequest = {
-  [O in "capabilities" | "validate" | "list"]: RequestBase<O>;
-}["capabilities" | "validate" | "list"];
+  [O in "capabilities" | "validate" | "list" | "list-goals"]: RequestBase<O>;
+}["capabilities" | "validate" | "list" | "list-goals"];
+
+type GoalReadRequest = RequestBase<"show-goal"> & { goalId: string };
+
+export type GoalMutationRequest =
+  | (RequestBase<"propose-goal"> & { goalId: string; idempotencyKey: string })
+  | (RequestBase<"update-goal"> & {
+      goalId: string;
+      expectedNativeRevision: string;
+      idempotencyKey: string;
+    });
 
 type TaskReadRequest = RequestBase<"show"> & { taskId: string };
 type VerifyRequest = RequestBase<"verify"> & { taskId?: string };
@@ -53,7 +106,13 @@ export type MutationRequest = {
   };
 }[MutationOperation];
 
-export type TaskSourceRequest = SourceWideReadRequest | TaskReadRequest | VerifyRequest | MutationRequest;
+export type TaskSourceRequest =
+  | SourceWideReadRequest
+  | TaskReadRequest
+  | VerifyRequest
+  | MutationRequest
+  | GoalReadRequest
+  | GoalMutationRequest;
 
 interface ResponseBase<O extends TaskSourceOperation> {
   schemaVersion: 1;

@@ -232,6 +232,15 @@ export class FakeTaskSource implements TaskSource {
         });
       case "propose":
         return this.applyPropose(request);
+      case "list-goals":
+      case "show-goal":
+      case "propose-goal":
+      case "update-goal":
+        // This fake advertises no goal operations, so `execute` rejects them
+        // before dispatch. The arms exist to keep the switch exhaustive and to
+        // document the honest-degradation case: a driver whose provider has no
+        // grouping concept says so rather than pretending.
+        return failure(request.operation, "PROTOCOL_VIOLATION", `Unsupported operation ${request.operation}`);
     }
   }
 

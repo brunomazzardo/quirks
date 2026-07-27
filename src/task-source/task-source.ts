@@ -1,7 +1,13 @@
 import { QuirksError } from "../core/errors.js";
 import { canonicalJson } from "../core/canonical-json.js";
 import { validateSchema } from "../schema/validate.js";
-import type { MutationRequest, TaskSourceOperation, TaskSourceRequest, TaskSourceResponse } from "./types.js";
+import type {
+  GoalMutationRequest,
+  MutationRequest,
+  TaskSourceOperation,
+  TaskSourceRequest,
+  TaskSourceResponse,
+} from "./types.js";
 
 export interface TaskSource {
   execute(request: TaskSourceRequest): Promise<TaskSourceResponse>;
@@ -25,7 +31,23 @@ const SECRET_PATTERNS: readonly RegExp[] = [
 
 export function assertMutationIdentity(request: TaskSourceRequest): void {
   if (!("idempotencyKey" in request)) return;
-  if (!request.taskId || !request.expectedNativeRevision || !request.idempotencyKey) {
+  if (!request.idempotencyKey) {
+    throw new TypeError(`Mutation ${request.operation} has an empty identity field`);
+  }
+
+  // Goal mutations are identified by goalId, and propose-goal has no prior
+  // revision to be stale against — it is creating the record.
+  if ("goalId" in request) {
+    if (!request.goalId) {
+      throw new TypeError(`Mutation ${request.operation} has an empty identity field`);
+    }
+    if (request.operation === "update-goal" && !request.expectedNativeRevision) {
+      throw new TypeError(`Mutation ${request.operation} has an empty identity field`);
+    }
+    return;
+  }
+
+  if (!request.taskId || !request.expectedNativeRevision) {
     throw new TypeError(`Mutation ${request.operation} has an empty identity field`);
   }
 }
@@ -80,11 +102,13 @@ export function parseTaskSourceResponse(value: unknown, operation: TaskSourceOpe
   return response;
 }
 
-export function mutationRequestHash(request: MutationRequest): string {
+export function mutationRequestHash(request: MutationRequest | GoalMutationRequest): string {
+  const subject = "goalId" in request ? { goalId: request.goalId } : { taskId: request.taskId };
   return canonicalJson({
     operation: request.operation,
-    taskId: request.taskId,
-    expectedNativeRevision: request.expectedNativeRevision,
+    ...subject,
+    // propose-goal creates the record, so it has no prior revision to pin.
+    expectedNativeRevision: "expectedNativeRevision" in request ? request.expectedNativeRevision : null,
     idempotencyKey: request.idempotencyKey,
     input: request.input,
   });

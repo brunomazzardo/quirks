@@ -2,12 +2,20 @@ import { QuirksError } from "../../core/errors.js";
 import { sha256 } from "../../core/hash.js";
 import { validateSchema } from "../../schema/validate.js";
 import type { CompletionBoundary, EvidenceKind } from "../../project/types.js";
-import type { MutationRequest, TaskSourceOperation, TaskSourceResponse } from "../types.js";
+import type {
+  GoalMutationRequest,
+  MutationRequest,
+  NativeGoal,
+  TaskSourceOperation,
+  TaskSourceResponse,
+} from "../types.js";
 import type { NativeTask } from "./json-revision.js";
 
 export type TaskEnvelope = {
   schemaVersion: 1;
   tasks: NativeTask[];
+  /** Absent in files written before goals existed; treated as empty. */
+  goals?: NativeGoal[];
 };
 
 type MutationFailure<O extends TaskSourceOperation> = Extract<TaskSourceResponse, { operation: O; ok: false }>;
@@ -26,7 +34,7 @@ export function failure<O extends TaskSourceOperation>(
   } as MutationFailure<O>;
 }
 
-export function extractCampaignId(request: MutationRequest): string {
+export function extractCampaignId(request: MutationRequest | GoalMutationRequest): string {
   if ("campaignId" in request.input && typeof request.input.campaignId === "string") {
     return request.input.campaignId;
   }

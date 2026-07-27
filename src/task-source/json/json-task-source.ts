@@ -19,6 +19,7 @@ import {
   type TaskSource,
 } from "../task-source.js";
 import type {
+  GoalMutationRequest,
   MutationRequest,
   TaskSourceCapabilities,
   TaskSourceOperation,
@@ -38,6 +39,7 @@ import {
   type TaskEnvelope,
 } from "./json-mutations.js";
 import { listSummary, nativeTaskRevision, normalizeNativeTask, type NativeTask } from "./json-revision.js";
+import { applyGoalMutation, goalRevision } from "./json-goal-mutations.js";
 
 const SUPPORTED_OPERATIONS: readonly TaskSourceOperation[] = [
   "capabilities",
@@ -52,6 +54,10 @@ const SUPPORTED_OPERATIONS: readonly TaskSourceOperation[] = [
   "release",
   "propose",
   "verify",
+  "list-goals",
+  "show-goal",
+  "propose-goal",
+  "update-goal",
 ];
 
 const IDEMPOTENCY_EVENT_TYPE = "task-source.idempotency";
@@ -164,6 +170,28 @@ export class JsonTaskSource implements TaskSource {
       }
       case "propose":
         return this.applyProposeMutation(request);
+      case "list-goals": {
+        const envelope = await this.loadEnvelope();
+        const goals = (envelope.goals ?? []).filter(
+          (goal) => !request.input.state || goal.state === request.input.state,
+        );
+        return { schemaVersion: 1, operation: "list-goals", ok: true, data: { goals } };
+      }
+      case "show-goal": {
+        const envelope = await this.loadEnvelope();
+        const goal = (envelope.goals ?? []).find((entry) => entry.id === request.goalId);
+        if (!goal) return failure("show-goal", "NOT_FOUND", `Unknown goal ${request.goalId}`);
+        return {
+          schemaVersion: 1,
+          operation: "show-goal",
+          ok: true,
+          nativeRevision: goalRevision(goal),
+          data: goal,
+        };
+      }
+      case "propose-goal":
+      case "update-goal":
+        return this.applyGoalMutation(request);
       default:
         return this.applyTaskMutation(request);
     }
@@ -213,7 +241,7 @@ export class JsonTaskSource implements TaskSource {
   }
 
   private resolveIdempotentResponse(
-    request: MutationRequest,
+    request: MutationRequest | GoalMutationRequest,
     requestHash: string,
     cached: { requestHash: string; response: TaskSourceResponse } | undefined,
   ): TaskSourceResponse | undefined {
@@ -246,6 +274,46 @@ export class JsonTaskSource implements TaskSource {
         ok: true,
         nativeRevision: data.nativeRevision,
         data,
+      } satisfies TaskSourceResponse;
+      await this.recordIdempotency(request.idempotencyKey, requestHash, response);
+      return response;
+    } finally {
+      await lock.release();
+    }
+  }
+
+  private async applyGoalMutation(request: GoalMutationRequest): Promise<TaskSourceResponse> {
+    const requestHash = mutationRequestHash(request);
+
+    const lock = await RepositoryLock.acquire(this.lockPath, { campaignId: extractCampaignId(request) });
+    try {
+      const cached = this.resolveIdempotentResponse(
+        request,
+        requestHash,
+        await this.lookupIdempotency(request.idempotencyKey),
+      );
+      if (cached) return cached;
+
+      const envelope = await this.loadEnvelope();
+      const outcome = applyGoalMutation(envelope, request, new Date().toISOString());
+      if (outcome.kind === "not_found") {
+        return failure(request.operation, "NOT_FOUND", `Unknown goal ${request.goalId}`);
+      }
+      if (outcome.kind === "stale") {
+        return failure(request.operation, "STALE_REVISION", "Goal revision is stale");
+      }
+      if (outcome.kind === "conflict") {
+        return failure(request.operation, "SOURCE_CONFLICT", outcome.reason);
+      }
+
+      envelope.goals = outcome.goals;
+      await writeJsonAtomic(this.tasksFilePath, envelope);
+      const response = {
+        schemaVersion: 1,
+        operation: request.operation,
+        ok: true,
+        nativeRevision: goalRevision(outcome.goal),
+        data: outcome.goal,
       } satisfies TaskSourceResponse;
       await this.recordIdempotency(request.idempotencyKey, requestHash, response);
       return response;
