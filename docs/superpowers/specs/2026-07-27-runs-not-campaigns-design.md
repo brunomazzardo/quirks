@@ -78,12 +78,28 @@ saying yes to a plan they can see.
 ### D2 — Five verbs
 
 ```
-quirks task propose | list | show
+quirks task propose | list | show | block | claim | complete | release
 quirks run QK-A QK-B --name "native app"     → prints plan → [y/N] → executes
 quirks status                                 → what is happening now
-quirks report last-night | <name> | <id>      → what happened
+quirks report <run-id>                        → what happened
 quirks harness                                → is each harness working
 ```
+
+`quirks report` **requires a run id.** There is no `last-night` shorthand: "last night" is
+ambiguous the moment two runs overlap, and `quirks status` already names the recent ones.
+
+Task status changes are **direct verbs with flags**, not schema-conforming request files. The
+measured cost of the current path — parking one task on 2026-07-27 — was five steps: read
+`nativeRevision` from a `--json` show, hand-author a request against a six-field schema with a
+nested two-field `input`, place that file inside the repository to satisfy a path policy, pass
+it via `--request-file`, then delete it. The replacement is:
+
+```
+quirks task block QK-UI-008 --reason "…" --until "…"
+```
+
+The revision check, idempotency key, and intent record stay — the CLI derives them. They were
+never the operator's job.
 
 The plan printed before `[y/N]` shows: the task set, execution order, the harness and model
 chosen per task, and an estimated cost. That is the whole approval surface.
@@ -195,9 +211,11 @@ disagrees:
 - **Deleting 42% of the source files' concerns is a large, wide change.** It should land as
   several reviewable commits, not one. The runner and provenance layers must not be touched in
   the same commits as the ceremony removal.
-- **Some ceremony may be load-bearing in ways the audit did not see.** `supervisor.ts` is 971
-  lines and its wave/lane scheduling is entangled with claims and budgets; separating "what
-  schedules work" from "what guards work" is the risky part of this change.
+- **`supervisor.ts` is rewritten toward the new goal, not carved up in place.** 971 lines where
+  wave/lane scheduling is entangled with claims and budgets. The guards leave; what remains is
+  a scheduler with one job — run these tasks in dependency order across available harnesses,
+  keep going when one fails, and record what happened. Approaching it as a rewrite against that
+  sentence is safer than extracting the ceremony from around it.
 - **Dropping TDD is easy to over-apply.** The rule being removed is the blanket one. If runner
   or provenance regressions start appearing, that is the signal it was cut too far.
 - **`quirks report` has no design yet.** It is named here as the answer to problem B, but what
