@@ -291,16 +291,38 @@ disagrees:
   work use its judgment — this does not need a ceremony of its own.
 - **Dropping TDD is easy to over-apply.** The rule being removed is the blanket one. If runner
   or provenance regressions start appearing, that is the signal it was cut too far.
+- **The rewrite can reintroduce every bug the audit found.** Deleting the code that holds a
+  defect also deletes the test that would have caught its return. The named defects are
+  bare-`catch`-swallows-distinction and success-reported-before-it-is-durable; both are easy to
+  write fresh in new code and neither announces itself. Every declined in-place fix must carry
+  an acceptance criterion onto its replacement (see step 0b), and that is the only mechanism
+  proposed here — there is no reviewer gate behind it.
 - **`quirks report` has no design yet.** It is named here as the answer to problem B, but what
   it prints — and how it summarizes a night of transcripts without becoming a wall of text — is
   undesigned and is the next thing that needs a real answer.
 
 ## Implementation order
 
-0. **QK-CTL-012 and QK-RUN-012 first.** Both predate this spec and both outrank it. A run that
-   reports `completed` while its durable record says `running`, or a watchdog that records a
-   non-zero exit as terminal success, makes `quirks report` a well-formatted lie. Problem B
-   cannot be solved on top of either. Nothing else here should start until they land.
+0. **QK-RUN-012 first — its code survives the reboot.** `src/runner/watchdog.ts` carries **zero**
+   mentions of envelope, approval, digest, budget, or capability; it is process monitoring, and
+   the reboot makes it more central, not less. Both defects are bare `catch` blocks collapsing
+   distinct failures into a benign default — `processAlive` reporting an `EPERM` probe as a dead
+   process, and `loadStore` returning an empty registry for a corrupt or unreadable one. Roughly
+   twelve lines, in code that stays. Fix them now.
+
+0b. **QK-CTL-012 splits — do not fix it in place.**
+   - Its **budget and retry accounting** half is deleted, not fixed: budgets go with the
+     permission layer, and repairing double-counting in code being removed is waste.
+   - Its **durable completion** half is a *requirement of the new supervisor*, not a repair of
+     the old one. `supervisor.ts` is being rewritten; fixing and then rewriting is doing the work
+     twice. Lift its acceptance criterion verbatim into QK-RBT-002's: *"A run reported as
+     completed has actually transitioned its tasks and its campaign, or it is not reported as
+     completed."*
+
+   **Carrying a bug class across a rewrite is a test, not vigilance.** "Be on the lookout" does
+   not survive a long night of implementation. Every defect this spec declines to fix in place
+   must land as an acceptance criterion on the component that replaces it — otherwise the
+   rewrite reintroduces it and the audit that found it is wasted.
 1. **QK-RBT-002 — the run model.** Rename campaign to run; collapse preflight/approve/start
    into `quirks run`. Add the task-status verbs and close QK-RUN-007/008/009, which cannot be
    closed today: `complete` from `proposed` returns a conflict, and `claim` wants a campaign.
