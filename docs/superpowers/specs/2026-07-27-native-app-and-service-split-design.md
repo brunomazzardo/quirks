@@ -144,7 +144,7 @@ The subset does force three reshapes, applied in the read-models:
 | `spend: Record<string, number>` | no dynamic-key records, no `Map` | `readonly { key: Uint8Array; amount: number }[]` |
 | `title: string` and every dynamic text field | `string` model fields are banned (NS1024) | `Uint8Array` |
 
-### D9 — Client credentials: a mode-0600 token file, not a cookie
+### D7 — Client credentials: a mode-0600 token file, not a cookie
 
 QK-SRV-003's pairing cookie was designed for a browser. A native app has no cookie jar and no
 same-origin policy, so `HttpOnly`/`SameSite` protect nothing here, and the CLI never had them.
@@ -161,7 +161,30 @@ ceremony: the digest acknowledgment naming exactly what is being approved, the s
 re-read, the replay check at consume, and durable journaling with the approving client's
 identity.
 
-### D7 — Rust was considered and rejected
+### D8 — The CLI's command surface is frozen; the skills layer is a first-class client
+
+Quirks ships six agent skills across eleven files carrying **69 direct CLI invocations**
+(34 `quirks-campaign`, 24 `quirks-tasks`, 11 `quirks-watchdog`). They are how agents learn the
+framework, and they are a consumer of this architecture as much as the app is.
+
+**The command surface does not change.** `quirks-tasks propose` keeps its name, arguments,
+exit codes, and output shape. An agent must not be able to observe that a socket appeared
+underneath it. This is what keeps D4's rewrite from rippling into eleven skill files and every
+campaign brief that quotes them.
+
+Two skills are nonetheless wrong the day this lands, and are corrected in the same change:
+
+- **`running-agent-campaigns`** teaches "loopback **UI** approval." That flow becomes a native
+  app; the skill's approval section is rewritten against it.
+- **`writing-tasks`** teaches "without direct JSON mutation." True, and now *structural* —
+  agents cannot reach the JSON at all, because only the service can. The skill states the
+  boundary rather than asking agents to respect it.
+
+New surface the skills must eventually teach — the HTTP API and the operation vocabulary
+directly, for agents that would rather call an endpoint than shell out. Deferred with the MCP
+server, not designed here; noted so it is not discovered late.
+
+### D9 — Rust was considered and rejected
 
 A full port would rewrite ~17,700 lines of domain logic and ~23,700 lines of tests, reopening
 the defect classes in `src/runner/` that took five independent cross-vendor review rounds to
@@ -305,7 +328,7 @@ Most of it survives; this is a re-pointing, not a deletion.
 | QK-SRV-005 approval end-to-end | Survives; the approving client changes |
 | QK-SRV-006 launchd | Survives |
 | QK-SRV-007 freshness (fs-watch → revision) | Survives; the app polls the revision |
-| **QK-SRV-003 pairing cookie** | **Rewritten** — see D9. |
+| **QK-SRV-003 pairing cookie** | **Rewritten** — see D7. |
 | QK-UI-008 … QK-UI-014 (motion, states, nav, visual refs) | **Retired.** They describe React views. |
 
 ## Out of scope (v1)
@@ -344,7 +367,10 @@ Sequenced so each step produces something runnable and the safety net never drop
    autostart and loud failure. Doctrine amendments land here.
 5. **QK-NAT-006 — remaining four views.** Campaigns, Campaign Detail, Preflight, Task History.
 6. **QK-NAT-007 — approval.** Digest acknowledgment, durable write, replay check preserved.
-7. **QK-NAT-008 — cut over.** Delete `src/ui/client/**`, the six browser dependencies, the
+7. **QK-NAT-008 — skills.** Rewrite `running-agent-campaigns`' approval section against the
+   native app; restate `writing-tasks`' boundary as structural. Verify the other four still
+   hold by running their CLI invocations against the service. `pnpm validate:skills` gates it.
+8. **QK-NAT-009 — cut over.** Delete `src/ui/client/**`, the six browser dependencies, the
    esbuild bundle, and the Playwright suite. Rewrite the doctrine sections.
 
-Steps 1–3 are reversible at any point; step 8 is the commitment.
+Steps 1–3 are reversible at any point; step 9 is the commitment.
