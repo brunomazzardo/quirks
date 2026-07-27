@@ -517,7 +517,7 @@
     {
       "id": "QK-NAT-001",
       "title": "spike: transpiled TS core + terminal_sessions",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "prove a transpiled TS core renders a LIVE shell in <terminal> (terminal_sessions=true), not the stub",
@@ -537,10 +537,13 @@
       "needsDesign": false,
       "needsBreakdown": false,
       "risk": "the changelog is ambiguous on transpiled cores getting the real emulator — verify before building on it",
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:03.041Z",
-      "updatedAt": "2026-07-27T22:03:03.041Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-27T22:39:43.675Z",
+      "statusDetail": {
+        "claimedBy": "claude, live session with Bruno",
+        "evidence": "SPIKE VERDICT: a transpiled TS core CANNOT drive a live <terminal> on SDK 0.6.1 — the gap is one inch wide and upstream-fixable. PROVEN WORKING: (1) TS pty command family exists and passes the subset checker (Cmd.ptySpawn/Write/Resize/Kill, shipped 0.6.0); (2) native eject + terminal_sessions=true on a TS-core app BUILDS — ghostty resolves and terminal_vt_ghostty links into the binary; (3) the app boots and answers automation. BLOCKED AT: <terminal pty> requires a bare {binding} resolving to an INTEGER u64 engine key; (a) transpiled model numbers surface as floats and the contract excludes integer arms (ui_markup_contract.zig), (b) the engine key for TS sessions is internal — pty_key_base 0x5453_5054_0000_0000 + table index, interned in ts_core_host.zig, no public accessor, (c) computed bindings like round() are refused (bare binding only). Three runtime teachings captured verbatim in the session. Fix belongs upstream: match TS string pty keys at the element, or expose the engine key to the TS tier. Widget-node measurement not meaningful (view never built). Spike code in scratchpad quirks-workbench-spike/."
+      }
     },
     {
       "id": "QK-NAT-002",
