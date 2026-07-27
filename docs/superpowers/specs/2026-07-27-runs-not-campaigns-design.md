@@ -168,6 +168,77 @@ Both are live in the native app and available as `quirks harness`. This also ret
 smell: `CLAUDE.md` currently carries *"codex is usage-limited until Jul 28 2026 2:02 PM"* as
 prose in a checked-in document. Quota state belongs in a table that refreshes, not in doctrine.
 
+## The execution model
+
+Adapted from the pattern in `~/code/game/pilot/.claude/skills/overnight-orchestration`, which
+the owner named as the behavior to reproduce with Quirks' CLI.
+
+### D11 — One parent agent per task, live and in control
+
+Every task gets its own parent agent, spawned on the harness that task runs on. It is not a
+post-hoc reader; it is in charge for the duration:
+
+```
+quirks run QK-A QK-B --name "native app" --mode autonomous
+  │
+  └── per task, one PARENT AGENT on the task's harness
+        ├── reads the brief
+        ├── quirks task claim <id>
+        ├── dispatches the implementer through the CLI
+        ├── watches output; handles issues as they arise
+        ├── if the task carries review:
+        │     quirks review <id> --model <different-model>
+        │         → a reviewer on a DIFFERENT model, dispatched BY the parent
+        ├── writes a continuation brief into the same worktree on an honest partial
+        └── quirks task complete <id> --evidence …   (verdict quote-verified)
+```
+
+The parent never reviews its own task's work. When review is part of completion, the parent
+**dispatches** a reviewer on a different model through the CLI. Quirks keeps two agents where
+the judge never touched the code — Pilot's single-reviewer shape is rejected here.
+
+The continuation-brief behavior is taken directly from Pilot and is the highest-value part of
+it: on an honest partial, the parent writes what exists, numbers the remaining scope, and
+states "do not redo groundwork" — into the **same worktree**, so the next attempt resumes
+rather than restarts.
+
+### D12 — Quirks adds no restrictions to the agents it launches
+
+The managing agent's `--tools ""`, no-MCP, no-settings, no-skills launch is removed. Agents get
+their normal environment.
+
+This reverses a documented property, so the reasoning is recorded rather than assumed:
+
+- **It was right for the old role and is incoherent for the new one.** A read-only transcript
+  reader needs no tools. A parent that drives the CLI, spawns reviewers, and writes
+  continuations cannot function without them.
+- **It costs ~30×.** `AGENTS.md` measured $0.0049 restricted against $0.145 a call
+  unrestricted. That is real and it belongs in the plan the run prints before `[y/N]`, not
+  hidden.
+- **The honesty property does not depend on it.** "Read-only is mechanical rather than
+  promised" was belt-and-braces over a check that already carries the weight: a verdict must
+  quote the runner's own words, and **Quirks verifies that quote against the retained
+  transcript in its own code**. An agent with every tool in the world still cannot fabricate an
+  accept, because the quote check does not ask the agent's permission.
+
+What is explicitly NOT relaxed: quote verification, absence failing closed to `indeterminate`,
+and always-retained transcripts. Those are the product.
+
+### D13 — Autonomy is a run mode, not a global rule
+
+Chosen per run at `quirks run` time, because an unattended overnight sweep and a supervised
+afternoon run want opposite defaults:
+
+| Mode | Behavior on something needing judgment |
+|---|---|
+| `--mode autonomous` | The parent decides and continues. Nothing waits for a human. |
+| `--mode park-on-issue` | The parent stops that task, records why, and leaves it for the operator. Other tasks continue. |
+
+`park-on-issue` uses Pilot's phase boundary, which is worth stealing verbatim: **before a
+landing commit exists, a failure releases the work; once a verified landing commit exists, a
+failure holds it for the operator and never unassigns verified work.** Losing a night's
+finished work to an automatic release is worse than parking it.
+
 ## What is deleted
 
 Digest-bound envelopes · preflight-as-a-separate-command · approval tokens and the vault ·
@@ -224,8 +295,13 @@ disagrees:
 
 ## Implementation order
 
+0. **QK-CTL-012 and QK-RUN-012 first.** Both predate this spec and both outrank it. A run that
+   reports `completed` while its durable record says `running`, or a watchdog that records a
+   non-zero exit as terminal success, makes `quirks report` a well-formatted lie. Problem B
+   cannot be solved on top of either. Nothing else here should start until they land.
 1. **QK-RBT-002 — the run model.** Rename campaign to run; collapse preflight/approve/start
-   into `quirks run`. Ceremony still present but unused.
+   into `quirks run`. Add the task-status verbs and close QK-RUN-007/008/009, which cannot be
+   closed today: `complete` from `proposed` returns a conflict, and `claim` wants a campaign.
 2. **QK-RBT-003 — delete the permission layer.** Envelopes, digests, tokens, capabilities,
    leases, claims, circuit breakers, budgets, and their tests. Separate commits per concern.
 3. **QK-RBT-004 — failure policy and resume.** D3 and D4.
