@@ -81,6 +81,7 @@ step 3 loads them in.
 | S4 | **Output is TTY-sensitive on reads, JSON everywhere else.** `list`/`show` render tables on a TTY; JSON when piped or under `--json`; write verbs always emit the resulting object as JSON. Nothing prompts, ever. | — | — |
 | S5 | **Store: `.quirks/goals.json` + `.quirks/tasks.json`**, versioned envelopes, temp+rename writes. Corrupt is distinguished from absent and reported loudly — the carried defect lands as a test from day one. | — | — |
 | S6 | **Steps 1–3 the CLI opens the store directly**, behind the one module boundary the Hono routes take over at step 4. Not the forbidden fallback — there is no daemon to race yet — and no second path in is ever added. | — | — |
+| S7 | **The founding doc's "brainstorm skill" is named `shape`** (create a goal, grow one, or split into several — one skill, orientation first). It converses lead-with-one-direction, never option menus; flags are asked, not imposed; spec only when the why earns it. | `.claude/skills/shape/` | — |
 
 ## Sequencing
 
