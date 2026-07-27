@@ -81,12 +81,13 @@ saying yes to a plan they can see.
 quirks task propose | list | show | block | claim | complete | release
 quirks run QK-A QK-B --name "native app"     → prints plan → [y/N] → executes
 quirks status                                 → what is happening now
-quirks report <run-id>                        → what happened
+quirks report <run-id|slug>                   → what happened
 quirks harness                                → is each harness working
 ```
 
-`quirks report` **requires a run id.** There is no `last-night` shorthand: "last night" is
-ambiguous the moment two runs overlap, and `quirks status` already names the recent ones.
+`quirks report` **requires a run id or its slug.** There is no `last-night` shorthand: "last
+night" is ambiguous the moment two runs overlap, and `quirks status` already names the recent
+ones. A run's `--name` yields the slug, so `quirks report native-app` works.
 
 Task status changes are **direct verbs with flags**, not schema-conforming request files. The
 measured cost of the current path — parking one task on 2026-07-27 — was five steps: read
@@ -282,11 +283,12 @@ disagrees:
 - **Deleting 42% of the source files' concerns is a large, wide change.** It should land as
   several reviewable commits, not one. The runner and provenance layers must not be touched in
   the same commits as the ceremony removal.
-- **`supervisor.ts` is rewritten toward the new goal, not carved up in place.** 971 lines where
-  wave/lane scheduling is entangled with claims and budgets. The guards leave; what remains is
-  a scheduler with one job — run these tasks in dependency order across available harnesses,
-  keep going when one fails, and record what happened. Approaching it as a rewrite against that
-  sentence is safer than extracting the ceremony from around it.
+- **`supervisor.ts` gets smaller because judgment moves to the parent agents.** 971 lines today,
+  with scheduling entangled in claims and budgets. The guards leave, and most of what looks like
+  supervision becomes the parent agent's job (D11). What remains is a scheduler with one
+  sentence of purpose: run these tasks in dependency order across available harnesses, keep
+  going when one fails, and record what happened. Do it carefully and let the agent doing the
+  work use its judgment — this does not need a ceremony of its own.
 - **Dropping TDD is easy to over-apply.** The rule being removed is the blanket one. If runner
   or provenance regressions start appearing, that is the signal it was cut too far.
 - **`quirks report` has no design yet.** It is named here as the answer to problem B, but what
