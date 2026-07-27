@@ -257,6 +257,62 @@ one), and `workstream` — which `AGENTS.md` already uses in prose and remains t
 alternative if the longer word reads better. The system is then **goal → task → run**: what I
 am trying to achieve, what needs doing, and when agents did it.
 
+### D18 — Where tasks come from: `quirks create`, and no plan document
+
+The flow collapses from four artifacts to two.
+
+```
+before   idea → brainstorm → spec → PLAN → tasks
+after    idea → quirks create → spec + goal + tasks
+```
+
+**The plan document goes.** It numbered work that tasks already carry — `deliverables`,
+`acceptanceCriteria`, `verification`, `dependsOn` — written twice in two places that then
+drift, which is why `sourceRefs` pins a plan commit in the first place. The ledger becomes the
+plan.
+
+The evidence that this was already happening: the two most recent per-task plans are **38 and
+28 lines**, against 1,537 and 2,037 for the founding ones. Nobody decided to stop writing
+plans; they became stubs because the tasks carried the content.
+
+**Quirks owns its own brainstorm.** Superpowers' brainstorming skill states its terminal
+state as *"The ONLY skill you invoke after brainstorming is writing-plans"* — it is hardwired
+to end in a plan document. Ours ends in **tasks**. `quirks create` runs the interactive
+question-asking, writes the spec, creates the goal (the spec is its `why`), and derives the
+tasks under it.
+
+**The task schema stops being Superpowers'.** `workflow.family` is `"const": "superpowers"`
+today and `workflow.phase` includes `plan`. Both change: Quirks owns the family, and `plan`
+leaves the phase list.
+
+#### Two flags and one behavior — three different things
+
+| | What it means | Who acts |
+|---|---|---|
+| **needs design** | We do not yet know *what* to build. | Routes to the design skill, with the operator. |
+| **needs breakdown** | We know what, but it is too big as one task. | Routes to the breakdown flow, with the operator. |
+| *(agent subtasks)* | The agent finds the work is bigger than it looked, mid-execution. | The agent, alone. No flag. |
+
+Both flags may be set by the agent while deriving tasks from a spec, or by the operator by hand.
+`workflow.designGate` already exists for the first; the second is new.
+
+The third is deliberately **not** a flag and deliberately **not** ledger tasks. An agent that
+created real tasks mid-run would turn a run you approved for eight into fourteen while you
+slept, and "approve the plan you can see" would quietly stop being true. Instead the breakdown
+is **internal but structured** — recorded in the run record in a shape `quirks report` renders,
+so the morning view can show that the agent split a task, into what, and how each part went.
+The execution skill tells the agent it has this freedom and how to record it.
+
+#### Skills Quirks must own
+
+These carry discipline that used to be code (D17), so they are deliverables, not documentation:
+
+- **brainstorm** — interactive question-asking that ends in a spec, not a plan.
+- **design** — the `needs design` flow.
+- **breakdown** — the `needs breakdown` flow.
+- **execution** — how an agent organizes a large task and records its internal subtasks.
+- plus the source-conflict and scope skills D17 depends on.
+
 ## The execution model
 
 Adapted from the pattern in `~/code/game/pilot/.claude/skills/overnight-orchestration`, which
