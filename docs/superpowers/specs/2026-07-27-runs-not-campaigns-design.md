@@ -328,6 +328,114 @@ landing commit exists, a failure releases the work; once a verified landing comm
 failure holds it for the operator and never unassigns verified work.** Losing a night's
 finished work to an automatic release is worse than parking it.
 
+### D17 — The brief: the CLI supplies facts, skills supply judgment
+
+The brief is how intent reaches the agent — the join between problem A and problem B. It is
+split along one line, and that line is the whole design:
+
+> **The CLI supplies verifiable facts. Skills supply judgment. Only honesty properties get code.**
+
+The previous product encoded its discipline as code — envelopes, digests, gates — and that
+became the bloat this spec removes. The discipline here is real and stays; it lives in skills
+and prompts the agents read, not in enforcement machinery.
+
+**What the CLI assembles** (deterministic, testable, reproducible — every item verifiable):
+
+```
+task        id, title, goal, deliverables, acceptanceCriteria, verification,
+            dependsOn, effort, risk, nativeRevision
+goal        title, why, doneWhen
+git         base commit, candidate commit, worktree path
+sources     each sourceRef with BOTH its pinned commit and current HEAD,
+            the diff between them, and the last-changed date of each
+operator    per-task notes written in the run planner
+skills      the instruction set, plus computeInstructionsHash — so a report can
+            say exactly which instructions the agent held
+```
+
+**What the skill governs** (judgment, no code behind it):
+
+- Reading the pin→HEAD diff and deciding whether it invalidates anything the task asks for.
+- Resolving conflicts between sources.
+- Scope: which files are in, which are explicitly out.
+- When to stop and surface something rather than decide.
+
+#### Precedence is recency, and it is a default rather than a rule
+
+The most recently changed source wins. It self-maintains, needs no curated ladder, and on the
+repository's real dates it orders correctly where a fixed ladder does not:
+
+```
+2026-07-27 11:57  runs-not-campaigns spec   "the browser client is deleted"
+2026-07-27 11:25  the task                  "build esbuild watch"
+2026-07-25 01:15  AGENTS.md                 "browser stack ratified"    ← stalest, loses
+2026-07-23 18:00  the spec at the pin       (what the task was written against)
+```
+
+Pilot's fixed ladder puts repository instructions on top, which here would elevate the stalest
+source. Recency gets it right.
+
+**Prerequisite: tasks must carry timestamps.** The task schema has no date field at all, and
+`.quirks/tasks.json` holds one commit date for 138 tasks — parking a single task makes the whole
+ledger look freshly changed. `createdAt`/`updatedAt` per task, and the same on goals, must land
+before recency means anything.
+
+#### The escalation, and why the judgment pass finds conflicts rather than only settling them
+
+Ordering only helps once a conflict is known. In the worked example the diff shows a
+supersession header was added to a spec; concluding *"therefore this deliverable is moot"* is
+inference, not diffing — nothing in the text links that header to esbuild watch. So detection is
+itself the judgment pass.
+
+```
+1. supervisor      diffs pin → HEAD; something moved
+2. judgment pass   a higher-tier model, holding the conflict skill:
+                   does this change invalidate anything I was told to do?
+3. recency         orders whatever it flagged as conflicting
+4. the operator     only when the judgment pass cannot call it
+```
+
+Step 2 uses the tier ladder that already exists (`requiredTierForRole`, `mechanical → standard
+→ high → principal`) — the first real consumer of D7's model table.
+
+#### The pin, kept for the reason that is not obvious
+
+`sourceRefs` records the commit a task was written against. Today it is **written and never
+read** — `task-brief.ts` renders it, `materialize.ts` writes it, and nothing compares it to
+anything. Meanwhile drift detection exists in `circuit-breakers.ts` and `recovery.ts` and points
+at *envelopes*, guarding a digest against itself. Drift detection was built for the thing that
+did not matter and not for the thing that did — and it is inside the layer being deleted, so
+repointing it at sources is not optional.
+
+The pin is not an alternative to reading the current document. **It is the baseline that makes
+"this changed" computable at all**: pin as recorded, HEAD as read, the diff as the signal. This
+is Pilot's freshness baseline, which records `{id, updated_at}` per source and re-checks before
+landing.
+
+#### Links are bidirectional and the reverse side is written, not derived
+
+A task cites its sources through `sourceRefs`. A document carries a written list of the tasks
+that cite it, visible when the document is open in an editor rather than only through a query.
+**It may go stale, and that is accepted** — a stale list is fixed when noticed, and visibility
+where the reader already is beats a guarantee they have to run a command to see.
+
+#### Ground rules the brief always carries
+
+Adapted from Pilot's, where each was learned by losing a night to it:
+
+- **The workspace is already decided** — the task's worktree. Do not ask; begin. Repository
+  rules that say "ask the operator" otherwise make an agent stop and wait until morning.
+- Read the repository instructions and the goal's `why` before the deliverables.
+- Smallest complete change; the task's own commit message; never push.
+- Report in the D14 shape — verbatim test tails, not a summary of them.
+- Name the ratified contracts this task must extend rather than fork.
+
+#### Dry-run
+
+`quirks run --goal X --dry-run` assembles every brief and prints them without dispatching. The
+run planner shows the operator exactly what each agent will read before approval — which is
+what makes the planner a workspace rather than a rubber stamp (D6).
+
 ### D14 — `quirks report <run-id|slug>`: what needs you, first
 
 The report answers one question — **what needs me now?** — and only then explains the night.
@@ -436,6 +544,13 @@ disagrees:
   work use its judgment — this does not need a ceremony of its own.
 - **Dropping TDD is easy to over-apply.** The rule being removed is the blanket one. If runner
   or provenance regressions start appearing, that is the signal it was cut too far.
+- **Discipline in skills is not enforcement, and that is the deliberate trade.** D17 puts
+  source-conflict judgment, precedence, and scope in prompts rather than code. A skill can be
+  ignored in a way a gate cannot, and nothing will stop an agent that skips the diff. This is
+  the same trade as deleting the capability model, made knowingly: the alternative is the
+  ceremony this spec exists to remove. The boundary is fixed — **only honesty properties get
+  code** (quote verification, retained transcripts, absence failing closed). Everything else is
+  instruction, and if that proves too loose the answer is a better skill, not a new gate.
 - **The rewrite can reintroduce every bug the audit found.** Deleting the code that holds a
   defect also deletes the test that would have caught its return. The named defects are
   bare-`catch`-swallows-distinction and success-reported-before-it-is-durable; both are easy to
@@ -482,8 +597,12 @@ disagrees:
    `--task` depth, over the provenance record. The native run-detail view renders the same data.
 5. **QK-RBT-006 — harness and model tables.** `quirks harness`, backed by the existing
    discover scripts and routing.
-6. **QK-RBT-007 — doctrine.** Rewrite `CLAUDE.md`/`AGENTS.md`: drop the TDD requirement, the
-   capability language, the approval ceremony, and the hardcoded quota prose. Rewrite all six
-   skills against the five-verb CLI.
+6. **QK-RBT-007 — doctrine and the judgment skills.** Rewrite `CLAUDE.md`/`AGENTS.md`: drop the
+   TDD requirement, the capability language, the approval ceremony, and the hardcoded quota
+   prose. Rewrite all six skills against the five-verb CLI. **Author the brief skills D17
+   depends on** — source-conflict judgment, scope, and the ground rules. These carry the
+   discipline that used to be code, so this step is load-bearing rather than cleanup.
+7. **QK-RBT-008 — task and goal timestamps.** `createdAt`/`updatedAt` on both. Small, and D17's
+   recency ordering is meaningless without it.
 
 Steps 1 and 2 are the ones that need care; the rest are additive.
