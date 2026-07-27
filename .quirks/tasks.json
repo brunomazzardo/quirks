@@ -114,6 +114,496 @@
         "blockedReason": "needs the Bun+Hono service — bootstrap step 4",
         "priorStatus": "open"
       }
+    },
+    {
+      "id": "QK-SRV-001",
+      "title": "Hono routes over the store",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "goal/task routes mirroring the CLI verbs, paginated JSON",
+        "the store module moves behind them"
+      ],
+      "acceptanceCriteria": [
+        "every CLI verb has a route equivalent",
+        "list routes take ?offset=&limit="
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/native-app-and-service.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.100Z",
+      "updatedAt": "2026-07-27T22:03:02.100Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SRV-002",
+      "title": "daemon lifecycle: bind-or-attach, logs, health",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "bind success = you are the daemon, EADDRINUSE = attach",
+        "GET /health with instance id + version",
+        "detached spawn, rotated logs"
+      ],
+      "acceptanceCriteria": [
+        "liveness is the socket, never a pid file",
+        "an EPERM pid probe is never read as process death",
+        "a corrupt daemon record is distinguished from an absent one and reported"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/daemon-lifecycle.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.147Z",
+      "updatedAt": "2026-07-27T22:03:02.147Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SRV-003",
+      "title": "auth: the 0600 token credential",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "token written mode-0600 on first start; every client sends it as a bearer header"
+      ],
+      "acceptanceCriteria": [
+        "a request without the token is refused"
+      ],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "future": true,
+      "risk": "deferred by owner 2026-07-27 — loopback-only bind carries the interim; revisit before anything but localhost can reach the daemon",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.193Z",
+      "updatedAt": "2026-07-27T22:03:02.193Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SRV-004",
+      "title": "the CLI becomes an HTTP client with autostart",
+      "status": "open",
+      "dependsOn": [
+        "QK-SRV-001",
+        "QK-SRV-002"
+      ],
+      "deliverables": [
+        "CLI verbs call the routes; unreachable service reported as unreachable"
+      ],
+      "acceptanceCriteria": [
+        "no direct-store fallback exists anywhere in the CLI",
+        "kill the daemon mid-verb: the error names the service, never silently reopens the store"
+      ],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.230Z",
+      "updatedAt": "2026-07-27T22:03:02.230Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SRV-005",
+      "title": "global multi-repo registry",
+      "status": "open",
+      "dependsOn": [
+        "QK-SRV-004"
+      ],
+      "deliverables": [],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": true,
+      "needsBreakdown": false,
+      "future": true,
+      "risk": "ratified in v1's spec (one daemon, many repos) but v2 dogfoods on one repo first — design when the second repo is real",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.267Z",
+      "updatedAt": "2026-07-27T22:03:02.267Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-RUN-001",
+      "title": "the run model and quirks run",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "run object grouping tasks; plan printed (task set, order, harness/model, est. cost) before [y/N]/--yes",
+        "--goal takes every ready task in dependency order",
+        "--dry-run assembles every brief without dispatching"
+      ],
+      "acceptanceCriteria": [
+        "an agent can start a run headless with --yes",
+        "nothing on the execution path ever prompts"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.349Z",
+      "updatedAt": "2026-07-27T22:03:02.349Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-RUN-002",
+      "title": "the brief: CLI assembles facts",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "task facts, goal why/doneWhen, base/candidate commits, per-source pin vs HEAD with the diff and last-changed dates, operator notes, instructions hash"
+      ],
+      "acceptanceCriteria": [
+        "the pin is compared against HEAD and the diff reaches the agent — never written-and-unread"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.396Z",
+      "updatedAt": "2026-07-27T22:03:02.396Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-RUN-003",
+      "title": "runner dispatch: claude, codex, cursor",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "argv assembly per harness — read v1 src/runner/*.ts first; each listed argv fact cost a repair cycle"
+      ],
+      "acceptanceCriteria": [
+        "a non-zero runner exit is never recorded as durable terminal success",
+        "transcripts are always retained, including on timeout and flood"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/evidence/runner-boundary-probe.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        },
+        {
+          "path": "docs/evidence/host-matrix.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.443Z",
+      "updatedAt": "2026-07-27T22:03:02.443Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-RUN-004",
+      "title": "quote verification — the honesty core",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "verdict quotes byte-checked against the retained transcript; only the runner's own messages count; quotes begin where sentences begin; accept cannot rest on words a refusal was leading up to"
+      ],
+      "acceptanceCriteria": [
+        "absence fails closed to indeterminate — nothing maps absence to accept",
+        "TDD applies here: behavior lands test-first"
+      ],
+      "verification": [
+        "bun test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/managing-agent-runner.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        },
+        {
+          "path": "docs/evidence/managing-agent-probe.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.503Z",
+      "updatedAt": "2026-07-27T22:03:02.503Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-RUN-005",
+      "title": "parent agent per task + failure policy",
+      "status": "open",
+      "dependsOn": [
+        "QK-RUN-001",
+        "QK-RUN-002",
+        "QK-RUN-003"
+      ],
+      "deliverables": [
+        "one live parent per task: claims, dispatches implementer, dispatches reviewer on a DIFFERENT model, writes continuation brief into the worktree on honest partial",
+        "--mode autonomous | park-on-issue with the phase boundary"
+      ],
+      "acceptanceCriteria": [
+        "a failed task blocks dependents, not the run",
+        "before a landing commit a failure releases work; after a verified landing commit it holds — never unassigns verified work"
+      ],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.561Z",
+      "updatedAt": "2026-07-27T22:03:02.561Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-RUN-006",
+      "title": "resume and durable completion",
+      "status": "open",
+      "dependsOn": [
+        "QK-RUN-005"
+      ],
+      "deliverables": [
+        "quirks run --resume <name|id>"
+      ],
+      "acceptanceCriteria": [
+        "a run reported completed has actually transitioned its tasks, or it is not reported completed"
+      ],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.599Z",
+      "updatedAt": "2026-07-27T22:03:02.599Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-REP-001",
+      "title": "the report over the run record",
+      "status": "open",
+      "dependsOn": [
+        "QK-RUN-005"
+      ],
+      "deliverables": [
+        "fixed section order; per task: files changed, runner's reasoning, verbatim test tails, risks, criteria mapping, git status --porcelain",
+        "--task <id> for full transcript and diff"
+      ],
+      "acceptanceCriteria": [
+        "every quoted sentence is the same bytes verified against the transcript — never paraphrased",
+        "indeterminate prints under NEEDS YOU",
+        "PARTIAL requires: scope-correct commits, verbatim-passing subset, written remaining list — else it is a rejection"
+      ],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.681Z",
+      "updatedAt": "2026-07-27T22:03:02.681Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-HARN-001",
+      "title": "quirks harness — availability + tier table",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "port v1 hosts/*/discover.mjs probes",
+        "model/tier table (mechanical → standard → high → principal)"
+      ],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "risk": "open: where liveness comes from at runtime and how often it refreshes",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.765Z",
+      "updatedAt": "2026-07-27T22:03:02.765Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SKILL-001",
+      "title": "design skill (the needs-design flow)",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": true,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.848Z",
+      "updatedAt": "2026-07-27T22:03:02.848Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SKILL-002",
+      "title": "breakdown skill (the needs-breakdown flow)",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": true,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.884Z",
+      "updatedAt": "2026-07-27T22:03:02.884Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SKILL-003",
+      "title": "source-conflict + scope skills, and the brief's ground rules",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "recency precedence; escalation to a higher-tier model; workspace-is-decided, read why before deliverables, smallest complete change, never push",
+        "consumed by QK-RUN-002's brief"
+      ],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.920Z",
+      "updatedAt": "2026-07-27T22:03:02.920Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SKILL-004",
+      "title": "execution skill — internal subtasks, structured for the report",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "agent records internal subtasks in the run record, in a shape quirks report renders — never ledger tasks mid-run"
+      ],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.957Z",
+      "updatedAt": "2026-07-27T22:03:02.957Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-001",
+      "title": "spike: transpiled TS core + terminal_sessions",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "prove a transpiled TS core renders a LIVE shell in <terminal> (terminal_sessions=true), not the stub",
+        "first wire types + widget-node measurement"
+      ],
+      "acceptanceCriteria": [
+        "a real shell echoes in a TS-core app",
+        "widget_nodes reported against the 1024 budget"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/native-app-and-service.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "risk": "the changelog is ambiguous on transpiled cores getting the real emulator — verify before building on it",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:03.041Z",
+      "updatedAt": "2026-07-27T22:03:03.041Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-002",
+      "title": "the workbench shell: ledger | terminal | preview",
+      "status": "open",
+      "dependsOn": [
+        "QK-NAT-001",
+        "QK-SRV-004"
+      ],
+      "deliverables": [
+        "three-pane split: ledger pane reading the service routes, <terminal pty> center, webview right with app-owned history"
+      ],
+      "acceptanceCriteria": [
+        "goal list / task list render live from the daemon",
+        "divider drags re-grid the pty and reflow the web pane"
+      ],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:03.089Z",
+      "updatedAt": "2026-07-27T22:03:03.089Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-003",
+      "title": "companion screens in the preview pane",
+      "status": "open",
+      "dependsOn": [
+        "QK-NAT-002"
+      ],
+      "deliverables": [
+        "the webview points at the daemon's companion routes — absorbs QK-COMP-003's surface"
+      ],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:03.127Z",
+      "updatedAt": "2026-07-27T22:03:03.127Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-004",
+      "title": "run views: live and retrospective",
+      "status": "open",
+      "dependsOn": [
+        "QK-RUN-005"
+      ],
+      "deliverables": [],
+      "acceptanceCriteria": [],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": false,
+      "needsBreakdown": true,
+      "risk": "one data shape with quirks report — build against QK-REP-001's record, not a second one",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:03.163Z",
+      "updatedAt": "2026-07-27T22:03:03.163Z",
+      "statusDetail": {}
     }
   ]
 }

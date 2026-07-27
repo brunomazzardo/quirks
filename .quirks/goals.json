@@ -19,6 +19,117 @@
       "revision": 1,
       "createdAt": "2026-07-27T21:04:51.125Z",
       "updatedAt": "2026-07-27T21:04:51.125Z"
+    },
+    {
+      "id": "QK-SRV",
+      "title": "The service — one Bun binary, CLI becomes an HTTP client",
+      "why": {
+        "text": "Bootstrap step 4. The authority boundary: only the service touches storage. Bind-or-attach, socket-not-pid liveness, loopback bind.",
+        "ref": {
+          "path": "docs/specs/native-app-and-service.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      },
+      "doneWhen": [
+        "the CLI reaches the store only over HTTP, autostarts the daemon, and fails loudly — no direct-store path remains",
+        "a second client (the companion) consumes the same routes"
+      ],
+      "state": "active",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.050Z",
+      "updatedAt": "2026-07-27T22:03:02.050Z"
+    },
+    {
+      "id": "QK-RUN",
+      "title": "Runs — dispatch, the parent agent, honesty in code",
+      "why": {
+        "text": "Bootstrap step: runs. The only thing approved, once, over a plan you can read. The honesty properties are the product and get code + TDD; nothing on this path is interactive.",
+        "ref": {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      },
+      "doneWhen": [
+        "an overnight run executes tasks across harnesses, continues past failures, blocks dependents, and resumes with --resume",
+        "every verdict quote is verified against the retained transcript in Quirks' own code"
+      ],
+      "state": "active",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.303Z",
+      "updatedAt": "2026-07-27T22:03:02.303Z"
+    },
+    {
+      "id": "QK-REP",
+      "title": "quirks report — what needs you, first",
+      "why": {
+        "text": "Problem B's answer: NEEDS YOU → PARTIAL → ACCEPTED, never chronological, one screen by default.",
+        "ref": {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      },
+      "doneWhen": [
+        "a real eight-task night reads on one screen without hiding a thing that mattered"
+      ],
+      "state": "active",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.634Z",
+      "updatedAt": "2026-07-27T22:03:02.634Z"
+    },
+    {
+      "id": "QK-HARN",
+      "title": "Harness and model tables",
+      "why": {
+        "text": "Surface state the system already computes: is each harness present, authorized, answering; which model each tier resolves to. Quota state belongs in a table that refreshes, not in doctrine prose.",
+        "ref": {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      },
+      "doneWhen": [
+        "quirks harness answers 'can tonight's run lean on codex' without reading a doc"
+      ],
+      "state": "active",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.717Z",
+      "updatedAt": "2026-07-27T22:03:02.717Z"
+    },
+    {
+      "id": "QK-SKILL",
+      "title": "The judgment skills — discipline that used to be code",
+      "why": {
+        "text": "D17/D18: the CLI supplies facts, skills supply judgment. Deliverables, not documentation.",
+        "ref": {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      },
+      "doneWhen": [
+        "an overnight brief carries ground rules and the source-conflict + scope skills; design/breakdown flows exist for the two flags"
+      ],
+      "state": "active",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.801Z",
+      "updatedAt": "2026-07-27T22:03:02.801Z"
+    },
+    {
+      "id": "QK-NAT",
+      "title": "The native workbench — ledger, terminal, preview",
+      "why": {
+        "text": "Owner reprioritized 2026-07-27: the daily surface, built right after the service. Left: goals and tasks. Center: the agents' terminal. Right: a webview for previews and companion screens. Modeled on vercel-labs/native examples/workbench; the TS core stands — the SDK grew TS-tier pty + <terminal> since our spec.",
+        "ref": {
+          "path": "docs/specs/native-app-and-service.md",
+          "pinnedCommit": "5054c8e94c267ba964d3179cc16f2d439a4d12cd"
+        }
+      },
+      "doneWhen": [
+        "the workbench is the daily driver: ledger pane live against the service, a real shell at center, companion screens in the right pane",
+        "run views render live in the same surface once runs exist"
+      ],
+      "state": "active",
+      "revision": 1,
+      "createdAt": "2026-07-27T22:03:02.993Z",
+      "updatedAt": "2026-07-27T22:03:02.993Z"
     }
   ]
 }

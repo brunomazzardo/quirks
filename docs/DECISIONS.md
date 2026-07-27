@@ -28,14 +28,14 @@ Spec: [`specs/native-app-and-service.md`](specs/native-app-and-service.md)
 
 | | Decision | Where | Ledger |
 |---|---|---|---|
-| D1 | Native-rendered app, not a WebView shell | spec | — |
-| D2 | TypeScript app core, not Zig | spec | — |
-| D3 | One Bun binary is both service and CLI; Hono for routing | spec | — |
-| D3a | One shared wire contract, imported type-only by the core | spec | — |
-| D4 | The CLI is an HTTP client; fails loudly, with autostart | spec | — |
-| D5 | Spawn the runtime from PATH now; bundle when packaging for others | spec | — |
-| D6 | Paginated JSON on the wire; projections reshape server-side | spec | — |
-| D7 | Client credential is a mode-0600 token file, not a pairing cookie | spec | — |
+| D1 | Native-rendered app, not a WebView shell | spec | `QK-NAT` |
+| D2 | TypeScript app core, not Zig | spec | `QK-NAT-001` |
+| D3 | One Bun binary is both service and CLI; Hono for routing | spec | `QK-SRV` |
+| D3a | One shared wire contract, imported type-only by the core | spec | `QK-NAT-001` |
+| D4 | The CLI is an HTTP client; fails loudly, with autostart | spec | `QK-SRV-004` |
+| D5 | Spawn the runtime from PATH now; bundle when packaging for others | spec | `QK-NAT` |
+| D6 | Paginated JSON on the wire; projections reshape server-side | spec | `QK-SRV-001` |
+| D7 | Client credential is a mode-0600 token file, not a pairing cookie | spec | `QK-SRV-003` (future) |
 | D8 | ~~CLI command surface frozen~~ **withdrawn** — the surface is deliberately redesigned | spec | — |
 | D9 | Rust considered and rejected (~17,700 + ~23,700 lines, 3 languages) | spec | — |
 
@@ -45,28 +45,28 @@ Spec: [`specs/runs-goals-and-reports.md`](specs/runs-goals-and-reports.md)
 
 | | Decision | Where | Ledger |
 |---|---|---|---|
-| D1 | A run replaces a campaign and is the only thing approved | spec | — |
-| D2 | Five verbs; task status becomes flags, not request files | spec | — |
-| D3 | Failure policy: continue, block dependents, lead the report with it | spec | — |
-| D4 | The run is the unit of resumability | spec | — |
-| D5 | TDD dropped as a blanket rule; kept for the runner and the report | spec | — |
-| D6 | Preflight survives as a planning workspace, not an approval gate | spec | — |
-| D7 | Harness and model tables surface state the system already computes | spec | — |
-| D11 | One live parent agent per task; it dispatches reviewers, never reviews | spec | — |
-| D12 | Quirks imposes no tool/MCP/skill restrictions on agents (~30× cost, accepted) | spec | — |
-| D13 | Autonomy is a per-run mode: `autonomous` or `park-on-issue` | spec | — |
-| D14 | `quirks report <id\|slug>` — NEEDS YOU first, never chronological | spec | — |
-| D15 | **Goals**: the object above a task; a goal is never executable | spec | — |
-| D16 | `quirks goal` verbs; `quirks run --goal` | spec | — |
-| D17 | The brief: CLI supplies facts, skills supply judgment | spec | — |
-| D17 | Precedence is recency; conflicts escalate to a higher-tier model | spec | — |
-| D17 | The pin stays — it is the baseline that makes "this changed" computable | spec | — |
-| D17 | Doc→task links are written into the doc; staleness accepted | spec | — |
-| D18 | No plan document; the ledger is the plan | spec | — |
-| D18 | The execution path is **never interactive**; goal creation may converse | spec | — |
-| D18 | `quirks goal new` records; the brainstorm skill converses | spec | — |
-| D18 | `needs design` / `needs breakdown` are flags; agent subtasks are neither | spec | — |
-| D18 | Quirks owns its task schema and its own brainstorm skill | spec | — |
+| D1 | A run replaces a campaign and is the only thing approved | spec | `QK-RUN-001` |
+| D2 | Five verbs; task status becomes flags, not request files | spec | ✔ goal/task built · `QK-RUN-001` |
+| D3 | Failure policy: continue, block dependents, lead the report with it | spec | `QK-RUN-005` |
+| D4 | The run is the unit of resumability | spec | `QK-RUN-006` |
+| D5 | TDD dropped as a blanket rule; kept for the runner and the report | spec | `QK-RUN-004` |
+| D6 | Preflight survives as a planning workspace, not an approval gate | spec | `QK-RUN-001` |
+| D7 | Harness and model tables surface state the system already computes | spec | `QK-HARN-001` |
+| D11 | One live parent agent per task; it dispatches reviewers, never reviews | spec | `QK-RUN-005` |
+| D12 | Quirks imposes no tool/MCP/skill restrictions on agents (~30× cost, accepted) | spec | `QK-RUN-005` |
+| D13 | Autonomy is a per-run mode: `autonomous` or `park-on-issue` | spec | `QK-RUN-005` |
+| D14 | `quirks report <id\|slug>` — NEEDS YOU first, never chronological | spec | `QK-REP-001` |
+| D15 | **Goals**: the object above a task; a goal is never executable | spec | ✔ built (step 1) |
+| D16 | `quirks goal` verbs; `quirks run --goal` | spec | ✔ built · `run --goal` → `QK-RUN-001` |
+| D17 | The brief: CLI supplies facts, skills supply judgment | spec | `QK-RUN-002` |
+| D17 | Precedence is recency; conflicts escalate to a higher-tier model | spec | `QK-SKILL-003` |
+| D17 | The pin stays — it is the baseline that makes "this changed" computable | spec | `QK-RUN-002` |
+| D17 | Doc→task links are written into the doc; staleness accepted | spec | `QK-SKILL-003` |
+| D18 | No plan document; the ledger is the plan | spec | ✔ shape skill built |
+| D18 | The execution path is **never interactive**; goal creation may converse | spec | `QK-RUN-001` |
+| D18 | `quirks goal new` records; the brainstorm skill converses | spec | ✔ built (step 2) |
+| D18 | `needs design` / `needs breakdown` are flags; agent subtasks are neither | spec | ✔ built (step 1) |
+| D18 | Quirks owns its task schema and its own brainstorm skill | spec | ✔ built (steps 1–2) |
 
 ## 2026-07-27 — Step 1 build session (v2, this repo)
 
@@ -82,22 +82,26 @@ step 3 loads them in.
 | S5 | **Store: `.quirks/goals.json` + `.quirks/tasks.json`**, versioned envelopes, temp+rename writes. Corrupt is distinguished from absent and reported loudly — the carried defect lands as a test from day one. | — | — |
 | S6 | **Steps 1–3 the CLI opens the store directly**, behind the one module boundary the Hono routes take over at step 4. Not the forbidden fallback — there is no daemon to race yet — and no second path in is ever added. | — | — |
 | S7 | **The founding doc's "brainstorm skill" is named `shape`** (create a goal, grow one, or split into several — one skill, orientation first). It converses lead-with-one-direction, never option menus; flags are asked, not imposed; spec only when the why earns it. | `.claude/skills/shape/` | — |
+| S8 | **`future` is a task flag, distinct from `blocked`.** Blocked means cannot proceed; future means deliberately not now. Excluded from the rollup's open count, own column, advisory (claiming is not gated). First uses: `QK-SRV-003` (auth/token — loopback carries the interim) and `QK-SRV-005` (multi-repo). | `src` | ✔ built |
+| S9 | **The native workbench moves ahead of runs** (was bootstrap step 8). Left: ledger. Center: the agents' terminal. Right: webview for previews and companion screens — modeled on vercel-labs/native `examples/workbench`. The SDK grew TS-tier pty + `<terminal>` (both authoring tiers) since the spec, so D2's "no terminal in the TS core" accepted cost is obsolete; `QK-NAT-001` spikes the one remaining unknown (`terminal_sessions` in a transpiled core). | — | `QK-NAT` |
 
 ## Sequencing
 
 From [`FOUNDING.md`](FOUNDING.md). The order exists so the system can hold its own intent as
 early as possible.
 
-| | Work | Why |
-|---|---|---|
-| 1 | Store + goals + tasks, all verbs non-interactive, timestamps from day one | Until decisions become goals and tasks, everything after is prose nothing tracks |
-| 2 | The brainstorm skill | The moment it works, stop writing prose specs by hand |
-| 3 | **Load this index's decisions in as goals and tasks** | First real dogfood: v2's backlog created by v2 |
-| 4 | The service — Bun + Hono; the CLI becomes an HTTP client | |
-| 5 | Runs: dispatch, the parent agent, failure policy, resume | |
-| 6 | `quirks report` | |
-| 7 | Harness + model tables | |
-| 8 | The native app | Requires a stable CLI, service, and skills first |
+Reordered 2026-07-27 (S9): the native workbench moves ahead of runs — owner call.
+
+| | Work | Ledger | Why |
+|---|---|---|---|
+| 1 | ✔ Store + goals + tasks (2026-07-27) | built | Until decisions become goals and tasks, everything after is prose nothing tracks |
+| 2 | ✔ The shape skill + companion (2026-07-27) | built, `QK-COMP` | The moment it works, stop writing prose specs by hand |
+| 3 | ✔ **This index's decisions loaded as goals and tasks** (2026-07-27) | the columns above | First real dogfood: v2's backlog created by v2 |
+| 4 | The service — Bun + Hono; the CLI becomes an HTTP client | `QK-SRV` | The workbench's ledger pane is its client |
+| 5 | The native workbench — ledger, terminal, preview | `QK-NAT` | Owner reprioritized from last (was step 8): the daily driver, so later pieces land inside a surface already lived in |
+| 6 | Runs: dispatch, the parent agent, failure policy, resume | `QK-RUN` | |
+| 7 | `quirks report` | `QK-REP` | |
+| 8 | Harness + model tables | `QK-HARN` | |
 
 ## Carried defects — acceptance criteria, not memories
 
@@ -135,3 +139,7 @@ which is precisely the mechanism that failed and produced the need for this prod
 
 **Step 3 is not a preference about ordering. It is the exit from this condition**, and the
 moment the `Ledger` column above stops reading `—` is the moment Quirks starts working.
+
+**2026-07-27, evening: step 3 landed.** The columns above now point at recorded goals and
+tasks; from here, intent changes go to `quirks goal` / `quirks task` first and this file only
+follows.
