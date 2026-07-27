@@ -1,0 +1,20 @@
+{
+  "name": "quirks",
+  "version": "0.1.0",
+  "description": "A local control plane for planning, dispatching, and understanding agent work.",
+  "type": "module",
+  "bin": {
+    "quirks": "./src/main.ts"
+  },
+  "scripts": {
+    "quirks": "bun run src/main.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "commander": "^15.0.0"
+  }
+}

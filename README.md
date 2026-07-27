@@ -42,4 +42,6 @@ Its `main` sits 406 commits ahead of `origin/main` and has never been pushed.
 
 ## Status
 
-Documents only. No code yet.
+Bootstrap step 1 is built: the JSON store and the `goal` / `task` verbs, headless, timestamps
+and source pins from day one (`bun run src/main.ts help`; `bun test`). Next: the brainstorm
+skill (step 2), then loading `docs/DECISIONS.md` in as goals and tasks (step 3).
