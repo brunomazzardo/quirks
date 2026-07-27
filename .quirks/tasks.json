@@ -29,7 +29,7 @@
     {
       "id": "QK-COMP-001",
       "title": "vendor the companion into the shape skill",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "Bun-flavored adaptation of the five companion scripts under .claude/skills/shape/scripts/ (server, start/stop, frame template, helper)",
@@ -50,10 +50,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T21:04:51.180Z",
-      "updatedAt": "2026-07-27T21:04:51.180Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-27T21:15:25.805Z",
+      "statusDetail": {
+        "claimedBy": "claude, live session with Bruno",
+        "evidence": "10/10 end-to-end checks passed under bun 1.3.10: bootstrap+key, waiting page, keyless 403 (page and event POST), fragment framed with helper injected, data-recommended treatment, SSE reload signal, click POST recorded to state/events, runtime confirmed bun, clean stop. Transport diverges from upstream: SSE + POST /event replaces the hand-rolled WebSocket because Bun's node:http has no upgrade event. git check-ignore confirms .quirks/shape-sessions/ never lands in git."
+      }
     },
     {
       "id": "QK-COMP-002",

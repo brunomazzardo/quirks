@@ -87,6 +87,16 @@ quirks task propose --goal QK-XYZ --title "…" \
   change to the operator rather than hand-editing `.quirks/goals.json`.
 - A goal-less chore: omit `--goal`; the id mints bare (`QK-014`).
 
+### 5b. The companion, when seeing beats reading
+
+A browser surface is available for moments a question is clearer shown than told — a
+proposed goal/task tree before recording, two decompositions side by side, an
+architecture sketch. Read `companion.md` in this skill's directory before first use.
+Offer it just-in-time (its own message, first visual-worthy question, never upfront);
+decide per question — conceptual and scope questions stay in the terminal; and every
+choices screen leads with the recommended option marked, never a flat menu. The
+terminal stays primary: the operator always answers there.
+
 ### 6. Read back and close
 
 Show the operator `quirks goal show QK-XYZ` (or `task list --goal …`) and walk

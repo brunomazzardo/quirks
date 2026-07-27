@@ -4,3 +4,6 @@ dist/
 zig-out/
 *.log
 .DS_Store
+
+# shape companion sessions (screens, keys, logs) — never committed
+.quirks/shape-sessions/
