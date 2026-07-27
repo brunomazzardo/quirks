@@ -2,6 +2,10 @@
 
 Status: proposed, owner-ratified in conversation (Bruno, 2026-07-27). Supersedes the browser-UI stack decision of 2026-07-23.
 
+**Partly revised the same day by `2026-07-27-runs-not-campaigns-design.md` (QK-RBT-001).**
+That spec withdraws D8's frozen command surface, replaces the five-view list, and keeps the
+Preflight view as a run planner. Read it alongside this one; where they disagree, it wins.
+
 ## What this is
 
 Quirks becomes two artifacts instead of one repository that serves a browser:
