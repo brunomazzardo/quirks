@@ -115,6 +115,9 @@ not vigilance** — each belongs as an acceptance criterion on the component tha
 
 - **Harness liveness** — where "is codex working" comes from at runtime, and how often it
   refreshes. In v1 that fact was prose in a checked-in doc with a hardcoded date.
+- **The setup flow** — skills live in this repo for now (decided 2026-07-27); later the CLI
+  gets a setup command that installs them and everything else a new repo needs. Needs design.
+  **Ledger: `QK-001`** — the first open question tracked by the product instead of this file.
 - **MCP** — named, deferred, no shape.
 - **Multi-repo × runs** — whether a run can span repositories.
 - **`--yes`** — an agent holding it can start any run, and nothing distinguishes the operator's

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "QK-001",
+      "title": "quirks setup — one command that installs the skills and everything a new repo needs",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "a setup verb that installs/links the Quirks-owned skills into the host repo (.claude/skills and .agents/skills parity)"
+      ],
+      "acceptanceCriteria": [
+        "a fresh repo can go from zero to brainstorm-skill-working with one command"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "f803251397b4776502d8e93e0f813de7b07acfa3"
+        }
+      ],
+      "needsDesign": true,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T17:34:25.845Z",
+      "updatedAt": "2026-07-27T17:34:25.845Z",
+      "statusDetail": {}
+    }
+  ]
+}
