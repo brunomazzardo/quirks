@@ -32,6 +32,9 @@ export interface Task {
   sourceRefs: SourceRef[];
   needsDesign: boolean;
   needsBreakdown: boolean;
+  /** Deliberately not now — distinct from blocked (cannot proceed). Advisory:
+   *  excluded from open counts, but nothing stops claiming it. */
+  future?: boolean;
   effort?: string;
   risk?: string;
   /** Bumped on every write. The CLI derives concurrency checks from it;

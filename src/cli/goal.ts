@@ -19,6 +19,7 @@ interface GoalRollup {
   done: number;
   open: number;
   blocked: number;
+  future: number;
 }
 
 /** The union the founding doc requires: recorded goals, goals implied by task-id
@@ -35,6 +36,7 @@ function rollup(goals: Goal[], tasks: Task[]): GoalRollup[] {
       done: 0,
       open: 0,
       blocked: 0,
+      future: 0,
     });
   }
   for (const t of tasks) {
@@ -50,12 +52,14 @@ function rollup(goals: Goal[], tasks: Task[]): GoalRollup[] {
         done: 0,
         open: 0,
         blocked: 0,
+        future: 0,
       };
       byId.set(gid, row);
     }
     row.total += 1;
     if (t.status === "completed") row.done += 1;
     else if (t.status === "blocked") row.blocked += 1;
+    else if (t.future) row.future += 1; // deliberately not now — not open work
     else row.open += 1;
   }
   for (const row of byId.values()) {
@@ -99,13 +103,14 @@ export function goalList(opts: { json: boolean; all: boolean }): void {
   const shown = opts.all ? rows : rows.filter((r) => r.state !== "done" && r.state !== "abandoned");
   emitRead(shown, opts.json, () => {
     const body = table(
-      ["goal", "total", "done", "open", "blocked", "state"],
+      ["goal", "total", "done", "open", "blocked", "future", "state"],
       shown.map((r) => [
         r.id,
         String(r.total),
         String(r.done),
         String(r.open),
         String(r.blocked),
+        String(r.future),
         r.state,
       ]),
     );

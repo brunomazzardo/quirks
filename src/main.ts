@@ -86,6 +86,7 @@ task
   .option("--risk <text>", "free text, no ceremony")
   .option("--needs-design", "we do not yet know what to build", false)
   .option("--needs-breakdown", "we know what, but it is too big as one task", false)
+  .option("--future", "deliberately not now — excluded from open counts, distinct from blocked", false)
   .action(taskPropose);
 
 task

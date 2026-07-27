@@ -37,7 +37,11 @@ function mutate(
 }
 
 function flagMarks(t: Task): string {
-  return [t.needsDesign ? "design?" : "", t.needsBreakdown ? "breakdown?" : ""]
+  return [
+    t.needsDesign ? "design?" : "",
+    t.needsBreakdown ? "breakdown?" : "",
+    t.future ? "future" : "",
+  ]
     .filter(Boolean)
     .join(" ");
 }
@@ -54,6 +58,7 @@ export function taskPropose(opts: {
   risk?: string;
   needsDesign: boolean;
   needsBreakdown: boolean;
+  future: boolean;
 }): void {
   if (opts.goal !== undefined && !isValidGoalId(opts.goal)) {
     throw new CliError(`--goal wants a goal id like QK-SRV, got ${JSON.stringify(opts.goal)}`);
@@ -81,6 +86,7 @@ export function taskPropose(opts: {
     sourceRefs: opts.source.map((p) => makeSourceRef(store, p)),
     needsDesign: opts.needsDesign,
     needsBreakdown: opts.needsBreakdown,
+    ...(opts.future ? { future: true } : {}),
     ...(opts.effort !== undefined ? { effort: opts.effort } : {}),
     ...(opts.risk !== undefined ? { risk: opts.risk } : {}),
     revision: 1,
