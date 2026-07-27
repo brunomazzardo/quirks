@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "goals": [
+    {
+      "id": "QK-COMP",
+      "title": "The shape companion — a browser surface for shape sessions",
+      "why": {
+        "text": "Adapted from Superpowers' visual companion, widened from visual-design questions to exploring alternatives generally. A conversation surface: it shows things that do not exist yet to help the operator decide. Never a state surface — ledger browsing, runs, and reports stay native-app territory.",
+        "ref": {
+          "path": ".claude/skills/shape/SKILL.md",
+          "pinnedCommit": "c06e1dd6d181b4310b3f0e49c057664af9218189"
+        }
+      },
+      "doneWhen": [
+        "a shape session can push screens to the operator's browser and read back clicks with nothing but the skill vendored in this repo",
+        "the companion is a client of the quirks daemon (same port, same 0600 token) and can sit side-by-side with the native app"
+      ],
+      "state": "active",
+      "revision": 1,
+      "createdAt": "2026-07-27T21:04:51.125Z",
+      "updatedAt": "2026-07-27T21:04:51.125Z"
+    }
+  ]
+}

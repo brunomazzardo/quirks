@@ -25,6 +25,89 @@
       "createdAt": "2026-07-27T17:34:25.845Z",
       "updatedAt": "2026-07-27T17:34:25.845Z",
       "statusDetail": {}
+    },
+    {
+      "id": "QK-COMP-001",
+      "title": "vendor the companion into the shape skill",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "Bun-flavored adaptation of the five companion scripts under .claude/skills/shape/scripts/ (server, start/stop, frame template, helper)",
+        "session dirs under .quirks/shape-sessions/ (gitignored), not .superpowers/",
+        "companion.md reference in the skill: the per-question test (browser only when seeing beats reading) and the recommended-option-marked-first rule — never a flat menu"
+      ],
+      "acceptanceCriteria": [
+        "start-server/stop-server run under bun with no node dependency",
+        "a pushed HTML fragment renders framed in the browser and clicks appear in the events file",
+        "mockup/session files never land in git"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": ".claude/skills/shape/SKILL.md",
+          "pinnedCommit": "c06e1dd6d181b4310b3f0e49c057664af9218189"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T21:04:51.180Z",
+      "updatedAt": "2026-07-27T21:04:51.180Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-COMP-002",
+      "title": "the shaping screen vocabulary: goal/task tree preview and alternatives side-by-side",
+      "status": "open",
+      "dependsOn": [
+        "QK-COMP-001"
+      ],
+      "deliverables": [
+        "a tree-preview screen: proposed goals and tasks rendered with dependencies drawn and criteria visible, for review before anything is recorded",
+        "an alternatives screen: two decompositions or goal boundaries side-by-side, recommendation pre-marked"
+      ],
+      "acceptanceCriteria": [
+        "a shape session can show its full proposed backlog in the browser before running goal new / task propose"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": ".claude/skills/shape/SKILL.md",
+          "pinnedCommit": "c06e1dd6d181b4310b3f0e49c057664af9218189"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-27T21:04:51.229Z",
+      "updatedAt": "2026-07-27T21:04:51.229Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-COMP-003",
+      "title": "the companion becomes a service client",
+      "status": "blocked",
+      "dependsOn": [
+        "QK-COMP-001",
+        "QK-COMP-002"
+      ],
+      "deliverables": [
+        "the screen loop as a route family on the quirks daemon; the vendored server retired"
+      ],
+      "acceptanceCriteria": [
+        "screens push and events read over the daemon's loopback HTTP with the 0600 token — no second server, no session-key scheme"
+      ],
+      "verification": [],
+      "sourceRefs": [],
+      "needsDesign": true,
+      "needsBreakdown": false,
+      "revision": 2,
+      "createdAt": "2026-07-27T21:04:51.280Z",
+      "updatedAt": "2026-07-27T21:04:51.318Z",
+      "statusDetail": {
+        "blockedReason": "needs the Bun+Hono service — bootstrap step 4",
+        "priorStatus": "open"
+      }
     }
   ]
 }
