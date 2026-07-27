@@ -240,6 +240,62 @@ landing commit exists, a failure releases the work; once a verified landing comm
 failure holds it for the operator and never unassigns verified work.** Losing a night's
 finished work to an automatic release is worse than parking it.
 
+### D14 — `quirks report <run-id|slug>`: what needs you, first
+
+The report answers one question — **what needs me now?** — and only then explains the night.
+It is ordered by what the operator must act on, never chronologically, because a chronological
+log of eight tasks is the wall of text this is meant to replace.
+
+Sections, in this fixed order: **NEEDS YOU** (rejected, and held-after-land) → **PARTIAL** →
+**ACCEPTED**. An empty section is omitted. The default output is one screen for a normal night.
+
+```
+$ quirks report native-app
+
+native-app · 8 tasks · 00:12 → 06:41 · $4.82
+
+NEEDS YOU (2)
+  ✗ QK-SRV-004   rejected · claude/sonnet · 3 attempts
+      "I could not make the multi-repo scoping test pass without changing
+       the registry contract, which the brief forbids."
+      tests: 14 passed, 2 failed (registry-scope.test.ts)
+      worktree kept: .worktrees/QK-SRV-004
+  ⚠ QK-SRV-007   held after land · post-land verify failed
+      landed a1b2c3d — NOT released, verified work stays assigned
+
+PARTIAL (1)
+  ◐ QK-SRV-002   2 of 5 criteria · continuation brief written
+      done:      bind-or-attach, EADDRINUSE attach
+      remaining: rotated logs, launchd, torn-safe reload
+
+ACCEPTED (5)
+  ✓ QK-RBT-002   cursor/composer   d4e5f6a   +412 −1,203
+  …
+
+  quirks report native-app --task QK-SRV-004     full transcript and diff
+```
+
+**Per task, the report carries** — lifted from the Pilot brief contract, which the owner named
+as the behavior to reproduce: files changed, the runner's own reasoning, **verbatim test
+tails** (not a summary of them), risks, acceptance-criteria mapping, and `git status
+--porcelain` for the worktree.
+
+**Three rules that make it trustworthy rather than merely tidy:**
+
+- **Every quoted sentence is quote-verified.** The runner's words in the report are the same
+  bytes checked against the retained transcript. The report never paraphrases a verdict.
+- **`indeterminate` is its own outcome, printed under NEEDS YOU.** Absence fails closed
+  everywhere else in this product; a report that silently omitted an unreadable result would
+  be the one place it did not.
+- **PARTIAL has the objective definition, not a vibe.** All three of: commits individually
+  reviewed as scope-correct; the completed subset passes its stated verification verbatim; and
+  an explicit written list of remaining criteria. Failing tests, no commit, or "mostly done" is
+  a rejection, not a partial — and gets no partial-credit framing.
+
+**Depth on demand.** Default is the summary above. `--task <id>` gives one task in full —
+transcript, diff, every attempt. The native app's run-detail view renders the same data live
+during a run and retrospectively after it, so there is one shape, not two.
+
 ## What is deleted
 
 Digest-bound envelopes · preflight-as-a-separate-command · approval tokens and the vault ·
@@ -297,9 +353,10 @@ disagrees:
   write fresh in new code and neither announces itself. Every declined in-place fix must carry
   an acceptance criterion onto its replacement (see step 0b), and that is the only mechanism
   proposed here — there is no reviewer gate behind it.
-- **`quirks report` has no design yet.** It is named here as the answer to problem B, but what
-  it prints — and how it summarizes a night of transcripts without becoming a wall of text — is
-  undesigned and is the next thing that needs a real answer.
+- **`quirks report`'s shape is designed (D14); its summarization is not proven.** The section
+  ordering and per-task contract are settled. What is untested is whether a real eight-task
+  night fits one screen without hiding something that mattered — the failure mode is a report
+  that reads cleanly and omits the thing you needed. First real overnight run is the test.
 
 ## Implementation order
 
@@ -329,8 +386,8 @@ disagrees:
 2. **QK-RBT-003 — delete the permission layer.** Envelopes, digests, tokens, capabilities,
    leases, claims, circuit breakers, budgets, and their tests. Separate commits per concern.
 3. **QK-RBT-004 — failure policy and resume.** D3 and D4.
-4. **QK-RBT-005 — `quirks report`.** Design it first; it is the answer to problem B and it is
-   currently a name without a shape.
+4. **QK-RBT-005 — `quirks report`.** Build D14: section ordering, the per-task contract, and
+   `--task` depth, over the provenance record. The native run-detail view renders the same data.
 5. **QK-RBT-006 — harness and model tables.** `quirks harness`, backed by the existing
    discover scripts and routing.
 6. **QK-RBT-007 — doctrine.** Rewrite `CLAUDE.md`/`AGENTS.md`: drop the TDD requirement, the
