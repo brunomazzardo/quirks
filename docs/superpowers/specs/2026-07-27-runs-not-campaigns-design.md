@@ -78,6 +78,7 @@ saying yes to a plan they can see.
 ### D2 — Five verbs
 
 ```
+quirks goal list | show | new | done | abandon
 quirks task propose | list | show | block | claim | complete | release
 quirks run QK-A QK-B --name "native app"     → prints plan → [y/N] → executes
 quirks status                                 → what is happening now
@@ -168,6 +169,93 @@ to. `requiredTierForRole` already decides this; it is simply invisible today.
 Both are live in the native app and available as `quirks harness`. This also retires a real
 smell: `CLAUDE.md` currently carries *"codex is usage-limited until Jul 28 2026 2:02 PM"* as
 prose in a checked-in document. Quota state belongs in a table that refreshes, not in doctrine.
+
+## The intent model
+
+Problem A got one line in the first draft of this spec — "a unit of work with intent captured"
+— while problem B got an execution model. This is the correction.
+
+### D15 — A goal is the object above a task, and it already exists
+
+The task schema has **no** grouping field: `id, title, kind, priority, status, source,
+nativeRevision, dependsOn, workflow, execution, sourceRefs, deliverables, acceptanceCriteria,
+verification, provenance, coordination, statusDetail`. No epic, no feature, no parent.
+
+So one grew anyway. 138 tasks carry **20 distinct id prefixes** — `QK-HOST` (22), `QK-UI` (20),
+`QK-CTL` (18), `QK-RUN` (15), `QK-FND` (13) — doing the schema's job in a naming convention.
+`QK-SRV-001` is titled like an epic ("Always-on local workspace server with stable address")
+and sits as a flat peer of `QK-SRV-002` through `007`.
+
+**The prefix becomes the goal id.** Formalize what is already there rather than inventing a
+parallel scheme: `QK-SRV-003` belongs to goal `QK-SRV`. Migration for 138 existing tasks is
+nothing — the grouping is already encoded in every id.
+
+```
+Goal
+  id         QK-SRV                    ← the existing prefix
+  title      Always-on local workspace server
+  why        one sentence + a sourceRef to the spec (never a copied body)
+  doneWhen   explicit criteria — NOT "every task is completed"
+  tasks      derived: every task whose id carries this prefix
+  state      derived from members, except `done` and `abandoned`
+```
+
+Three properties that make it answer "I lost track of what I wanted to build":
+
+- **`doneWhen` is asserted, not derived.** Every member task can be `completed` while the thing
+  is not built. A goal reaches `done` when its criteria are met, and that is a judgment
+  someone records — the one place in this design where "all the parts finished" is not accepted
+  as evidence the whole finished.
+- **`abandoned` is a real state with a reason.** Today a direction you dropped leaves its tasks
+  sitting `ready` forever — `QK-ADP` has five tasks and zero done, `QK-SRV` has seven and zero
+  done. Nothing distinguishes "not yet" from "not any more", so the backlog quietly lies.
+  Abandoning a goal is how you stop lying to yourself, and it is cheap to reverse.
+- **A goal outlives its runs.** Goals are months of intent; runs are one night of execution. One
+  goal produces many runs. **A goal is never executable** — the moment you can "run a goal", it
+  collapses into a run and the long-lived intent is lost again, which is the failure this
+  object exists to prevent.
+
+### D16 — `quirks goal`, and runs created from goals
+
+```
+quirks goal list                       → the rollup below
+quirks goal show QK-SRV                → why, doneWhen, member tasks, state
+quirks goal new QK-NAT --title "…" --why docs/…/design.md
+quirks goal done QK-SRV                → asserts doneWhen is met
+quirks goal abandon QK-ADP --reason "…"
+
+quirks run --goal QK-SRV --name "server work"
+```
+
+That last line is the payoff. `quirks run QK-A QK-B` assumes you can find the right eight ids
+among 138 across 20 prefixes; `--goal` takes every ready task in the goal, in dependency order.
+
+`quirks goal list` is the instrument against intent loss, and it needs no new data — this is
+the repository's real state today, computed from existing ids and statuses:
+
+```
+goal         total  done  open  blocked   state
+QK-HOST         22    13     9        5   in progress
+QK-UI           20    12     8        1   in progress
+QK-RUN          15     8     7        1   in progress
+QK-SRV           7     0     7        0   not started      ← planned, never begun
+QK-CTL          18    13     5        0   in progress
+QK-ADP           5     0     5        0   not started      ← planned, never begun
+QK-GIT           6     4     2        0   in progress
+QK-RELEASE       1     0     1        1   not started
+… 12 complete goals omitted
+```
+
+No command produces this today. Twelve tasks across two goals were planned and never started,
+and nothing in the product says so.
+
+The native app's Tasks view groups by goal, which is the same structure made visible rather
+than a second one.
+
+**Naming.** `goal` is chosen over `epic` (agile freight), `feature` (a runner repair is not
+one), and `workstream` — which `AGENTS.md` already uses in prose and remains the honest
+alternative if the longer word reads better. The system is then **goal → task → run**: what I
+am trying to achieve, what needs doing, and when agents did it.
 
 ## The execution model
 
@@ -313,7 +401,8 @@ product since the beginning; this is the correction.
 
 | View | Purpose |
 |---|---|
-| **Tasks** | The backlog. Problem A: structure intent. |
+| **Goals** | What you set out to build, and which of it stalled (D15/D16). Problem A. |
+| **Tasks** | The backlog, grouped by goal. |
 | **Run planner** | A run being shaped — order, lanes, notes, brainstorm — then approved (D6). |
 | **Runs** | Every run, live and past. |
 | **Run detail** | One run, live *and* retrospective. The morning report. |
@@ -383,6 +472,9 @@ disagrees:
 1. **QK-RBT-002 — the run model.** Rename campaign to run; collapse preflight/approve/start
    into `quirks run`. Add the task-status verbs and close QK-RUN-007/008/009, which cannot be
    closed today: `complete` from `proposed` returns a conflict, and `claim` wants a campaign.
+1b. **QK-RBT-002a — goals (D15/D16).** The goal object, `quirks goal`, and `run --goal`. Small,
+   independent of the ceremony removal, and the only piece here that serves problem A — which
+   is reason enough not to let it queue behind the execution work again.
 2. **QK-RBT-003 — delete the permission layer.** Envelopes, digests, tokens, capabilities,
    leases, claims, circuit breakers, budgets, and their tests. Separate commits per concern.
 3. **QK-RBT-004 — failure policy and resume.** D3 and D4.
