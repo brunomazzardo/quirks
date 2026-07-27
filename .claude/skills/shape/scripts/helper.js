@@ -5,8 +5,63 @@
 (function() {
   const TOMBSTONE_AFTER_MS = 15000; // show the "paused" overlay after this long disconnected
 
+  function escapeHtml(v) {
+    return String(v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Pure: proposal JSON → tree-preview markup (QK-COMP-002). The JSON mirrors
+  // what the session will record through `quirks goal new` / `task propose`, so
+  // the thing the operator reviews is the thing that gets written. Task nodes
+  // are clickable (multiselect): a click means "discuss this one".
+  //
+  // Shape: { proposals: [ { goal: {id,title,why,doneWhen[]},
+  //                         tasks: [ {id,title,dependsOn[],deliverables[],
+  //                                   criteria[],verify[],flags[],note} ] } ] }
+  function buildProposalHtml(proposal) {
+    const groups = (proposal && proposal.proposals) || [];
+    return groups.map(function(group) {
+      const goal = group.goal || {};
+      const tasks = group.tasks || [];
+      let html = '<div class="tree" data-multiselect>';
+      html += '<div class="tree-goal">' +
+        '<div class="tree-goal-head"><span class="tid">' + escapeHtml(goal.id || '(no goal)') + '</span>' +
+        '<h3>' + escapeHtml(goal.title || '') + '</h3></div>' +
+        (goal.why ? '<p class="twhy">' + escapeHtml(goal.why) + '</p>' : '') +
+        (goal.doneWhen || []).map(function(c) {
+          return '<div class="tdone">done when: ' + escapeHtml(c) + '</div>';
+        }).join('') +
+        '</div>';
+      html += tasks.map(function(t) {
+        const flags = (t.flags || []).map(function(f) {
+          return '<span class="badge badge-flag">' + escapeHtml(f) + '</span>';
+        }).join('');
+        const deps = (t.dependsOn || []).map(function(d) {
+          return '<span class="dep">after ' + escapeHtml(d) + '</span>';
+        }).join('');
+        function list(label, items, cls) {
+          if (!items || !items.length) return '';
+          return '<div class="label">' + label + '</div><ul class="tlist' + (cls ? ' ' + cls : '') + '">' +
+            items.map(function(x) { return '<li>' + escapeHtml(x) + '</li>'; }).join('') + '</ul>';
+        }
+        return '<div class="tnode" tabindex="0" role="button" data-choice="task:' + escapeHtml(t.id || '') + '" onclick="toggleSelect(this)">' +
+          '<div class="tnode-head"><span class="tid">' + escapeHtml(t.id || '?') + '</span>' +
+          '<h3>' + escapeHtml(t.title || '') + '</h3>' + flags + deps + '</div>' +
+          (t.note ? '<p class="twhy">' + escapeHtml(t.note) + '</p>' : '') +
+          list('deliverables', t.deliverables) +
+          list('accepted when', t.criteria, 'tcrit') +
+          list('verified by', t.verify, 'tverify') +
+          '</div>';
+      }).join('');
+      return html + '</div>';
+    }).join('');
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { TOMBSTONE_AFTER_MS };
+    module.exports = { TOMBSTONE_AFTER_MS, buildProposalHtml, escapeHtml };
   }
 
   // Everything below is browser-only; bail out when loaded outside one (tests).
@@ -133,14 +188,23 @@
 
   });
 
+  // Keyboard: Enter/Space activate a focused choice, same as a click.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const target = e.target.closest && e.target.closest('[data-choice]');
+    if (!target) return;
+    e.preventDefault();
+    target.click();
+  });
+
   // Frame UI: selection tracking
   window.selectedChoice = null;
 
   window.toggleSelect = function(el) {
-    const container = el.closest('.options') || el.closest('.cards');
+    const container = el.closest('.options') || el.closest('.cards') || el.closest('.tree');
     const multi = container && container.dataset.multiselect !== undefined;
     if (container && !multi) {
-      container.querySelectorAll('.option, .card').forEach(o => o.classList.remove('selected'));
+      container.querySelectorAll('.option, .card, .tnode').forEach(o => o.classList.remove('selected'));
     }
     if (multi) {
       el.classList.toggle('selected');
@@ -150,10 +214,24 @@
     window.selectedChoice = el.dataset.choice;
   };
 
+  // Render any embedded proposal blocks (tree preview): the fragment carries a
+  // JSON script block tagged data-proposal and the tree is drawn right after it.
+  // Helper is injected at the end of body, so DOM is ready. (No literal closing
+  // script tag may appear anywhere in this file — it would terminate the inline
+  // script element that carries it; the server also escapes as a backstop.)
+  document.querySelectorAll('script[type="application/json"][data-proposal]').forEach(s => {
+    let data;
+    try { data = JSON.parse(s.textContent); } catch (e) { return; }
+    const target = document.createElement('div');
+    target.innerHTML = buildProposalHtml(data);
+    s.insertAdjacentElement('afterend', target);
+  });
+
   // Expose API for explicit use
   window.shape = {
     send: sendEvent,
-    choice: (value, metadata = {}) => sendEvent({ type: 'choice', value, ...metadata })
+    choice: (value, metadata = {}) => sendEvent({ type: 'choice', value, ...metadata }),
+    renderProposal: buildProposalHtml
   };
 
   connect();

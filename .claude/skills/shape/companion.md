@@ -20,6 +20,47 @@ by seeing it? Conceptual, scope, and tradeoff questions stay in the terminal. Th
 terminal message remains primary either way — every screen gets a one-line summary in
 the terminal, and the operator always answers in the terminal.
 
+## The design language — the night ledger
+
+This is a direction system, not a component list. **Compose whatever the question
+needs** — a chart, a dependency graph, a timeline, a diff, a table, a comparison
+nobody planned for — inside one identity:
+
+Quirks is a ledger of intent reviewed around overnight agent work. Deep ink night
+(`--bg`, with `--surface` and `--raised` as elevation), warm paper text (`--text`,
+`--text-dim`, `--text-faint`), and **one accent: lamplight amber (`--lamp`)** — the
+lamp left on while agents work. The signature on tree screens is the **ledger rail**:
+the lit lamp at the goal, a dot per task that lights when marked.
+
+### Rules for composing anything
+
+- **Color is meaning, never decoration.** Amber marks exactly one thing per screen —
+  the recommendation, the thing being decided, the bar under discussion. `--moss` is
+  good/done/passing; `--ember` is risk/blocked/failing. Everything else stays on the
+  neutral ink levels. Never introduce a new hue.
+- **Mono is for data; sans is for prose.** Ids, numbers, axis labels, chips,
+  done-when lines, verification commands: `var(--mono)` (use
+  `font-variant-numeric: tabular-nums` for columns of numbers). Hierarchy comes from
+  weight + size together; tracking tightens as type grows.
+- **Charts and graphs: build them, honestly.** Inline SVG or plain divs — never an
+  external library, font, or image; the page must work with the network cable pulled.
+  Bars scale from zero. Label data directly on the mark instead of adding a legend
+  when there are few series. Gridlines only when reading a value depends on them.
+  The comparison the operator must see gets the amber; everything else recedes.
+- **Anything can be clickable.** Put `data-choice="…"` + `onclick="toggleSelect(this)"`
+  + `tabindex="0"` on any element — a bar, a row, a node — and the click lands in the
+  events file. The recommended choice carries `data-recommended` and the badge.
+- **Motion belongs to the frame.** The arrival settle and instant press feedback are
+  provided; add nothing else. Reduced motion and reduced transparency are handled.
+- **Layout breathes.** The frame centers content in a readable column — don't fight
+  it. `.split` puts two things side by side. Prefer whitespace over boxes; a border
+  earns its place or goes.
+- Use the tokens, never hardcoded colors — light mode (paper ledger) comes free.
+
+Conveniences exist in `scripts/frame-template.html` — `.options`/`.option`, `.cards`,
+`.mockup`, `.pros-cons`, `.tree`, `.tid`/`.dep`/`.badge`/`.label` — reach for them
+when they fit, compose past them when they don't.
+
 ## The one rule screens must honor
 
 **Lead with a direction, never a flat menu.** Exactly one option on any choices screen
@@ -68,8 +109,43 @@ The frame provides (see `scripts/frame-template.html` for the full CSS):
   `.placeholder`, `.mock-nav`/`.mock-sidebar`/`.mock-content`/`.mock-button`/`.mock-input`.
 - Typography: `h2`, `h3`, `.subtitle`, `.section`, `.label`, `.badge`.
 
-QK-COMP-002 adds the shaping-specific screens: the proposed goal/task tree preview and
-the alternatives comparison. Until it lands, compose them from the pieces above.
+### The tree preview — the session's backlog, before it is recorded
+
+The fragment stays tiny: a heading plus the proposal as JSON. The injected helper draws
+the tree right after the JSON block. **The JSON mirrors what you will record through
+`goal new` / `task propose` — preview and recording never diverge.**
+
+```html
+<h2>What this session proposes</h2>
+<p class="subtitle">Click any task you want to discuss before I record. Then answer in the terminal.</p>
+<script type="application/json" data-proposal>
+{
+  "proposals": [
+    {
+      "goal": { "id": "QK-XYZ", "title": "…", "why": "…", "doneWhen": ["…"] },
+      "tasks": [
+        { "id": "QK-XYZ-001", "title": "…",
+          "deliverables": ["…"], "criteria": ["…"], "verify": ["bun test …"],
+          "dependsOn": [], "flags": [], "note": "optional one-liner" },
+        { "id": "QK-XYZ-002", "title": "…", "dependsOn": ["QK-XYZ-001"],
+          "flags": ["needs-design"] }
+      ]
+    }
+  ]
+}
+</script>
+```
+
+Ids are provisional (they mint at `task propose` time); use the ids you intend. Several
+goals in `proposals` render as several trees — a split session shows them all. Task
+nodes are multiselect-clickable; each click arrives in `events` as `"choice": "task:<id>"`
+meaning **discuss this one**, not approval.
+
+### Alternatives — two decompositions side by side
+
+`.options.split` lays two directions out side by side; each side is a normal `.option`
+(so clicks select), and each can embed its own `data-proposal` JSON block to draw a
+mini-tree inside. The recommended side carries `data-recommended` + the badge, first.
 
 ## Stopping
 

@@ -83,18 +83,27 @@ const MIME_TYPES = {
 // ========== Templates and Constants ==========
 
 function waitingPage() {
-  return renderBranding(`<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Shape companion</title>
+<head><meta charset="utf-8"><title>Quirks — shape</title>
 <style>
-body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
-h1 { color: #333; } p { color: #666; }
-.brand { display: flex; align-items: center; min-width: 0; overflow: hidden; margin-bottom: 1.5rem; color: #666; font-size: 0.9rem; line-height: 1; }
-.brand-copy { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1; }
+:root { --bg: #10141c; --text: #e9e4d8; --dim: #8f97a8; --lamp: #e5a83d; }
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f3f1ea; --text: #232733; --dim: #666e7e; --lamp: #a86f12; }
+}
+body { background: var(--bg); color: var(--text); font: 0.9375rem/1.5 system-ui, sans-serif; min-height: 100vh; display: grid; place-items: center; margin: 0; }
+.wrap { text-align: center; }
+.lamp { width: 10px; height: 10px; border-radius: 50%; background: var(--lamp); margin: 0 auto 1.25rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .lamp { animation: glow 2.4s ease-in-out infinite; }
+  @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(229,168,61,0); } 50% { box-shadow: 0 0 0 8px rgba(229,168,61,0.12); } }
+}
+h1 { font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem; letter-spacing: 0.08em; font-weight: 600; margin: 0 0 0.4rem; }
+p { color: var(--dim); font-size: 0.85rem; margin: 0; }
 </style>
 </head>
-<body><!-- BRANDING --><h1>Shape companion</h1>
-<p>Waiting for the session to push a screen…</p></body></html>`);
+<body><div class="wrap"><div class="lamp"></div><h1>quirks · shape</h1>
+<p>Waiting for the session to push a screen…</p></div></body></html>`;
 }
 
 const FORBIDDEN_PAGE = `<!DOCTYPE html>
@@ -123,7 +132,9 @@ location.replace('/');
 
 const frameTemplate = fs.readFileSync(path.join(__dirname, 'frame-template.html'), 'utf-8');
 const helperScript = fs.readFileSync(path.join(__dirname, 'helper.js'), 'utf-8');
-const helperInjection = '<script>\n' + helperScript + '\n</script>';
+// A literal closing script tag anywhere in the helper (even in a comment) would
+// terminate the inline element and dump the rest of the file as page text.
+const helperInjection = '<script>\n' + helperScript.replace(/<\/script/gi, '<\\/script') + '\n</script>';
 
 // ========== Helper Functions ==========
 
@@ -318,6 +329,21 @@ function handleRequest(req, res) {
       res.writeHead(204, securityHeaders());
       res.end();
     });
+  } else if (req.method === 'GET' && pathname.startsWith('/fonts/')) {
+    // Vendored typefaces (JetBrains Mono, OFL) — served locally so screens work
+    // with the network cable pulled. Cacheable: the files are immutable per install.
+    const fontName = path.basename(pathname.slice(7));
+    const fontPath = path.join(__dirname, 'fonts', fontName);
+    if (!fontName.endsWith('.woff2') || !fs.existsSync(fontPath)) {
+      res.writeHead(404, securityHeaders());
+      res.end('Not found');
+      return;
+    }
+    res.writeHead(200, securityHeaders({
+      'Content-Type': 'font/woff2',
+      'Cache-Control': 'private, max-age=86400'
+    }));
+    res.end(fs.readFileSync(fontPath));
   } else if (req.method === 'GET' && pathname.startsWith('/files/')) {
     const fileName = path.basename(pathname.slice(7));
     const filePath = path.join(CONTENT_DIR, fileName);

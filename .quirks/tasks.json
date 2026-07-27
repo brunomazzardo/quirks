@@ -61,7 +61,7 @@
     {
       "id": "QK-COMP-002",
       "title": "the shaping screen vocabulary: goal/task tree preview and alternatives side-by-side",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-COMP-001"
       ],
@@ -81,10 +81,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T21:04:51.229Z",
-      "updatedAt": "2026-07-27T21:04:51.229Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-27T21:50:38.965Z",
+      "statusDetail": {
+        "claimedBy": "claude, live session with Bruno",
+        "evidence": "Operator-reviewed live in the browser and approved. Tree preview renders proposal JSON (the same shape task propose records): ledger rail signature, lamp marker, per-task marking clicks land in state/events. Direction system replaced the component list in companion.md — composition validated by building an unplanned screen (v1 audit-inversion bar chart + bootstrap strip) from tokens alone. Night-ledger identity per frontend-design + apple-design skills; JetBrains Mono (OFL) vendored and served locally behind the key gate; renderer unit checks 8/8; alternatives pattern via .options.split with data-recommended pre-marked."
+      }
     },
     {
       "id": "QK-COMP-003",
