@@ -267,12 +267,20 @@ after    idea → brainstorm SKILL (interactive, with the operator)
               → spec  →  quirks goal new  →  quirks task propose ×N
 ```
 
-#### The CLI is never interactive
+#### Nothing on the execution path is interactive
 
-**Agents run this CLI, and an interactive prompt is a hung overnight run.** Every command
-must work headless: flags and files in, JSON out, no question it waits on. The CLI is
-**agent-first in goal, scope, and shape** — a human using it directly is the secondary case,
-not the design centre.
+**Agents run this CLI, and an interactive prompt is a hung overnight run.** The rule is drawn
+by path, not by command:
+
+- **The execution path is never interactive.** `run`, `status`, `report`, and every `task`
+  verb work headless — flags and files in, JSON out, no question they wait on. A task
+  executing inside a run must never be able to block on a human.
+- **Goal creation may converse.** `quirks goal new` run bare by a human can ask; given flags it
+  is fully headless, so the brainstorm skill can call it. Interactive when a human is there,
+  silent when one is not — the `npm init` / `npm init -y` shape.
+
+The CLI is **agent-first in goal, scope, and shape** — a human using it directly is the
+secondary case, not the design centre.
 
 So the interactivity lives where a human already is: **in the skill**, running inside a session.
 The skill asks the questions, writes the spec, and then calls the CLI to record the outcome —
