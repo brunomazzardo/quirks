@@ -126,7 +126,7 @@ the tree right after the JSON block. **The JSON mirrors what you will record thr
       "goal": { "id": "QK-XYZ", "title": "…", "why": "…", "doneWhen": ["…"] },
       "tasks": [
         { "id": "QK-XYZ-001", "title": "…",
-          "deliverables": ["…"], "criteria": ["…"], "verify": ["bun test …"],
+          "deliverables": ["…"], "criteria": ["…"], "verify": ["pnpm test …"],
           "dependsOn": [], "flags": [], "note": "optional one-liner" },
         { "id": "QK-XYZ-002", "title": "…", "dependsOn": ["QK-XYZ-001"],
           "flags": ["needs-design"] }

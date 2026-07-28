@@ -1814,7 +1814,7 @@
     {
       "id": "QK-MONO-006",
       "title": "conventions and skills rewrite — CLAUDE.md, shape, parity",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-MONO-004"
       ],
@@ -1835,11 +1835,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:17.331Z",
-      "updatedAt": "2026-07-28T22:40:46.471Z",
+      "updatedAt": "2026-07-28T22:49:46.931Z",
       "statusDetail": {
-        "claimedBy": "sonnet-5"
+        "claimedBy": "sonnet-5",
+        "evidence": "Sonnet-implemented, Fable-reviewed: CLAUDE.md conventions rewritten (pnpm/tsgo/oxlint/Node, monorepo shape, pnpm quirks seam), README operative refs fixed, shape skill + companion updated to pnpm quirks (-s on JSON-out commands — banner confirmed empirically), historical docs untouched (docs/ grep: zero hits), AGENTS.md + .agents/skills symlinks intact. Recorded verify passes: no bun run src/main.ts in .claude, docs, CLAUDE.md. Flag to QK-MONO-007: shape skill scripts exec legacy src/shape/*.ts via bun and must be repointed at cutover (new server already serves /v1/shape/ensure)"
       }
     },
     {

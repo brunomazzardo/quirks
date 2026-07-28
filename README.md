@@ -21,7 +21,7 @@ observability that answers problem B. It is not being rebuilt.
 ## Shape
 
 ```
-quirks — one Bun binary: HTTP service AND CLI
+quirks — apps/server: HTTP service AND CLI
    ├── quirks CLI     HTTP client, autostarts the service
    ├── native app     Native SDK, TypeScript core   (last)
    └── MCP server     another client                (later)
@@ -46,6 +46,6 @@ Bootstrap steps 1–4 are built: the store and the `goal` / `task` verbs; the **
 skill** and its browser companion (`.claude/skills/shape/`); the backlog loaded from
 `docs/DECISIONS.md` by Quirks itself; and the **service** — Hono routes over the store,
 bind-or-attach daemon, and a CLI that is an HTTP client with autostart and no
-direct-store fallback (`bun run src/main.ts help`; `bun test`). The ledger is the plan:
+direct-store fallback (`pnpm quirks help`; `pnpm test`). The ledger is the plan:
 `quirks goal list`. Next: the native workbench (`QK-NAT`, blocked on an upstream SDK gap
 — see `docs/upstream/native-terminal-gap/`), then runs (`QK-RUN`).

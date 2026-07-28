@@ -16,10 +16,14 @@ planning skills (e.g. Superpowers'), whose terminal state is a plan.
 
 ## Conventions
 
-- Bun + TypeScript. `bun test` and a clean `bunx tsc --noEmit` before claiming anything
-  works.
-- The ledger is `.quirks/` and is committed. Only `src/store/` touches it — that is the
-  boundary the HTTP service takes over at bootstrap step 4; never add a second path in.
-- Nothing on the execution path is interactive. Reads print tables on a TTY and JSON when
-  piped; writes always print JSON.
+- pnpm + TypeScript on Node (`>=24.13`). `pnpm test` (vite-plus/vitest) and a clean
+  `pnpm typecheck` (tsgo) before claiming anything works; `pnpm lint` (oxlint via vp)
+  before claiming it's clean.
+- The monorepo: `apps/server` is the service **and** the CLI (Effect); `apps/web` is the
+  workbench UI; `apps/desktop` is the Electron shell; `packages/contracts` and
+  `packages/shared` are the shared surface between them.
+- The ledger is `.quirks/` and is committed. Only the store boundary (`apps/server`)
+  touches it; never add a second path in.
+- The CLI surface is `pnpm quirks …`. Nothing on the execution path is interactive. Reads
+  print tables on a TTY and JSON when piped; writes always print JSON.
 - Never push to any remote without the owner's say-so.

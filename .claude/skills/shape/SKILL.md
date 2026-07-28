@@ -30,7 +30,7 @@ themselves — deliverables, acceptance criteria, verification, `dependsOn`.
 
 Before the first question:
 
-- `quirks goal list` and `quirks task list` — the declared state.
+- `pnpm quirks goal list` and `pnpm quirks task list` — the declared state.
 - Read what the conversation points at: the README, `docs/`, an existing goal's why-ref.
 
 Place the session as one of:
@@ -70,10 +70,10 @@ to `docs/specs/` and point `--why-ref` at it. Never copy a body into the ledger.
 All headless — flags in, JSON out:
 
 ```
-quirks goal new QK-XYZ --title "…" --why "…" --why-ref docs/specs/xyz.md \
+pnpm -s quirks goal new QK-XYZ --title "…" --why "…" --why-ref docs/specs/xyz.md \
   --done-when "criterion" --done-when "another criterion"
 
-quirks task propose --goal QK-XYZ --title "…" \
+pnpm -s quirks task propose --goal QK-XYZ --title "…" \
   --deliverable "…" --criterion "…" --verify "command" \
   --source docs/… --depends-on QK-XYZ-001 \
   [--needs-design | --needs-breakdown] [--effort "…"] [--risk "…"]
@@ -99,6 +99,6 @@ terminal stays primary: the operator always answers there.
 
 ### 6. Read back and close
 
-Show the operator `quirks goal show QK-XYZ` (or `task list --goal …`) and walk
+Show the operator `pnpm quirks goal show QK-XYZ` (or `pnpm quirks task list --goal …`) and walk
 through what got recorded. If anything the session decided is not visible there,
 it is not recorded — fix that before ending the session.
