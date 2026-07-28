@@ -1,61 +1,146 @@
-<!-- Quirks workbench — NAT-007 ledger chrome + NAT-008 Shape hide/show.
-     Single center <terminal> (NAT-005). No scrollback=.
-     for each="field" without braces (SDK iterable gate).
-     Shape closed: rightSplit→1.0; web_panes still snaps to 0-width preview-pane. -->
+<!-- Quirks workbench — NAT-009 theme, NAT-010 chrome, NAT-011 ledger polish.
+     Notes/soundboard patterns: surface header + hairline, surface rail,
+     consistent section headers (not mixed accordion/button sizes), rich type.
+     Single <terminal> (NAT-005). Shape closed → rightSplit 1.0 (NAT-008). -->
 <column grow="1" background="background">
-  <row height="34" window-drag="true" padding="8" gap="8">
-    <text>Quirks</text>
+  <row
+    height="{headerHeight}"
+    padding="12"
+    gap="12"
+    cross="center"
+    background="surface"
+    window-drag="true"
+    label="Workbench header"
+  >
+    <spacer width="{chromeLeading}" />
+    <text label="Quirks">
+      <span weight="bold" scale="1.2">Quirks</span>
+    </text>
     <spacer grow="1" />
-    <text foreground="text_muted">{ledgerStatus}</text>
-    <button on-press="toggleShape" size="sm" variant="ghost" selected="{shapeOpen}">Shape</button>
+    <badge variant="secondary">{ledgerStatus}</badge>
+    <button
+      size="sm"
+      variant="outline"
+      icon="panel-right"
+      selected="{shapeOpen}"
+      on-press="toggleShape"
+    >Shape</button>
+    <spacer width="{chromeTrailing}" />
   </row>
-  <split value="{leftSplit}" on-resize="leftResized" gap="4" grow="1">
-    <scroll width="240" min-width="180" grow="1">
-      <column padding="6" gap="4">
-        <accordion text="Goals" selected="{goalsOpen}" on-toggle="toggleGoals">
-          <column gap="2">
-            <for each="goals" key="id" as="g">
-              <list-item
-                on-press="selectGoal:{g.id}"
-                selected="{g.selected}"
-                label="{g.title}"
-              >
-                <row gap="6" cross="center" grow="1" padding="4">
-                  <column gap="1" grow="1">
-                    <text>{g.title}</text>
+  <separator />
+  <split value="{leftSplit}" on-resize="leftResized" gap="1" grow="1">
+    <column width="280" min-width="220" background="surface" padding="10" gap="8">
+      <row gap="8" cross="center" padding="2">
+        <text foreground="text_muted" grow="1">Ledger</text>
+      </row>
+      <scroll grow="1" label="Ledger list">
+        <column gap="6">
+          <!-- Goals section — same control height as Tasks (aligned headers). -->
+          <list-item
+            on-press="toggleGoals"
+            selected="{goalsOpen}"
+            height="36"
+            padding="8"
+            gap="8"
+            cross="center"
+            label="Goals section"
+          >
+            <if test="{goalsOpen}">
+              <icon name="chevron-down" width="14" height="14" foreground="text_muted" />
+            </if>
+            <else>
+              <icon name="chevron-right" width="14" height="14" foreground="text_muted" />
+            </else>
+            <text grow="1">
+              <span weight="medium">Goals</span>
+            </text>
+            <badge variant="secondary">{goalCount}</badge>
+          </list-item>
+          <if test="{goalsOpen}">
+            <column gap="2">
+              <for each="goals" key="id" as="g">
+                <list-item
+                  on-press="selectGoal:{g.id}"
+                  selected="{g.selected}"
+                  padding="10"
+                  gap="8"
+                  cross="center"
+                  label="{g.title}"
+                >
+                  <text grow="1" wrap="false">{g.title}</text>
+                  <if test="{g.tone == 'live'}">
+                    <badge variant="primary">{g.status}</badge>
+                  </if>
+                  <else>
+                    <badge variant="secondary">{g.status}</badge>
+                  </else>
+                </list-item>
+              </for>
+            </column>
+          </if>
+
+          <!-- Tasks section — identical header chrome to Goals. -->
+          <list-item
+            on-press="toggleTasks"
+            selected="{tasksOpen}"
+            height="36"
+            padding="8"
+            gap="8"
+            cross="center"
+            label="Tasks section"
+          >
+            <if test="{tasksOpen}">
+              <icon name="chevron-down" width="14" height="14" foreground="text_muted" />
+            </if>
+            <else>
+              <icon name="chevron-right" width="14" height="14" foreground="text_muted" />
+            </else>
+            <text grow="1">
+              <span weight="medium">Tasks</span>
+            </text>
+            <badge variant="secondary">{taskCount}</badge>
+          </list-item>
+          <if test="{tasksOpen}">
+            <column gap="2">
+              <for each="tasks" key="id" as="t">
+                <list-item
+                  on-press="selectTask:{t.id}"
+                  selected="{t.selected}"
+                  padding="10"
+                  label="{t.title}"
+                >
+                  <column gap="3" grow="1">
+                    <row gap="8" cross="center">
+                      <text grow="1" wrap="false">{t.title}</text>
+                      <if test="{t.tone == 'live'}">
+                        <badge variant="primary">{t.status}</badge>
+                      </if>
+                      <else>
+                        <badge variant="secondary">{t.status}</badge>
+                      </else>
+                    </row>
+                    <text>
+                      <span mono foreground="text_muted">{t.id}</span>
+                    </text>
                   </column>
-                  <badge>{g.status}</badge>
-                </row>
-              </list-item>
-            </for>
-          </column>
-        </accordion>
-        <accordion text="Tasks" selected="{tasksOpen}" on-toggle="toggleTasks">
-          <column gap="2">
-            <for each="tasks" key="id" as="t">
-              <list-item
-                on-press="selectTask:{t.id}"
-                selected="{t.selected}"
-                label="{t.title}"
-              >
-                <row gap="6" cross="center" grow="1" padding="4">
-                  <column gap="1" grow="1">
-                    <text>{t.title}</text>
-                    <text foreground="text_muted">{t.id}</text>
-                  </column>
-                  <badge>{t.status}</badge>
-                </row>
-              </list-item>
-            </for>
-          </column>
-        </accordion>
-        <text foreground="text_muted">Runs</text>
-      </column>
-    </scroll>
+                </list-item>
+              </for>
+            </column>
+          </if>
+
+          <separator />
+          <row gap="8" cross="center" padding="8" height="36">
+            <icon name="circle-dot" width="14" height="14" foreground="text_muted" />
+            <text grow="1" foreground="text_muted">Runs</text>
+            <badge variant="secondary">soon</badge>
+          </row>
+        </column>
+      </scroll>
+    </column>
     <split
       value="{rightSplit}"
       on-resize="rightResized"
-      gap="4"
+      gap="1"
       grow="1"
       resize-duration="180"
       resize-easing="emphasized"
@@ -69,7 +154,7 @@
         focus-ring="background"
         label="Shell"
       />
-      <panel grow="1" min-width="0" label="preview-pane"></panel>
+      <panel grow="1" min-width="0" background="background" label="preview-pane"></panel>
     </split>
   </split>
 </column>

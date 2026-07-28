@@ -1,6 +1,8 @@
-// Quirks workbench — NAT-005 terminal, NAT-007 ledger chrome, NAT-008 Shape toggle.
+// Quirks workbench — NAT-005 terminal; NAT-007/008 ledger + Shape;
+// NAT-009 theme; NAT-010 chrome; NAT-011 ledger polish.
 
 import { Cmd, Sub, asciiBytes } from "@native-sdk/core";
+import { type ChromeButtons, type ChromeInsets } from "@native-sdk/core/events";
 
 // ts_core_host.zig: pub const pty_key_base: u64 = 0x5453_5054_0000_0000.
 // NEVER write 0x5453505400000000 as a TS literal — emitter String(n) orphans the pty.
@@ -12,6 +14,9 @@ const GOALS_URL = asciiBytes("http://127.0.0.1:47301/v1/goals?limit=50");
 const TASKS_URL = asciiBytes("http://127.0.0.1:47301/v1/tasks?limit=50");
 const PREVIEW_URL = asciiBytes("http://127.0.0.1:47301/shape/");
 
+/// Tall hidden-inset titlebar floor (soundboard-ts / notes pattern).
+const HEADER_NATURAL_HEIGHT = 52;
+
 export type ShellState = "output" | "exit";
 export type ShellExitReason =
   | "exited"
@@ -20,11 +25,15 @@ export type ShellExitReason =
   | "rejected"
   | "spawn_failed";
 
-/** Density-A ledger row (QK-NAT-007). */
+/** Badge tone for density-A status chips. */
+export type StatusTone = "neutral" | "live" | "done";
+
+/** Density-A ledger row (QK-NAT-007 / 011). */
 export interface LedgerRow {
   readonly id: Uint8Array;
   readonly title: Uint8Array;
   readonly status: Uint8Array;
+  readonly tone: StatusTone;
   readonly selected: boolean;
 }
 
@@ -53,6 +62,9 @@ export interface Model {
   readonly reloadToken: number;
   readonly history: readonly HistoryEntry[];
   readonly historyIndex: number;
+  readonly chromeLeading: number;
+  readonly chromeTrailing: number;
+  readonly headerHeight: number;
 }
 
 export type Msg =
@@ -84,9 +96,26 @@ export type Msg =
   | { readonly kind: "toggleTasks" }
   | { readonly kind: "toggleShape" }
   | { readonly kind: "selectGoal"; readonly id: Uint8Array }
-  | { readonly kind: "selectTask"; readonly id: Uint8Array };
+  | { readonly kind: "selectTask"; readonly id: Uint8Array }
+  | {
+      readonly kind: "chrome_changed";
+      readonly insets: ChromeInsets;
+      readonly buttons: ChromeButtons;
+      readonly tabsProjected: boolean;
+    };
 
-export const viewUnbound = ["shell"] as const;
+export const viewUnbound = ["shell", "chrome_changed"] as const;
+
+/** Window-chrome geometry — header IS the titlebar (NAT-010). */
+export const chromeMsg = "chrome_changed";
+
+export function goalCount(model: Model): number {
+  return model.goals.length;
+}
+
+export function taskCount(model: Model): number {
+  return model.tasks.length;
+}
 
 function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -94,6 +123,51 @@ function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+function bytesIncludes(hay: Uint8Array, needle: Uint8Array): boolean {
+  if (needle.length === 0 || needle.length > hay.length) return false;
+  const limit = hay.length - needle.length;
+  for (let i = 0; i <= limit; i += 1) {
+    let ok = true;
+    for (let j = 0; j < needle.length; j += 1) {
+      if (hay[i + j] !== needle[j]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
+function statusTone(tag: Uint8Array): StatusTone {
+  const lower = asciiLower(tag);
+  if (
+    bytesIncludes(lower, asciiBytes("done")) ||
+    bytesIncludes(lower, asciiBytes("completed")) ||
+    bytesIncludes(lower, asciiBytes("closed"))
+  ) {
+    return "done";
+  }
+  if (
+    bytesIncludes(lower, asciiBytes("progress")) ||
+    bytesIncludes(lower, asciiBytes("claimed")) ||
+    bytesIncludes(lower, asciiBytes("running")) ||
+    bytesIncludes(lower, asciiBytes("live"))
+  ) {
+    return "live";
+  }
+  return "neutral";
+}
+
+function asciiLower(bytes: Uint8Array): Uint8Array {
+  const out = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i += 1) {
+    const c = bytes[i]!;
+    out[i] = c >= 65 && c <= 90 ? c + 32 : c;
+  }
+  return out;
 }
 
 function withSelection(
@@ -107,6 +181,7 @@ function withSelection(
       id: r.id,
       title: r.title,
       status: r.status,
+      tone: r.tone,
       selected: bytesEq(r.id, selectedId),
     };
   }
@@ -147,10 +222,12 @@ function parseRows(body: Uint8Array, selectedId: Uint8Array): readonly LedgerRow
     const state = jsonStringField(obj, asciiBytes('"state"'));
     const title = titleRaw.length > 0 ? titleRaw : id;
     const tag = status.length > 0 ? status : state;
+    const label = tag.length > 0 ? tag : asciiBytes("—");
     out[out.length] = {
       id,
       title,
-      status: tag.length > 0 ? tag : asciiBytes("—"),
+      status: label,
+      tone: statusTone(label),
       selected: bytesEq(id, selectedId),
     };
   }
@@ -182,8 +259,7 @@ export function initialModel(): [Model, Cmd<Msg>] {
       outputBytes: 0,
       termCols: 80,
       termRows: 24,
-      leftSplit: 0.22,
-      // Shape starts closed — terminal owns the full right column (NAT-008).
+      leftSplit: 0.24,
       rightSplit: 1.0,
       goals: [],
       tasks: [],
@@ -197,6 +273,9 @@ export function initialModel(): [Model, Cmd<Msg>] {
       reloadToken: 0,
       history: [{ url: PREVIEW_URL }],
       historyIndex: 0,
+      chromeLeading: 0,
+      chromeTrailing: 0,
+      headerHeight: HEADER_NATURAL_HEIGHT,
     },
     Cmd.batch([
       Cmd.ptySpawn([asciiBytes("/bin/zsh"), asciiBytes("-i")], {
@@ -283,5 +362,12 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
           Cmd.fetch({ url: TASKS_URL }, { key: "tasks", ok: "tasksOk", err: "tasksErr" }),
         ]),
       ];
+    case "chrome_changed":
+      return {
+        ...model,
+        chromeLeading: msg.insets.left,
+        chromeTrailing: msg.insets.right,
+        headerHeight: Math.max(HEADER_NATURAL_HEIGHT, msg.insets.top),
+      };
   }
 }

@@ -23,6 +23,14 @@ Edit `src/core.ts` for behavior, `src/app.native` for the view, and
 field names exactly as core.ts wrote them (`tickCount` -> `{tickCount}`),
 and exported single-model helpers bind as derived values (`{total}`).
 
+## Theme (QK-NAT-009)
+
+`app.zon` uses the soundboard-ts theme channel: `.theme = "geist"` with
+`.theme_accent = "#e5a83d"` (night-ledger lamplight from the shape
+companion). Stock tokens still follow OS light/dark; high-contrast skips
+the accent. A full night-ledger `tokens_fn` palette is a later option if
+geist neutrals stay too cold beside the lamp.
+
 ## Try the core loop
 
 ```sh

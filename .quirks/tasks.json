@@ -897,6 +897,208 @@
         "claimedBy": "composer, live session with Bruno",
         "evidence": "native check clean. Default shapeOpen=false, rightSplit=1.0; webview parked at 1×1 (app.zon + previewPanes) so scene bounds never overlay terminal; Shell owns width (~991px), preview-pane width 0. Shape toolbar press → rightSplit=0.65, preview-pane ~347px with /shape/; press again collapses to value=1 / pane 0. wiring overlay always snaps; zero-width anchors ignored by SDK so closed uses explicit 1×1 frame."
       }
+    },
+    {
+      "id": "QK-RUN-007",
+      "title": "a runner timeout is a real bound, even when the runner spawns children",
+      "status": "completed",
+      "dependsOn": [],
+      "deliverables": [
+        "spawn each runner in its own process group; the timeout kills the group, not just the direct child",
+        "resolve on 'exit' plus a bounded stream drain, instead of waiting for 'close' — a grandchild holding the pipe can defer 'close' forever",
+        "a stream error retains the bytes already collected instead of discarding the transcript"
+      ],
+      "acceptanceCriteria": [
+        "dispatchRunner returns within a bounded margin of timeoutMs even when the runner spawns a child that inherits stdout",
+        "the transcript is still retained on that path — always retained, including on timeout and flood",
+        "no grandchild survives the timeout",
+        "a stream error never yields a null transcript when bytes were already collected",
+        "the existing timeout test uses the FORKING shape (no exec), so the regression is actually covered"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "the grandchild case completes in about the timeout, not the child's full sleep"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/managing-agent-runner.md",
+          "pinnedCommit": "eeda8c6c94646cb947cd8f8a2f26b55d21415565"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "risk": "concurrency: process-group signalling and stream teardown; a wrong grace window turns a hang into a truncated transcript",
+      "revision": 2,
+      "createdAt": "2026-07-28T15:06:56.408Z",
+      "updatedAt": "2026-07-28T15:12:21.828Z",
+      "statusDetail": {
+        "evidence": "Three fixes in src/runner/dispatch.ts: (1) runners spawn detached so they lead their own process group, and the timeout kills the group via negative pid with a fallback to the direct child; (2) resolution awaits 'exit' not 'close', then drains stdio with a bounded 2s grace and destroys the stream if it does not finish — 'close' waits on pipes a grandchild can hold open forever; (3) collectBounded never rejects, so a stream fault retains the bytes already read instead of discarding the transcript, and the fault is reported in notes. Measured: a 500ms timeout on 'echo; sleep 30' (sh FORKS sleep) now returns in 508ms with the transcript retained and no orphan; before the fix the identical call took 30s. Regression tests use the forking shape and assert the bound, retention, and that no grandchild survives. 210 tests pass across five consecutive runs; tsc clean."
+      }
+    },
+    {
+      "id": "QK-NAT-009",
+      "title": "workbench theme — geist pack + night-ledger lamp accent",
+      "status": "completed",
+      "dependsOn": [
+        "QK-NAT-007",
+        "QK-NAT-008"
+      ],
+      "deliverables": [
+        "app.zon declares .theme = geist (or documented pack) and .theme_accent = night-ledger lamp (#e5a83d / companion --lamp)",
+        "stock tokens still follow OS light/dark; high-contrast skips accent per SDK",
+        "one-line note in apps/workbench README or docs/DECISIONS.md: theme channel = soundboard-ts pattern; accent = shape companion lamp"
+      ],
+      "acceptanceCriteria": [
+        "native check accepts theme fields",
+        "automate screenshot shows branded accent on selected controls (Shape / list selection), not stock gray-only chrome",
+        "no Zig tokens_fn in this pass — manifest theme channel only"
+      ],
+      "verification": [
+        "native check",
+        "zig build -Dautomation=true && native automate wait && native automate screenshot main-canvas"
+      ],
+      "sourceRefs": [
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "eeda8c6c94646cb947cd8f8a2f26b55d21415565"
+        },
+        {
+          "path": "apps/workbench/app.zon",
+          "pinnedCommit": "eeda8c6c94646cb947cd8f8a2f26b55d21415565"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "manifest-only; pick lamp hex from shape companion tokens",
+      "risk": "geist pack neutrals may still feel cold vs night-ledger ink — full palette pass is a later task if needed",
+      "revision": 3,
+      "createdAt": "2026-07-28T15:11:51.879Z",
+      "updatedAt": "2026-07-28T15:21:09.481Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-010",
+      "title": "workbench shell chrome — titlebar band, hairline separator, chrome insets",
+      "status": "completed",
+      "dependsOn": [
+        "QK-NAT-007",
+        "QK-NAT-008"
+      ],
+      "deliverables": [
+        "header row matches notes/soundboard: background=surface, padding≈12, cross=center, window-drag, chromeLeading spacer via chromeMsg",
+        "hairline <separator /> under the header (not only split gap)",
+        "split gap thinned toward hairline (notes default / gap=1–2); ledger pane background=surface against terminal background",
+        "Shape control stays in the header trailing corner; status remains muted"
+      ],
+      "acceptanceCriteria": [
+        "automate snapshot: header group has surface treatment; separator widget present under header",
+        "traffic-light / chromeLeading spacer present when chromeMsg delivers insets (fullscreen → 0)",
+        "rightSplit collapse (NAT-008) still works after chrome reflow"
+      ],
+      "verification": [
+        "native check",
+        "zig build -Dautomation=true && native automate wait && native automate screenshot main-canvas"
+      ],
+      "sourceRefs": [
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "eeda8c6c94646cb947cd8f8a2f26b55d21415565"
+        },
+        {
+          "path": "apps/workbench/app.zon",
+          "pinnedCommit": "eeda8c6c94646cb947cd8f8a2f26b55d21415565"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "markup + chromeMsg arm in core.ts (soundboard-ts / notes pattern)",
+      "risk": "hidden-titlebar / tall inset may need app.zon shell chrome flags — verify against soundboard app.zon",
+      "revision": 3,
+      "createdAt": "2026-07-28T15:11:51.913Z",
+      "updatedAt": "2026-07-28T15:21:09.482Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-011",
+      "title": "ledger rail polish — notes-style density, counts, row padding",
+      "status": "completed",
+      "dependsOn": [
+        "QK-NAT-007",
+        "QK-NAT-008"
+      ],
+      "deliverables": [
+        "ledger column: padding≈10 gap≈8; list-item padding≈8–10 (notes folder/note rows)",
+        "section headers show muted label + count badge (goals/tasks lengths), not only accordion house chrome",
+        "row hierarchy stays density-A: title, muted id, status badge; selected wash readable on themed surface",
+        "optional leading icons (folder/circle-dot) only if they stay under widget budget"
+      ],
+      "acceptanceCriteria": [
+        "sidebar width unchanged (NAT-006 accordion rule); collapse still works",
+        "automate: badge counts match fetched goals/tasks lengths; listitem padding visibly roomier vs pre-task screenshot",
+        "widget_nodes stay under 1024 with current ledger sizes"
+      ],
+      "verification": [
+        "native check",
+        "zig build -Dautomation=true && native automate wait && native automate screenshot main-canvas"
+      ],
+      "sourceRefs": [
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "eeda8c6c94646cb947cd8f8a2f26b55d21415565"
+        },
+        {
+          "path": "apps/workbench/app.zon",
+          "pinnedCommit": "eeda8c6c94646cb947cd8f8a2f26b55d21415565"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "markup + tiny derived count helpers in core.ts",
+      "risk": "accordion + denser rows can still starve Tasks if nested scrolls return — keep single outer scroll",
+      "revision": 3,
+      "createdAt": "2026-07-28T15:11:51.941Z",
+      "updatedAt": "2026-07-28T15:21:09.483Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-HARN-003",
+      "title": "authorization for free, and independence that cannot be faked",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "probeAuth per runner via its own status command: claude auth status (loggedIn), codex doctor --json (checks.auth.credentials.status), cursor-agent status --format json (isAuthenticated)",
+        "a free auth check may only demote to no or enrich the detail; only a real dispatch promotes to yes",
+        "canonicalModel(): resolve aliases and decorated ids to one identity so review independence cannot be faked",
+        "correct the cursor rows: mechanical stays blank because composer publishes no tier ladder, and the 'no effort flag' comment is wrong — cursor encodes effort in the model id"
+      ],
+      "acceptanceCriteria": [
+        "a logged-out harness reads no, not unproven",
+        "an authenticated harness that has never dispatched still reads unproven, never yes",
+        "a missing or unparseable status command yields unknown and changes nothing — never a false no",
+        "claude/opus and cursor/claude-opus-5-thinking-high are NOT independent (same model, two names)",
+        "claude/sonnet and claude/opus remain independent — different models, not merely different vendors"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "quirks harness --probe against the real CLIs shows an authorization column"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "eeda8c6c94646cb947cd8f8a2f26b55d21415565"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "risk": "security: 88 of cursor's 193 models are claude-*, so a wrong canonicalization silently certifies a reviewer as independent of a model it IS",
+      "revision": 1,
+      "createdAt": "2026-07-28T15:19:47.528Z",
+      "updatedAt": "2026-07-28T15:19:47.528Z",
+      "statusDetail": {}
     }
   ]
 }
