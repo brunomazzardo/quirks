@@ -133,7 +133,7 @@ describe("quirks CLI", () => {
   }, 15000);
 
   test("the CLI has no import path into the store — the boundary is structural", () => {
-    for (const file of ["goal.ts", "task.ts", "client.ts", "output.ts"]) {
+    for (const file of ["goal.ts", "task.ts", "run.ts", "client.ts", "output.ts"]) {
       const src = readFileSync(new URL(`../src/cli/${file}`, import.meta.url), "utf8");
       expect(src).not.toMatch(/from "\.\.\/(store|ops)\//);
     }
@@ -143,5 +143,38 @@ describe("quirks CLI", () => {
     const out = run(cwd, "task", "block", "QK-TST-002", "--reason", "test", "--if-revision", "99");
     expect(out.code).toBe(1);
     expect(out.stderr).toContain("revision");
+  });
+
+  test("quirks run --yes starts headless; without --yes on a pipe it refuses", () => {
+    run(cwd, "goal", "new", "QK-RN", "--title", "run goal", "--why", "prove run", "--done-when", "ok");
+    const a = JSON.parse(run(cwd, "task", "propose", "--goal", "QK-RN", "--title", "alpha").stdout);
+    const b = JSON.parse(
+      run(cwd, "task", "propose", "--goal", "QK-RN", "--title", "beta", "--depends-on", a.id).stdout,
+    );
+
+    const refused = run(cwd, "run", "--goal", "QK-RN", "--name", "pipe check");
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain("--yes");
+
+    const dry = run(cwd, "run", "--goal", "QK-RN", "--name", "pipe check", "--dry-run");
+    expect(dry.code).toBe(0);
+    const dryBody = JSON.parse(dry.stdout);
+    expect(dryBody.dryRun).toBe(true);
+    expect(dryBody.briefs).toHaveLength(2);
+    expect(dryBody.plan.taskIds).toEqual([a.id, b.id]);
+
+    const started = run(
+      cwd, "run", "--goal", "QK-RN", "--name", "pipe check", "--yes", "--mode", "autonomous",
+    );
+    expect(started.code).toBe(0);
+    const body = JSON.parse(started.stdout);
+    expect(body.status).toBe("approved");
+    expect(body.slug).toBe("pipe-check");
+    expect(body.taskIds).toEqual([a.id, b.id]);
+
+    const listed = JSON.parse(run(cwd, "run", "list").stdout);
+    expect(listed).toContainEqual(expect.objectContaining({ id: body.id, slug: "pipe-check" }));
+    const shown = JSON.parse(run(cwd, "run", "show", "pipe-check").stdout);
+    expect(shown.id).toBe(body.id);
   });
 });

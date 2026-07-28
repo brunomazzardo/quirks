@@ -5,10 +5,12 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { ABSENT, loadJsonFile, saveJsonFile, StoreCorruptError } from "./json-file.ts";
-import type { Goal, GoalsFile, SourceRef, Task, TasksFile } from "./types.ts";
+import type { Goal, GoalsFile, Run, RunsFile, SourceRef, Task, TasksFile } from "./types.ts";
 
 const TASK_STATUSES = new Set(["open", "claimed", "blocked", "completed"]);
 const GOAL_STATES = new Set(["active", "done", "abandoned"]);
+const RUN_STATUSES = new Set(["planned", "approved", "running", "completed", "abandoned"]);
+const RUN_MODES = new Set(["autonomous", "park-on-issue"]);
 
 export interface Store {
   root: string;
@@ -95,4 +97,29 @@ export function loadGoals(store: Store): Goal[] {
 export function saveGoals(store: Store, goals: Goal[]): void {
   const file: GoalsFile = { version: 1, goals };
   saveJsonFile(goalsPath(store), file);
+}
+
+function runsPath(store: Store): string {
+  return join(store.dir, "runs.json");
+}
+
+export function loadRuns(store: Store): Run[] {
+  const path = runsPath(store);
+  const data = loadJsonFile(path);
+  if (data === ABSENT) return [];
+  const file = data as RunsFile;
+  if (file?.version !== 1 || !Array.isArray(file.runs)) {
+    throw new StoreCorruptError(path, "not a version-1 runs file");
+  }
+  for (const r of file.runs) {
+    if (typeof r?.id !== "string" || !RUN_STATUSES.has(r?.status) || !RUN_MODES.has(r?.mode)) {
+      throw new StoreCorruptError(path, `run ${JSON.stringify(r?.id)} has no valid id/status/mode`);
+    }
+  }
+  return file.runs;
+}
+
+export function saveRuns(store: Store, runs: Run[]): void {
+  const file: RunsFile = { version: 1, runs };
+  saveJsonFile(runsPath(store), file);
 }

@@ -102,4 +102,26 @@ describe("service routes", () => {
     expect(res.status).toBe(500);
     expect((await res.json()).error).toContain("corrupt");
   });
+
+  test("runs: plan → dry-run → approve with yes", async () => {
+    const { app } = appFor();
+    await post(app, "/v1/goals", { id: "QK-RN", title: "r", why: "w", doneWhen: [] });
+    const t1 = await (await post(app, "/v1/tasks", { title: "a", goal: "QK-RN" })).json();
+    await post(app, "/v1/tasks", { title: "b", goal: "QK-RN", dependsOn: [t1.id] });
+
+    const plan = await (await post(app, "/v1/runs/plan", { name: "svc run", goal: "QK-RN" })).json();
+    expect(plan.taskIds).toEqual([t1.id, "QK-RN-002"]);
+
+    expect((await post(app, "/v1/runs", { name: "svc run", goal: "QK-RN" })).status).toBe(400);
+
+    const dry = await post(app, "/v1/runs", { name: "svc run", goal: "QK-RN", dryRun: true });
+    expect(dry.status).toBe(200);
+    expect((await dry.json()).briefs).toHaveLength(2);
+
+    const created = await post(app, "/v1/runs", { name: "svc run", goal: "QK-RN", yes: true });
+    expect(created.status).toBe(201);
+    const body = await created.json();
+    expect(body.run.status).toBe("approved");
+    expect((await app.request(`/v1/runs/${body.run.slug}`)).status).toBe(200);
+  });
 });

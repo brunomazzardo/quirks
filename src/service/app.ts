@@ -17,6 +17,8 @@ import {
   proposeTask,
   releaseTask,
 } from "../ops/tasks.ts";
+import { assemblePlan, getRun, listRuns, startRun } from "../ops/runs.ts";
+import type { RunMode } from "../store/types.ts";
 
 /** Paginate a list route: ?offset=&limit= (native-app budgets force it — the
  *  real v1 ledger sat at 82% of the 256 KiB fetch ceiling). */
@@ -135,6 +137,39 @@ export function createApp(store: Store): Hono {
     const body = await c.req.json();
     return c.json(releaseTask(store, c.req.param("id"), body));
   });
+
+  // ---- runs ----
+  app.get("/v1/runs", (c) => {
+    const runs = listRuns(store);
+    return c.json(page(runs, intParam(c.req.query("offset"), 0), intParam(c.req.query("limit"), 100)));
+  });
+
+  app.post("/v1/runs/plan", async (c) => {
+    const body = await c.req.json();
+    return c.json(
+      assemblePlan(store, {
+        name: body.name,
+        ...(body.goal !== undefined ? { goal: body.goal } : {}),
+        ...(body.mode !== undefined ? { mode: body.mode as RunMode } : {}),
+        ...(body.taskIds !== undefined ? { taskIds: body.taskIds } : {}),
+      }),
+    );
+  });
+
+  app.post("/v1/runs", async (c) => {
+    const body = await c.req.json();
+    const result = startRun(store, {
+      name: body.name,
+      ...(body.goal !== undefined ? { goal: body.goal } : {}),
+      ...(body.mode !== undefined ? { mode: body.mode as RunMode } : {}),
+      ...(body.taskIds !== undefined ? { taskIds: body.taskIds } : {}),
+      dryRun: body.dryRun === true,
+      yes: body.yes === true,
+    });
+    return c.json(result, result.dryRun ? 200 : 201);
+  });
+
+  app.get("/v1/runs/:id", (c) => c.json(getRun(store, c.req.param("id"))));
 
   return app;
 }

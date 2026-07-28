@@ -16,6 +16,7 @@ import {
   taskRelease,
   taskShow,
 } from "./cli/task.ts";
+import { runList, runShow, runStart } from "./cli/run.ts";
 import { CliError } from "./cli/output.ts";
 import { ServiceError } from "./cli/client.ts";
 
@@ -135,6 +136,31 @@ task
   .option("--if-revision <n>", "fail if the task moved past this revision")
   .action(taskRelease);
 
+const run = program.command("run").description("the only thing approved — a named grouping of tasks");
+
+run
+  .command("list")
+  .description("runs in this repo")
+  .option("--json", "JSON even on a TTY", false)
+  .action(runList);
+
+run
+  .command("show")
+  .description("one run by id or slug (always JSON)")
+  .argument("<id-or-slug>")
+  .action(runShow);
+
+// `quirks run QK-A QK-B --name …` — task ids as variadic args on the default action.
+run
+  .argument("[tasks...]", "task ids to include; omit when using --goal")
+  .option("--name <name>", "required: names the run and yields its slug")
+  .option("--goal <id>", "every ready task under this goal, in dependency order")
+  .option("--mode <mode>", "autonomous | park-on-issue", "park-on-issue")
+  .option("--yes", "approve the plan without prompting (required when not a TTY)", false)
+  .option("--dry-run", "assemble every brief without dispatching or persisting", false)
+  .option("--json", "JSON even on a TTY", false)
+  .action(runStart);
+
 program
   .command("serve", { hidden: true })
   .description("run the service in the foreground (the CLI autostarts this detached)")
@@ -156,13 +182,13 @@ program
     }
   });
 
-for (const coming of ["run", "status", "report", "harness"]) {
+for (const coming of ["status", "report", "harness"]) {
   program
     .command(coming, { hidden: true })
     .allowUnknownOption(true)
     .allowExcessArguments(true)
     .action(() => {
-      throw new CliError(`quirks ${coming} is not built yet — step 1 covers goal and task`);
+      throw new CliError(`quirks ${coming} is not built yet`);
     });
 }
 

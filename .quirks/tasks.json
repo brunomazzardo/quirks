@@ -246,7 +246,7 @@
     {
       "id": "QK-RUN-001",
       "title": "the run model and quirks run",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "run object grouping tasks; plan printed (task set, order, harness/model, est. cost) before [y/N]/--yes",
@@ -266,10 +266,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.349Z",
-      "updatedAt": "2026-07-27T22:03:02.349Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T13:00:46.730Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Run model + quirks run verb. Persist runs.json; assemblePlan (--goal takes ready tasks in dep order; skips future/needs-design/breakdown); plan rows carry harness/model/est.cost (unassigned/null until QK-HARN); --dry-run assembles brief skeletons (task+goal facts; pin→HEAD is QK-RUN-002) without writing; --yes persists status=approved (dispatch is QK-RUN-003); without --yes on a pipe the CLI refuses rather than prompt. Routes: POST /v1/runs/plan, POST /v1/runs, GET /v1/runs, GET /v1/runs/:id|slug; run list/show. Suite 55/55, tsc clean."
+      }
     },
     {
       "id": "QK-RUN-002",

@@ -77,3 +77,44 @@ export interface GoalsFile {
   version: 1;
   goals: Goal[];
 }
+
+/** Autonomy policy for a run — chosen once at `quirks run` time. */
+export type RunMode = "autonomous" | "park-on-issue";
+
+/** Lifecycle of a run. `planned` is dry-run / planner only; `approved` is
+ *  durable after `--yes` (or a TTY [y/N]); dispatch lands in QK-RUN-003. */
+export type RunStatus = "planned" | "approved" | "running" | "completed" | "abandoned";
+
+/** One row of the plan printed before approval — the whole approval surface. */
+export interface RunPlanEntry {
+  id: string;
+  title: string;
+  order: number;
+  /** Unassigned until QK-HARN-001 / routing exists. */
+  harness: string;
+  model: string;
+  /** Null means unknown — never invent a number. */
+  estimatedCost: number | null;
+}
+
+export interface Run {
+  id: string;
+  name: string;
+  /** Derived from `--name`; `quirks report <slug>` resolves through this. */
+  slug: string;
+  goal?: string;
+  mode: RunMode;
+  status: RunStatus;
+  /** Task ids in execution (dependency) order. */
+  taskIds: string[];
+  plan: RunPlanEntry[];
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt?: string;
+}
+
+export interface RunsFile {
+  version: 1;
+  runs: Run[];
+}
