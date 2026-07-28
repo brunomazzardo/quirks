@@ -12,6 +12,8 @@ import { Ledger, layer as ledgerLayer, layerAt, layerFromCwd, Store } from "./st
 import { layerHarness, RunRouting } from "./ops/Routing.ts";
 import { runsInFlight } from "./ops/Runs.ts";
 import { routes } from "./http/Routes.ts";
+import { layer as ptyLayer, PtySessions } from "./pty/Sessions.ts";
+import { routes as ptyRoutes } from "./pty/Routes.ts";
 import { json, respond } from "./http/Wire.ts";
 
 export const VERSION = "0.1.0";
@@ -58,13 +60,22 @@ const healthRoute = (instanceId: string) =>
     ),
   );
 
-/** Everything the routes need at request time. The served surface routes through
- *  the real harness layer (QK-MONO-005): presence on disk, the tier table, and
- *  liveness off the run record. */
+/**
+ * Everything the routes need at request time. The served surface routes through
+ * the real harness layer (QK-MONO-005): presence on disk, the tier table, and
+ * liveness off the run record.
+ *
+ * `PtySessions` (QK-WB-004) is deliberately in here rather than beside the
+ * routes that use it. `HttpRouter.provideRequest` builds this layer ONCE and
+ * hands the resulting context to every request, so the registry is a singleton
+ * for the life of the app layer — which is what makes a session outlive the
+ * request that created it and lets the layer's finalizer be the thing that
+ * guarantees no shell outlives the daemon.
+ */
 export const servicesLayer = (
   storeLayer: Layer.Layer<Store>,
-): Layer.Layer<Store | Ledger | RunRouting | NodeServices.NodeServices> =>
-  layerHarness.pipe(
+): Layer.Layer<Store | Ledger | RunRouting | PtySessions | NodeServices.NodeServices> =>
+  Layer.mergeAll(layerHarness, ptyLayer).pipe(
     Layer.provideMerge(ledgerLayer),
     Layer.provideMerge(storeLayer),
     Layer.provideMerge(NodeServices.layer),
@@ -78,9 +89,11 @@ export interface AppOptions {
 
 export const appLayer = (options: AppOptions = {}) => {
   const storeLayer = options.root === undefined ? layerFromCwd() : layerAt(options.root);
-  return Layer.mergeAll(routes, healthRoute(options.instanceId ?? "quirks-service")).pipe(
-    HttpRouter.provideRequest(servicesLayer(storeLayer)),
-  );
+  return Layer.mergeAll(
+    routes,
+    ptyRoutes,
+    healthRoute(options.instanceId ?? "quirks-service"),
+  ).pipe(HttpRouter.provideRequest(servicesLayer(storeLayer)));
 };
 
 /** An in-process Fetch handler over the whole surface — how the suite drives it.

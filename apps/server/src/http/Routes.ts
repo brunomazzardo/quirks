@@ -44,12 +44,7 @@ import {
   startContentWatch,
   stopContentWatch,
 } from "../shape/Session.ts";
-import { intParam, json, jsonError, page, queryOne, respond } from "./Wire.ts";
-
-/** A route path parameter. Absent is impossible for a matched route, but the
- *  router types it as optional — refuse rather than coerce. */
-const pathParam = (key: string): Effect.Effect<string, never, HttpRouter.RouteContext> =>
-  Effect.map(HttpRouter.params, (params) => params[key] ?? "");
+import { intParam, json, jsonError, page, pathParam, queryOne, respond } from "./Wire.ts";
 
 const query = HttpServerRequest.ParsedSearchParams;
 

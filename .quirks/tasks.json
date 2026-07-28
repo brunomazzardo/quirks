@@ -1982,7 +1982,7 @@
     {
       "id": "QK-WB-004",
       "title": "the terminal pane — node-pty sessions, xterm view, many terminals, scrollback",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-WB-001",
         "QK-MONO-003"
@@ -2008,11 +2008,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:35.013Z",
-      "updatedAt": "2026-07-28T22:40:46.417Z",
+      "updatedAt": "2026-07-28T23:32:23.136Z",
       "statusDetail": {
-        "claimedBy": "opus-5"
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: PtySessions service (node-pty, setsid group ownership, 256KiB byte-ring replay with droppedBytes never hidden, 1MiB socket backlog, no-orphan shutdown), WS per session (binary=bytes, text=JSON control) + full plain-HTTP surface; web tab strip + xterm 6 (10k scrollback) + fit/resize propagation. Acceptance PROVEN at wire level (2 sockets through vite proxy, 500/500 lines, isolation) AND browser level (2 xterm mounted, scrollback reveals earlier lines, 0 page errors). 45 new tests (319 server + 51 web). Fixed real env bug: node-pty spawn-helper missing exec bit -> ensureSpawnHelperExecutable. Fable: moved pty wire types into @quirks/contracts (bounds stay server-side, D3a type-only held); during the move I accidentally cut ptySocketUrl and reconstructed it against the agent's own tests — all green after. Legacy daemon untouched throughout"
       }
     },
     {

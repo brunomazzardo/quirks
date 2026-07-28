@@ -67,8 +67,19 @@ const daemonUrl = process.env.QUIRKS_URL?.trim() || `http://127.0.0.1:${portForR
  * faithfully forwards, so the Shape iframe stays blank until the server lane
  * relaxes that header. Proxying it is still worth it: the probe and the
  * events stream become readable.
+ *
+ * `ws` marks a prefix that must also forward the HTTP Upgrade handshake.
+ * `/v1/pty` carries the terminal socket (QK-WB-004): without `ws: true` Vite
+ * proxies the ordinary requests underneath it and then answers the upgrade
+ * itself, so the terminal would look exactly like a daemon that is down. It is
+ * listed BEFORE `/v1` because the proxy table is matched in insertion order and
+ * the broader prefix would otherwise swallow it.
  */
-const DAEMON_PATH_PREFIXES = ["/v1", "/shape"] as const;
+const DAEMON_PATH_PREFIXES = [
+  { prefix: "/v1/pty", ws: true },
+  { prefix: "/v1", ws: false },
+  { prefix: "/shape", ws: false },
+] as const;
 
 const unitTestProject = {
   extends: true,
@@ -101,7 +112,10 @@ export default defineConfig({
     port: 5733,
     strictPort: true,
     proxy: Object.fromEntries(
-      DAEMON_PATH_PREFIXES.map((prefix) => [prefix, { target: daemonUrl, changeOrigin: true }]),
+      DAEMON_PATH_PREFIXES.map(({ prefix, ws }) => [
+        prefix,
+        { target: daemonUrl, changeOrigin: true, ...(ws ? { ws: true } : {}) },
+      ]),
     ),
   },
   build: {

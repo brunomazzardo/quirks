@@ -6,7 +6,7 @@
 // A corrupt ledger is a 500 carrying the corrupt teaching — never an empty list.
 
 import * as Effect from "effect/Effect";
-import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import type { Page } from "@quirks/contracts";
 import { StoreCorruptError } from "../store/JsonFile.ts";
 import { TransitionError } from "../store/Transitions.ts";
@@ -38,6 +38,11 @@ export function queryOne(
   if (raw === undefined) return undefined;
   return Array.isArray(raw) ? raw[0] : (raw as string);
 }
+
+/** A route path parameter. Absent is impossible for a matched route, but the
+ *  router types it as optional — refuse rather than coerce. */
+export const pathParam = (key: string): Effect.Effect<string, never, HttpRouter.RouteContext> =>
+  Effect.map(HttpRouter.params, (params) => params[key] ?? "");
 
 export const searchParams: Effect.Effect<
   Readonly<Record<string, string | ReadonlyArray<string>>>,
