@@ -8,7 +8,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { codeIdentity, hasDrifted, type CodeIdentity } from "../fingerprint.ts";
+import { serviceLogPath, stateDir } from "../paths.ts";
 
 export class ServiceError extends Error {
   constructor(message: string) {
@@ -42,61 +43,118 @@ export function portForRoot(root: string): number {
 }
 
 const MAIN = fileURLToPath(new URL("../main.ts", import.meta.url));
+const OWN_SRC = fileURLToPath(new URL("..", import.meta.url));
 
-async function health(base: string): Promise<{ id: string; root: string } | null> {
+export interface DaemonHealth {
+  id: string;
+  root: string;
+  version?: string;
+  startedAt?: string;
+  /** Absent from a daemon that predates QK-SRV-006 — then drift is unknowable. */
+  code?: CodeIdentity;
+  runsInFlight?: string[];
+}
+
+export async function health(base: string, timeoutMs = 1000): Promise<DaemonHealth | null> {
   try {
-    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(1000) });
+    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
-    return (await res.json()) as { id: string; root: string };
+    return (await res.json()) as DaemonHealth;
   } catch {
     return null;
   }
+}
+
+export function baseFor(port: number): string {
+  return `http://127.0.0.1:${port}`;
+}
+
+function assertSameRoot(h: DaemonHealth, root: string, port: number): void {
+  if (h.root !== root) {
+    throw new ServiceError(
+      `port ${port} is serving ${h.root}, not ${root} — refusing to talk to another repo's daemon`,
+    );
+  }
+}
+
+/**
+ * Warn — once per invocation, on stderr — when the daemon's code no longer
+ * matches the working tree. This is the whole point of QK-SRV-006: a Bun process
+ * compiles its files once at startup, so a daemon can answer with code that no
+ * longer exists on disk. Silence there means the CLI misreports which code
+ * produced a result.
+ *
+ * It warns and stops. It does NOT restart: one daemon serves every agent in this
+ * root, so restarting on someone's mid-edit tree would turn a private syntax
+ * error into another agent's outage.
+ */
+let warnedAboutDrift = false;
+export function warnOnCodeDrift(h: DaemonHealth): void {
+  if (warnedAboutDrift) return;
+  const tree = codeIdentity(OWN_SRC);
+  if (!hasDrifted(tree.fingerprint, h.code?.fingerprint)) return;
+  warnedAboutDrift = true;
+  const since = h.startedAt ? ` (loaded ${h.startedAt})` : "";
+  console.error(
+    `quirks: the service is running older code than your working tree${since}.\n` +
+      `        what you see may not come from the code you are reading.\n` +
+      `        run \`quirks daemon restart\` to pick it up.`,
+  );
+}
+
+/** Spawn a detached daemon, logging to the per-root state dir. */
+export function spawnDaemon(root: string, port: number): void {
+  try {
+    execFileSync("mkdir", ["-p", stateDir(root)]);
+  } catch {
+    /* the daemon creates it too */
+  }
+  const log = Bun.file(serviceLogPath(root));
+  const proc = Bun.spawn([process.execPath, "run", MAIN, "serve", "--port", String(port)], {
+    cwd: root,
+    stdin: "ignore",
+    stdout: log,
+    stderr: log,
+  });
+  proc.unref();
+}
+
+/** Poll /health until the daemon answers, or give up. */
+export async function awaitDaemon(
+  root: string,
+  port: number,
+  attempts = 40,
+): Promise<DaemonHealth | null> {
+  const base = baseFor(port);
+  for (let i = 0; i < attempts; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+    const h = await health(base);
+    if (h) {
+      assertSameRoot(h, root, port);
+      return h;
+    }
+  }
+  return null;
 }
 
 /** Bind-or-attach from the client side: try the socket; if nothing answers,
  *  spawn a detached daemon and wait for /health. A daemon that answers for a
  *  DIFFERENT root is a loud error, never silently used. */
 async function ensureDaemon(root: string, port: number): Promise<string> {
-  const base = `http://127.0.0.1:${port}`;
+  const base = baseFor(port);
   const first = await health(base);
   if (first) {
-    if (first.root !== root) {
-      throw new ServiceError(
-        `port ${port} is serving ${first.root}, not ${root} — refusing to talk to another repo's daemon`,
-      );
-    }
+    assertSameRoot(first, root, port);
+    warnOnCodeDrift(first);
     return base;
   }
 
-  // Nothing answering — autostart, detached, logs to the service dir.
-  const logDir = join(root, ".quirks", "service");
-  try {
-    execFileSync("mkdir", ["-p", logDir]);
-  } catch {
-    /* the daemon creates it too */
-  }
-  const proc = Bun.spawn([process.execPath, "run", MAIN, "serve"], {
-    cwd: root,
-    stdin: "ignore",
-    stdout: Bun.file(join(logDir, "service.log")),
-    stderr: Bun.file(join(logDir, "service.log")),
-  });
-  proc.unref();
+  spawnDaemon(root, port);
+  const started = await awaitDaemon(root, port);
+  if (started) return base;
 
-  for (let i = 0; i < 40; i++) {
-    await new Promise((r) => setTimeout(r, 150));
-    const h = await health(base);
-    if (h) {
-      if (h.root !== root) {
-        throw new ServiceError(
-          `port ${port} is serving ${h.root}, not ${root} — refusing to talk to another repo's daemon`,
-        );
-      }
-      return base;
-    }
-  }
   throw new ServiceError(
-    `the quirks service is unreachable at 127.0.0.1:${port} and could not be started — check ${join(logDir, "service.log")}`,
+    `the quirks service is unreachable at 127.0.0.1:${port} and could not be started — check ${serviceLogPath(root)}`,
   );
 }
 

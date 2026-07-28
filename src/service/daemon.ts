@@ -8,7 +8,9 @@ import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { createApp } from "./app.ts";
 import { saveJsonFile, StoreCorruptError } from "../store/json-file.ts";
-import type { Store } from "../store/store.ts";
+import { loadRuns, type Store } from "../store/store.ts";
+import { codeIdentity, type CodeIdentity } from "../fingerprint.ts";
+import { daemonRecordPath, serviceLogPath, stateDir } from "../paths.ts";
 
 export const VERSION = "0.1.0";
 
@@ -24,8 +26,10 @@ export function portForRoot(root: string): number {
   return 45000 + (h.readUInt32BE(0) % 15000);
 }
 
+/** Per-root machine state. NOT `.quirks/` — that is the committed ledger, and a
+ *  port/pid record belongs to one laptop (QK-SRV-006). */
 export function serviceDir(store: Store): string {
-  return join(store.dir, "service");
+  return stateDir(store.root);
 }
 
 export interface DaemonRecord {
@@ -35,13 +39,15 @@ export interface DaemonRecord {
   root: string;
   pid: number;
   startedAt: string;
+  /** Identity of the code this process compiled at startup. */
+  code?: CodeIdentity;
 }
 
 /** The advisory record — never used for liveness (the socket is), only so
  *  humans and cleanup can see what believes it is running. Corrupt is
  *  distinguished from absent and reported, never treated as empty. */
 export function loadDaemonRecord(store: Store): DaemonRecord | null {
-  const path = join(serviceDir(store), "daemon.json");
+  const path = daemonRecordPath(store.root);
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
@@ -80,8 +86,7 @@ export function processAlive(
 /** Rotate the service log at startup when it has grown past the cap.
  *  service.log → service.log.1 → service.log.2, oldest dropped. */
 export function rotateLogs(store: Store, capBytes = 1024 * 1024): void {
-  const dir = serviceDir(store);
-  const log = join(dir, "service.log");
+  const log = serviceLogPath(store.root);
   try {
     if (statSync(log).size < capBytes) return;
   } catch {
@@ -94,7 +99,21 @@ export function rotateLogs(store: Store, capBytes = 1024 * 1024): void {
 }
 
 export function logPath(store: Store): string {
-  return join(serviceDir(store), "service.log");
+  return serviceLogPath(store.root);
+}
+
+/** Runs the ledger believes are executing. A restart would kill them, so an
+ *  explicit `quirks daemon restart` refuses while any exists (QK-SRV-006). */
+export function runsInFlight(store: Store): string[] {
+  try {
+    return loadRuns(store)
+      .filter((run) => run.status === "running")
+      .map((run) => run.id);
+  } catch {
+    // A corrupt runs file is not evidence that nothing is running — refuse to
+    // claim the coast is clear.
+    return ["<unreadable runs record>"];
+  }
 }
 
 export interface StartedDaemon {
@@ -109,10 +128,25 @@ export function startDaemon(store: Store, port = portForRoot(store.root)): Start
   const instanceId = randomUUID();
   const app = createApp(store);
 
+  // The code THIS process compiled at startup, captured now — after this point
+  // edits to src/ cannot change what this process runs, which is the whole
+  // problem QK-SRV-006 exists to make visible.
+  const code = codeIdentity();
+  const startedAt = new Date().toISOString();
+
   // /health confirms an attach reached the right daemon: id, version, and the
-  // ROOT it serves — attaching to another repo's daemon must be detectable.
+  // ROOT it serves — attaching to another repo's daemon must be detectable. It
+  // also reports code identity, so a client can tell whether what it is about to
+  // read was produced by the code it is reading (QK-SRV-006).
   app.get("/health", (c) =>
-    c.json({ id: instanceId, version: VERSION, root: store.root }),
+    c.json({
+      id: instanceId,
+      version: VERSION,
+      root: store.root,
+      startedAt,
+      code,
+      runsInFlight: runsInFlight(store),
+    }),
   );
 
   const server = Bun.serve({
@@ -123,6 +157,17 @@ export function startDaemon(store: Store, port = portForRoot(store.root)): Start
   // Port 0 asks the OS for an ephemeral port — report the one actually bound.
   const boundPort = server.port ?? port;
 
+  // Shut down on request. Loopback-only, and the spec's posture for this tool is
+  // explicitly "no adversarial hardening" (docs/specs/daemon-lifecycle.md).
+  // Stopping via the socket rather than a pid keeps liveness the socket's job.
+  app.post("/shutdown", (c) => {
+    setTimeout(() => {
+      server.stop(true);
+      process.exit(0);
+    }, 20);
+    return c.json({ stopping: true, instanceId, pid: process.pid });
+  });
+
   mkdirSync(serviceDir(store), { recursive: true });
   rotateLogs(store);
   const record: DaemonRecord = {
@@ -131,9 +176,10 @@ export function startDaemon(store: Store, port = portForRoot(store.root)): Start
     version: VERSION,
     root: store.root,
     pid: process.pid,
-    startedAt: new Date().toISOString(),
+    startedAt,
+    code,
   };
-  saveJsonFile(join(serviceDir(store), "daemon.json"), record);
+  saveJsonFile(daemonRecordPath(store.root), record);
 
   return { port: boundPort, instanceId, stop: () => server.stop(true) };
 }
