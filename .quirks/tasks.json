@@ -92,7 +92,7 @@
     {
       "id": "QK-COMP-003",
       "title": "the companion becomes a service client",
-      "status": "blocked",
+      "status": "open",
       "dependsOn": [
         "QK-COMP-001",
         "QK-COMP-002"
@@ -107,13 +107,10 @@
       "sourceRefs": [],
       "needsDesign": true,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-27T21:04:51.280Z",
-      "updatedAt": "2026-07-27T21:04:51.318Z",
-      "statusDetail": {
-        "blockedReason": "needs the Bun+Hono service — bootstrap step 4",
-        "priorStatus": "open"
-      }
+      "updatedAt": "2026-07-28T12:52:02.152Z",
+      "statusDetail": {}
     },
     {
       "id": "QK-SRV-001",
