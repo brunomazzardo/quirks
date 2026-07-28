@@ -1717,7 +1717,7 @@
     {
       "id": "QK-MONO-003",
       "title": "apps/server — store + HTTP service on Effect",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-MONO-002"
       ],
@@ -1739,11 +1739,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": true,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:04.827Z",
-      "updatedAt": "2026-07-28T21:02:37.024Z",
+      "updatedAt": "2026-07-28T21:29:18.167Z",
       "statusDetail": {
-        "claimedBy": "opus-5"
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: Effect 4 store+ops+HTTP in apps/server (1.5k lines + 53 tests, 7 files). Legacy-diff by implementer: 9/9 reads byte-identical, 29/33 writes identical (4 diffs = deliberate RunRouting seam for QK-MONO-005). Carried defects as tests at file/shape/HTTP levels. Fable independent verify: tsgo clean, 53/53 tests, live smoke on port 45998 served real ledger (/health + /v1/goals rollup of 8) and 501s on harness/execute/resume. briefsPending adopted into contracts."
       }
     },
     {
@@ -1899,7 +1900,7 @@
     {
       "id": "QK-WB-002",
       "title": "apps/desktop — the Electron shell",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-WB-001"
       ],
@@ -1920,10 +1921,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:34.841Z",
-      "updatedAt": "2026-07-28T20:27:34.841Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T21:18:00.710Z",
+      "statusDetail": {
+        "claimedBy": "opus-5"
+      }
     },
     {
       "id": "QK-WB-003",
@@ -2000,7 +2003,7 @@
     {
       "id": "QK-WB-005",
       "title": "the shape pane — companion screens and preview",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-WB-001"
       ],
@@ -2029,10 +2032,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:57.738Z",
-      "updatedAt": "2026-07-28T20:27:57.738Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T21:18:00.765Z",
+      "statusDetail": {
+        "claimedBy": "sonnet-5"
+      }
     },
     {
       "id": "QK-WB-006",

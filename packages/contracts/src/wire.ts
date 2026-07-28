@@ -152,6 +152,9 @@ export interface RunStartDryResponse {
   /** The brief is being reshaped into a rendered Markdown document (S11);
    *  its wire type lands with the Effect service (QK-MONO-003/005). */
   briefs: unknown[];
+  /** Present while brief assembly is unported (QK-MONO-005), so an empty
+   *  `briefs` cannot read as "this run needs no briefs". */
+  briefsPending?: string;
 }
 
 export interface RunStartApprovedResponse {
