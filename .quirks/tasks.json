@@ -512,7 +512,7 @@
     {
       "id": "QK-SKILL-003",
       "title": "source-conflict + scope skills, and the brief's ground rules",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "recency precedence; escalation to a higher-tier model; workspace-is-decided, read why before deliverables, smallest complete change, never push",
@@ -523,10 +523,12 @@
       "sourceRefs": [],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-27T22:03:02.920Z",
-      "updatedAt": "2026-07-27T22:03:02.920Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T17:48:47.542Z",
+      "statusDetail": {
+        "evidence": "superseded by QK-SKILL-005 (rendered Markdown brief carrying the ground rules) and QK-SKILL-006 (source-conflict + scope skills). Shaped 2026-07-28; the supervisor escalation the spec describes is being recorded separately under QK-RUN because it needs a dispatch path, not a skill file. Decisions S11/S12 in docs/DECISIONS.md."
+      }
     },
     {
       "id": "QK-SKILL-004",
@@ -1101,6 +1103,188 @@
       "statusDetail": {
         "evidence": "Authorization is free: probeAuth runs each runner's own status command — claude auth status (loggedIn), codex doctor --json (a checks entry with category=auth), cursor-agent status --format json (isAuthenticated). Only an explicit boolean counts; anything else is unknown and changes nothing, so a missing subcommand never takes a working harness out of service. A free check may demote to no or enrich the detail; only a real dispatch promotes to yes. canonicalModel() resolves aliases and decorated ids to one identity, closing a false-independence hole: 'opus' derived family 'opus' while cursor's claude-opus-5-thinking-high derived 'claude', so two names for one model passed the reviewer-independence guard (88 of cursor's 193 published models are claude-*). sonnet vs opus stays independent. cursor rows corrected: mechanical stays blank because composer-2.5 publishes no tier ladder (operator chose composer over the gpt-5.3-codex ladder to keep three distinct identities), and the 'no effort flag' comment was wrong. 232 tests pass across five consecutive runs, tsc clean; verified against the real CLIs — all three read authed=yes."
       }
+    },
+    {
+      "id": "QK-SKILL-005",
+      "title": "the brief becomes a rendered Markdown document carrying the ground rules",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "render the brief as Markdown with the assembled facts embedded, replacing the raw JSON.stringify an agent receives today",
+        "inline the four ground rules verbatim: the workspace is already decided — do not ask, begin; read the repository instructions and the goal's why before the deliverables; smallest complete change; never push",
+        "instruct the agent to read the source-conflict and scope skills at a vendor-neutral path (S12: inline the rules, reference the judgment)",
+        "one delivery shape across all three runners — today claude gets a bare path, codex gets inlined JSON, cursor gets a read-instruction"
+      ],
+      "acceptanceCriteria": [
+        "every brief contains all four ground rules verbatim",
+        "the assembled facts stay machine-readable for quirks report — rendering must not lose them",
+        "claude's prompt instructs the agent, never a bare file path with no verb (buildClaudeArgv today)",
+        "codex's inlined prompt is the rendered brief, not a JSON dump",
+        "a brief over codex's 100 KiB inline ceiling still delivers the ground rules"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "quirks run --dry-run prints a rendered brief, not JSON"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        },
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        },
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "risk": "protocol: the brief's shape becomes a contract that quirks report (QK-REP-001) and the parent both depend on",
+      "revision": 1,
+      "createdAt": "2026-07-28T17:48:36.146Z",
+      "updatedAt": "2026-07-28T17:48:36.146Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SKILL-006",
+      "title": "source-conflict and scope — the brief's judgment skills",
+      "status": "open",
+      "dependsOn": [
+        "QK-SKILL-005"
+      ],
+      "deliverables": [
+        "source-conflict skill: recency precedence — the most recently changed source wins, never a fixed ladder; the pin is the baseline that makes 'this changed' computable, not an alternative to reading current",
+        "scope skill: smallest complete change; what is in scope; when to stop and surface rather than widen",
+        "authored in .claude/skills/, reachable via the .agents/skills directory symlink (S10)",
+        "written to serve both an implementer reading them inline today and a supervisor holding them once escalation exists"
+      ],
+      "acceptanceCriteria": [
+        "the brief's reference resolves — a test asserts the referenced skill paths exist",
+        "neither skill repeats the ground rules the brief already inlines",
+        "both are reachable from .claude/skills and .agents/skills",
+        "precedence is stated as recency, never a fixed ladder — on v1's real dates a ladder put the stalest source on top"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        },
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "revision": 1,
+      "createdAt": "2026-07-28T17:48:36.242Z",
+      "updatedAt": "2026-07-28T17:48:36.242Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-RUN-008",
+      "title": "supervisor escalation — a higher-tier model decides whether a source diff invalidates the task",
+      "status": "open",
+      "dependsOn": [
+        "QK-SKILL-006"
+      ],
+      "deliverables": [
+        "dispatch a supervisor per task at execute time, gated on at least one changed source (brief.ts sourceFact already computes changed) — an unchanged task costs zero dispatches",
+        "wire requiredTierForRole('supervisor'), which returns principal and today has no caller anywhere",
+        "the supervisor holds the source-conflict skill; recency orders what it flags",
+        "its verdict is quote-verified through the existing resolveVerdict — a claim of 'nothing invalidated' must quote the diff it read",
+        "invalidated OR indeterminate blocks that task, in both run modes; never release, because a released task re-escalates and loops",
+        "--skip-escalation on the run as an explicit operator override, recorded in the run record",
+        "plan-time warning that N tasks have changed sources and will escalate, via the existing planWarnings"
+      ],
+      "acceptanceCriteria": [
+        "detection is never made by the agent doing the work — a mechanical-tier implementer must not judge its own brief",
+        "a supervisor failure, timeout, or unquotable answer never proceeds as if no conflict existed",
+        "an invalidated or indeterminate task is blocked, never released — no retry loop",
+        "a task whose sources are all unchanged triggers no supervisor dispatch at all",
+        "autonomous mode still blocks on invalidation: autonomy means not waiting for approval, not ignoring a finding",
+        "--skip-escalation is visible in the run record, never a silent default"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "a run whose pinned source moved shows the escalation and the resulting block"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        },
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "high",
+      "risk": "protocol: a new dispatch role ahead of the implementer. A wrong failure mapping either blocks every run with a moved source, or silently works against a stale brief",
+      "revision": 1,
+      "createdAt": "2026-07-28T18:03:43.101Z",
+      "updatedAt": "2026-07-28T18:03:43.101Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SRV-007",
+      "title": "quirks task update — refine an un-started task, and make supersede a real link",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "quirks task update <id> with propose's flag vocabulary: --title --deliverable --criterion --verify --source --depends-on --effort --risk",
+        "arrays replace wholesale when passed and are untouched when omitted — the same flag means the same thing as on propose",
+        "clear the flags: --no-needs-design, --no-needs-breakdown, --no-future",
+        "--if-revision <n> for optimistic concurrency, matching claim/block/complete/release",
+        "bounded to open and blocked: refuse completed (history) and refuse claimed (something is working against that brief now)",
+        "--supersedes <id> on propose plus a supersedes field on Task, so retire-and-replace is queryable data instead of free text inside --evidence",
+        "POST route so the CLI stays an HTTP client; revision and updatedAt bump on every update (S3)"
+      ],
+      "acceptanceCriteria": [
+        "updating a completed task is refused, and the error names supersede as the path",
+        "updating a claimed task is refused, and the error names release as the path",
+        "an omitted array field is left untouched; a passed one replaces the array wholly",
+        "clearing needs-design is refused unless the task has at least one deliverable — a task cannot be declared designed while it has nothing to build",
+        "an --if-revision mismatch is refused, naming the current revision",
+        "revision and updatedAt bump on every successful update, never operator-supplied",
+        "quirks task show surfaces the supersedes link as data"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "quirks task update QK-HARN-001 --risk … clears the stale risk this verb's absence left behind"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        },
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "b3ecf7786d5e22c0ed67ec96949bc808a3a8c959"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "risk": "protocol: this is the ledger's integrity boundary. A wrong status gate would let a completed task's promises be rewritten after the agent was already judged against them",
+      "revision": 1,
+      "createdAt": "2026-07-28T18:11:39.163Z",
+      "updatedAt": "2026-07-28T18:11:39.163Z",
+      "statusDetail": {}
     }
   ]
 }
