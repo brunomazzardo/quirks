@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#fcfcfc" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
+    <script>
+      // Resolve the theme before first paint so the shell never flashes light
+      // chrome on a dark system. QK-WB-006 owns the real theme surface; this
+      // only needs to put `.dark` on <html> early enough to matter.
+      (() => {
+        try {
+          const stored = window.localStorage.getItem("quirks:theme");
+          const theme = stored === "light" || stored === "dark" ? stored : "system";
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.classList.toggle(
+            "dark",
+            theme === "dark" || (theme === "system" && prefersDark),
+          );
+        } catch {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+    <style>
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+    <title>Quirks</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

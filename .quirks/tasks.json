@@ -1717,7 +1717,7 @@
     {
       "id": "QK-MONO-003",
       "title": "apps/server — store + HTTP service on Effect",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-MONO-002"
       ],
@@ -1739,10 +1739,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": true,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:04.827Z",
-      "updatedAt": "2026-07-28T20:27:04.827Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T21:02:37.024Z",
+      "statusDetail": {
+        "claimedBy": "opus-5"
+      }
     },
     {
       "id": "QK-MONO-004",
@@ -1865,7 +1867,7 @@
     {
       "id": "QK-WB-001",
       "title": "apps/web scaffold — React, TanStack Router, Tailwind 4, shadcn on base-ui, atom-react",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-MONO-002"
       ],
@@ -1886,10 +1888,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:34.769Z",
-      "updatedAt": "2026-07-28T20:27:34.769Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T21:16:15.438Z",
+      "statusDetail": {
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: t3code web mirrored trimmed (no Clerk/relay/proxy — do-NOT-build); TanStack file routes + react-compiler + Tailwind 4 + shadcn-on-base-ui button; three-pane Ledger|Terminal|Shape shell; GoalRollup imported type-only (D3a). Verified independently: tsgo clean, vp build 1.18s, 2 unit tests pass, dev server DOM-verified in headless Chrome by implementer"
+      }
     },
     {
       "id": "QK-WB-002",
