@@ -277,7 +277,7 @@
     {
       "id": "QK-RUN-002",
       "title": "the brief: CLI assembles facts",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "task facts, goal why/doneWhen, base/candidate commits, per-source pin vs HEAD with the diff and last-changed dates, operator notes, instructions hash"
@@ -294,10 +294,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.396Z",
-      "updatedAt": "2026-07-27T22:03:02.396Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T13:02:48.354Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Brief assembler expands the QK-RUN-001 skeleton: per sourceRef pin vs HEAD with git diff + last-changed dates (null pin → incomparable, never fabricated unchanged); git.baseCommit = HEAD; candidate/worktree null until dispatch; operatorNotes option; instructionsHash = sha256 over CLAUDE.md, AGENTS.md, and .claude/skills/*/SKILL.md. Acceptance: the pin is compared and the diff reaches the agent. Suite 60/60, tsc clean."
+      }
     },
     {
       "id": "QK-RUN-003",
