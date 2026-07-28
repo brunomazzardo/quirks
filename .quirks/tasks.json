@@ -148,7 +148,7 @@
     {
       "id": "QK-SRV-002",
       "title": "daemon lifecycle: bind-or-attach, logs, health",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "bind success = you are the daemon, EADDRINUSE = attach",
@@ -169,10 +169,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.147Z",
-      "updatedAt": "2026-07-27T22:03:02.147Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T12:46:07.254Z",
+      "statusDetail": {
+        "claimedBy": "claude, live session with Bruno",
+        "evidence": "Bind-or-attach on Bun.serve: bind success = you are the daemon, second bind on the held port throws (the socket is the mutex, no pid file anywhere in the liveness path). GET /health carries instance id, version, AND the served root so an attach to the wrong repo's daemon is detectable. Advisory daemon.json: absent → null, corrupt or wrong-shaped → StoreCorruptError, never read as empty. processAlive treats EPERM as alive (QK-RUN-012 class, tested with fake kill). Startup log rotation (1MB cap, keep 2). Hidden 'quirks serve' verb. 11 daemon tests; suite 44/44; tsc clean."
+      }
     },
     {
       "id": "QK-SRV-003",

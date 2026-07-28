@@ -137,6 +137,27 @@ task
   .option("--if-revision <n>", "fail if the task moved past this revision")
   .action(taskRelease);
 
+program
+  .command("serve", { hidden: true })
+  .description("run the service in the foreground (the CLI autostarts this detached)")
+  .option("--port <port>", "override the derived per-repo port")
+  .action((opts: { port?: string }) => {
+    const { openStore } = require("./store/store.ts");
+    const { startDaemon, portForRoot } = require("./service/daemon.ts");
+    const store = openStore();
+    const port = opts.port ? Number.parseInt(opts.port, 10) : portForRoot(store.root);
+    try {
+      const daemon = startDaemon(store, port);
+      console.log(JSON.stringify({ type: "daemon-started", port: daemon.port, instanceId: daemon.instanceId, root: store.root }));
+    } catch (err) {
+      if ((err as { code?: string }).code === "EADDRINUSE") {
+        console.error(`quirks: a daemon already holds port ${port} — attach instead of binding twice`);
+        process.exit(1);
+      }
+      throw err;
+    }
+  });
+
 for (const coming of ["run", "status", "report", "harness"]) {
   program
     .command(coming, { hidden: true })
