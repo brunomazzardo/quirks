@@ -1,5 +1,7 @@
 // Thin client behind stop-server.sh: end the shape session on the quirks
 // daemon. Never kills the daemon — only clears the companion session.
+//
+// Lives with the skill (QK-MONO-007); run under node (>=24.13, type stripping).
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";

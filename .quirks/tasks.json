@@ -1846,7 +1846,7 @@
     {
       "id": "QK-MONO-007",
       "title": "delete the bun-era src/ — green sweep",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-MONO-004",
         "QK-MONO-005",
@@ -1869,10 +1869,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:17.402Z",
-      "updatedAt": "2026-07-28T20:27:17.402Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T23:36:44.096Z",
+      "statusDetail": {
+        "claimedBy": "fable-5",
+        "evidence": "Fable-executed cutover: 33 legacy bun daemons stopped (1 live + 32 orphans), root quirks script flipped to node apps/server/src/bin.ts, shape session scripts moved into the skill and repointed at the Effect daemon (smoke: ensure+end green), src/ + test/ + bun.lock + root tsconfig deleted, bun-era root deps dropped, vite ignores cleaned. Workspace sweep green: 5/5 typecheck, 388 tests (319 server + 51 web + 18 desktop), lint clean. New CLI autostarted the Effect daemon on 47301; goal rollup byte-identical across the cutover; /health serves code identity from apps/server src"
+      }
     },
     {
       "id": "QK-WB-001",

@@ -5,8 +5,7 @@
   "description": "A local control plane for planning, dispatching, and understanding agent work.",
   "type": "module",
   "scripts": {
-    "quirks": "bun run src/main.ts",
-    "test:legacy": "bun test",
+    "quirks": "node apps/server/src/bin.ts",
     "dev:desktop": "vp run --filter @quirks/desktop dev",
     "start:desktop": "vp run --filter @quirks/desktop start",
     "dist:desktop": "vp run --filter @quirks/desktop dist",
@@ -19,15 +18,9 @@
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check"
   },
-  "dependencies": {
-    "commander": "^15.0.0",
-    "hono": "^4.12.32"
-  },
   "devDependencies": {
-    "@types/bun": "^1.2.0",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "typescript": "^5.6.0",
     "vite-plus": "catalog:"
   },
   "engines": {

@@ -7,7 +7,4 @@
 # accepted as no-ops so existing skill muscle memory does not break.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# scripts → shape → skills → .claude → repo root
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-
-exec bun "$REPO_ROOT/src/shape/start-session.ts" "$@"
+exec node "$SCRIPT_DIR/start-session.ts" "$@"

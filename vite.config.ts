@@ -16,8 +16,6 @@ export default defineConfig({
       "**/dist-electron/**",
       "**/.{idea,git,cache,output,temp}/**",
       "apps/workbench/**",
-      "src/**",
-      "test/**",
     ],
     hookTimeout: 60_000,
     testTimeout: 60_000,
@@ -28,8 +26,6 @@ export default defineConfig({
     ignorePatterns: [
       ".quirks/**",
       "apps/workbench/**",
-      "src/**",
-      "test/**",
       "docs/**",
       ".claude/**",
       ".agents/**",
@@ -47,8 +43,6 @@ export default defineConfig({
     ignorePatterns: [
       ".quirks/**",
       "apps/workbench/**",
-      "src/**",
-      "test/**",
       "docs/**",
       ".claude/**",
       ".agents/**",

@@ -150,10 +150,11 @@
         "only the store boundary in apps/server touches .quirks",
         "CLAUDE.md conventions rewritten to pnpm/vite-plus/tsgo/oxlint/Node; bun-era src/ deleted"
       ],
-      "state": "active",
-      "revision": 1,
+      "state": "done",
+      "revision": 2,
       "createdAt": "2026-07-28T20:25:37.364Z",
-      "updatedAt": "2026-07-28T20:25:37.364Z"
+      "updatedAt": "2026-07-28T23:36:44.785Z",
+      "stateReason": "All doneWhen asserted: t3code layout with vp typecheck/test/lint green (388 tests); quirks is one Effect artifact in apps/server serving every verb against the unchanged .quirks ledger (byte-identical rollup across cutover); contracts imported type-only; only the store touches .quirks; CLAUDE.md rewritten; bun-era src deleted"
     },
     {
       "id": "QK-WB",

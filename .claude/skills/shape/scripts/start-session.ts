@@ -1,5 +1,8 @@
 // Thin client behind start-server.sh: ensure the quirks daemon, open one
 // shape session for this repo, optionally open the browser. No second process.
+//
+// Lives with the skill (QK-MONO-007): the daemon it ensures is the Effect
+// server in apps/server; run under node (>=24.13, type stripping).
 
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -26,7 +29,8 @@ function portForRoot(root: string): number {
   return 45000 + (h.readUInt32BE(0) % 15000);
 }
 
-const MAIN = fileURLToPath(new URL("../main.ts", import.meta.url));
+// scripts -> shape -> skills -> .claude -> repo root, then the server bin.
+const BIN = fileURLToPath(new URL("../../../../apps/server/src/bin.ts", import.meta.url));
 
 async function health(base: string): Promise<{ root: string } | null> {
   try {
@@ -47,7 +51,7 @@ async function ensureDaemon(root: string, port: number): Promise<string> {
     }
     return base;
   }
-  const child = spawn(process.execPath, [MAIN, "serve"], {
+  const child = spawn(process.execPath, [BIN, "serve"], {
     cwd: root,
     detached: true,
     stdio: "ignore",
@@ -55,7 +59,7 @@ async function ensureDaemon(root: string, port: number): Promise<string> {
   });
   child.unref();
   for (let i = 0; i < 40; i++) {
-    await Bun.sleep(100);
+    await new Promise((resolve) => setTimeout(resolve, 100));
     const h = await health(base);
     if (h) {
       if (h.root !== root) throw new Error(`port ${port} is serving ${h.root}, not ${root}`);
