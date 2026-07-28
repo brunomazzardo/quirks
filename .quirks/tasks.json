@@ -1779,7 +1779,7 @@
     {
       "id": "QK-MONO-005",
       "title": "runner, harness, ops — the honesty machinery on Effect",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-MONO-003"
       ],
@@ -1800,10 +1800,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:17.261Z",
-      "updatedAt": "2026-07-28T20:27:17.261Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T21:29:18.305Z",
+      "statusDetail": {
+        "claimedBy": "opus-5"
+      }
     },
     {
       "id": "QK-MONO-006",
@@ -2003,7 +2005,7 @@
     {
       "id": "QK-WB-005",
       "title": "the shape pane — companion screens and preview",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-WB-001"
       ],
@@ -2032,11 +2034,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:57.738Z",
-      "updatedAt": "2026-07-28T21:18:00.765Z",
+      "updatedAt": "2026-07-28T21:35:14.361Z",
       "statusDetail": {
-        "claimedBy": "sonnet-5"
+        "claimedBy": "sonnet-5",
+        "evidence": "Sonnet-implemented, Fable-reviewed: shape pane with no-cors service probe, SSE liveness dot, iframe + open-in-new-tab, right-edge show tab; Terminal+Shape share a flex-[2] sub-row so hiding Shape grows Terminal only (QK-NAT-008). serviceBaseUrl(): VITE_QUIRKS_URL else derived port 47301 for this checkout. Verified: tsgo clean, build green, 7 unit tests. Finding recorded: legacy /shape/ sends X-Frame-Options DENY — iframe blocked cross-origin; fix = same-origin proxy (QK-WB-003) + SAMEORIGIN header on Effect server (QK-MONO-004 lane)"
       }
     },
     {

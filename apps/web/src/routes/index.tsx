@@ -1,8 +1,9 @@
 import type { GoalRollup } from "@quirks/contracts";
 import { createFileRoute } from "@tanstack/react-router";
-import { ListChecks, Shapes, SquareTerminal } from "lucide-react";
+import { ListChecks, SquareTerminal } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { ShapePane } from "~/components/shape-pane";
 import { Button } from "~/components/ui/button";
 
 export const Route = createFileRoute("/")({
@@ -57,17 +58,22 @@ function WorkbenchRoute() {
         </Button>
       </Pane>
 
-      <Pane title="Terminal" icon={<SquareTerminal />} taskId="QK-WB-004">
-        <p className="font-mono text-xs text-muted-foreground">
-          pty sessions, xterm rendering, scrollback.
-        </p>
-      </Pane>
+      {/*
+        Terminal and Shape share a nested row rather than each taking a plain
+        third of the outer row — mirroring the native `rightSplit` (Terminal +
+        Shape only; Ledger's `leftSplit` is independent). Hiding Shape
+        (QK-NAT-008) then hands its share back to Terminal specifically,
+        not to Ledger.
+      */}
+      <div className="flex min-w-0 flex-[2] gap-3">
+        <Pane title="Terminal" icon={<SquareTerminal />} taskId="QK-WB-004">
+          <p className="font-mono text-xs text-muted-foreground">
+            pty sessions, xterm rendering, scrollback.
+          </p>
+        </Pane>
 
-      <Pane title="Shape" icon={<Shapes />} taskId="QK-WB-005">
-        <p className="font-mono text-xs text-muted-foreground">
-          shaping companion — goals and tasks out, never a plan document.
-        </p>
-      </Pane>
+        <ShapePane />
+      </div>
     </div>
   );
 }
