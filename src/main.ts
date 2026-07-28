@@ -17,9 +17,7 @@ import {
   taskShow,
 } from "./cli/task.ts";
 import { CliError } from "./cli/output.ts";
-import { ConflictError, NotFoundError, ValidationError } from "./ops/errors.ts";
-import { StoreCorruptError } from "./store/json-file.ts";
-import { TransitionError } from "./store/transitions.ts";
+import { ServiceError } from "./cli/client.ts";
 
 const collect = (value: string, prev: string[]): string[] => [...prev, value];
 
@@ -169,16 +167,9 @@ for (const coming of ["run", "status", "report", "harness"]) {
 }
 
 try {
-  program.parse();
+  await program.parseAsync();
 } catch (err) {
-  if (
-    err instanceof CliError ||
-    err instanceof TransitionError ||
-    err instanceof StoreCorruptError ||
-    err instanceof ValidationError ||
-    err instanceof NotFoundError ||
-    err instanceof ConflictError
-  ) {
+  if (err instanceof CliError || err instanceof ServiceError) {
     console.error(`quirks: ${err.message}`);
     process.exit(1);
   }

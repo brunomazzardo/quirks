@@ -1,28 +1,26 @@
-// The task verbs: flag parsing and rendering only — the logic lives in
-// src/ops, shared with the service routes.
+// The task verbs: flag parsing and rendering only — every byte of data goes
+// through the HTTP client. No store import may ever appear in this file.
 
-import { openStore } from "../store/store.ts";
-import { ValidationError } from "../ops/errors.ts";
-import {
-  blockTask,
-  claimTask,
-  completeTask,
-  getTask,
-  listTasks,
-  proposeTask,
-  releaseTask,
-} from "../ops/tasks.ts";
-import type { Task } from "../store/types.ts";
+import { request, ServiceError } from "./client.ts";
 import { emitJson, emitRead, table } from "./output.ts";
+
+interface TaskDto {
+  id: string;
+  status: string;
+  title: string;
+  needsDesign: boolean;
+  needsBreakdown: boolean;
+  future?: boolean;
+}
 
 function parseIfRevision(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const n = Number.parseInt(value, 10);
-  if (Number.isNaN(n)) throw new ValidationError(`--if-revision wants a number, got ${JSON.stringify(value)}`);
+  if (Number.isNaN(n)) throw new ServiceError(`--if-revision wants a number, got ${JSON.stringify(value)}`);
   return n;
 }
 
-function flagMarks(t: Task): string {
+function flagMarks(t: TaskDto): string {
   return [
     t.needsDesign ? "design?" : "",
     t.needsBreakdown ? "breakdown?" : "",
@@ -32,7 +30,7 @@ function flagMarks(t: Task): string {
     .join(" ");
 }
 
-export function taskPropose(opts: {
+export async function taskPropose(opts: {
   title: string;
   goal?: string;
   dependsOn: string[];
@@ -45,9 +43,9 @@ export function taskPropose(opts: {
   needsDesign: boolean;
   needsBreakdown: boolean;
   future: boolean;
-}): void {
+}): Promise<void> {
   emitJson(
-    proposeTask(openStore(), {
+    await request("POST", "/v1/tasks", {
       title: opts.title,
       goal: opts.goal,
       dependsOn: opts.dependsOn,
@@ -64,11 +62,11 @@ export function taskPropose(opts: {
   );
 }
 
-export function taskList(opts: { json: boolean; goal?: string; status?: string }): void {
-  const filter: { goal?: string; status?: string } = {};
-  if (opts.goal !== undefined) filter.goal = opts.goal;
-  if (opts.status !== undefined) filter.status = opts.status;
-  const tasks = listTasks(openStore(), filter);
+export async function taskList(opts: { json: boolean; goal?: string; status?: string }): Promise<void> {
+  const params = new URLSearchParams({ limit: "1000" });
+  if (opts.goal !== undefined) params.set("goal", opts.goal);
+  if (opts.status !== undefined) params.set("status", opts.status);
+  const tasks: TaskDto[] = (await request("GET", `/v1/tasks?${params}`)).items;
   emitRead(tasks, opts.json, () =>
     tasks.length === 0
       ? "no tasks"
@@ -79,17 +77,17 @@ export function taskList(opts: { json: boolean; goal?: string; status?: string }
   );
 }
 
-export function taskShow(id: string): void {
+export async function taskShow(id: string): Promise<void> {
   // The detail view is the JSON either way — every field matters and a table hides some.
-  emitJson(getTask(openStore(), id));
+  emitJson(await request("GET", `/v1/tasks/${encodeURIComponent(id)}`));
 }
 
-export function taskClaim(
+export async function taskClaim(
   id: string,
   opts: { by?: string; force: boolean; ifRevision?: string },
-): void {
+): Promise<void> {
   emitJson(
-    claimTask(openStore(), id, {
+    await request("POST", `/v1/tasks/${encodeURIComponent(id)}/claim`, {
       by: opts.by,
       force: opts.force,
       ifRevision: parseIfRevision(opts.ifRevision),
@@ -97,12 +95,12 @@ export function taskClaim(
   );
 }
 
-export function taskBlock(
+export async function taskBlock(
   id: string,
   opts: { reason?: string; until?: string; ifRevision?: string },
-): void {
+): Promise<void> {
   emitJson(
-    blockTask(openStore(), id, {
+    await request("POST", `/v1/tasks/${encodeURIComponent(id)}/block`, {
       reason: opts.reason,
       until: opts.until,
       ifRevision: parseIfRevision(opts.ifRevision),
@@ -110,10 +108,19 @@ export function taskBlock(
   );
 }
 
-export function taskComplete(id: string, opts: { evidence?: string; ifRevision?: string }): void {
-  emitJson(completeTask(openStore(), id, { evidence: opts.evidence, ifRevision: parseIfRevision(opts.ifRevision) }));
+export async function taskComplete(id: string, opts: { evidence?: string; ifRevision?: string }): Promise<void> {
+  emitJson(
+    await request("POST", `/v1/tasks/${encodeURIComponent(id)}/complete`, {
+      evidence: opts.evidence,
+      ifRevision: parseIfRevision(opts.ifRevision),
+    }),
+  );
 }
 
-export function taskRelease(id: string, opts: { ifRevision?: string }): void {
-  emitJson(releaseTask(openStore(), id, { ifRevision: parseIfRevision(opts.ifRevision) }));
+export async function taskRelease(id: string, opts: { ifRevision?: string }): Promise<void> {
+  emitJson(
+    await request("POST", `/v1/tasks/${encodeURIComponent(id)}/release`, {
+      ifRevision: parseIfRevision(opts.ifRevision),
+    }),
+  );
 }

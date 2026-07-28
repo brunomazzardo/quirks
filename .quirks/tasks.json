@@ -202,7 +202,7 @@
     {
       "id": "QK-SRV-004",
       "title": "the CLI becomes an HTTP client with autostart",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-SRV-001",
         "QK-SRV-002"
@@ -218,10 +218,13 @@
       "sourceRefs": [],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.230Z",
-      "updatedAt": "2026-07-27T22:03:02.230Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T12:51:09.136Z",
+      "statusDetail": {
+        "claimedBy": "claude, live session with Bruno",
+        "evidence": "Every CLI verb now rides HTTP: src/cli/client.ts does bind-or-attach from the client side (probe /health; on silence spawn a detached 'quirks serve' and poll; verify the answering daemon serves THIS root — a foreign daemon is refused loudly, tested with an impostor server). No direct-store fallback: src/cli imports nothing from src/store or src/ops, enforced by a structural test that greps the sources. Corrupt store arrives as a 500 through the wire and still prints the corrupt teaching. Live-verified in this repo: goal list autostarted the daemon (port 47301) and read the rollup over the socket. Suite 46/46, tsc clean."
+      }
     },
     {
       "id": "QK-SRV-005",
