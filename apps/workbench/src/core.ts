@@ -1,8 +1,9 @@
 // Quirks workbench — NAT-005 terminal; NAT-007/008 ledger + Shape;
-// NAT-009 theme; NAT-010 chrome; NAT-011 ledger polish.
+// NAT-009 theme; NAT-010 chrome; NAT-012 inbox; NAT-013 ledger collapse;
+// NAT-014 focus modes.
 
 import { Cmd, Sub, asciiBytes } from "@native-sdk/core";
-import { type ChromeButtons, type ChromeInsets } from "@native-sdk/core/events";
+import { type ChromeButtons, type ChromeInsets, type KeyEvent } from "@native-sdk/core/events";
 
 // ts_core_host.zig: pub const pty_key_base: u64 = 0x5453_5054_0000_0000.
 // NEVER write 0x5453505400000000 as a TS literal — emitter String(n) orphans the pty.
@@ -11,11 +12,12 @@ function shellPtyBinding(): number {
 }
 
 const GOALS_URL = asciiBytes("http://127.0.0.1:47301/v1/goals?limit=50");
-const TASKS_URL = asciiBytes("http://127.0.0.1:47301/v1/tasks?limit=50");
+const TASKS_URL = asciiBytes("http://127.0.0.1:47301/v1/tasks?limit=100");
 const PREVIEW_URL = asciiBytes("http://127.0.0.1:47301/shape/");
 
-/// Tall hidden-inset titlebar floor (soundboard-ts / notes pattern).
 const HEADER_NATURAL_HEIGHT = 52;
+const LEFT_OPEN = 0.24;
+const RIGHT_SHAPE = 0.65;
 
 export type ShellState = "output" | "exit";
 export type ShellExitReason =
@@ -25,16 +27,44 @@ export type ShellExitReason =
   | "rejected"
   | "spawn_failed";
 
-/** Badge tone for density-A status chips. */
 export type StatusTone = "neutral" | "live" | "done";
 
-/** Density-A ledger row (QK-NAT-007 / 011). */
-export interface LedgerRow {
+export type LayoutMode = "split" | "ledger" | "terminal" | "shape";
+export type StatusFilter = "active" | "done" | "all";
+export type GoalFilter = "progress" | "idle" | "all";
+export type Ordering = "updated" | "status";
+export type RowKind = "header" | "task";
+
+export interface GoalRow {
   readonly id: Uint8Array;
   readonly title: Uint8Array;
   readonly status: Uint8Array;
   readonly tone: StatusTone;
+}
+
+export interface TaskRow {
+  readonly id: Uint8Array;
+  readonly title: Uint8Array;
+  readonly status: Uint8Array;
+  readonly tone: StatusTone;
+  readonly goalId: Uint8Array;
+  readonly updatedAt: Uint8Array;
+}
+
+/** Flat inbox rows: goal headers + tasks (NAT-012). */
+export interface InboxRow {
+  readonly id: Uint8Array;
+  readonly rowKind: RowKind;
+  readonly title: Uint8Array;
+  readonly detail: Uint8Array;
+  readonly status: Uint8Array;
+  readonly tone: StatusTone;
   readonly selected: boolean;
+  readonly sectionOpen: boolean;
+}
+
+export interface SectionCollapse {
+  readonly id: Uint8Array;
 }
 
 export interface HistoryEntry {
@@ -50,13 +80,18 @@ export interface Model {
   readonly termRows: number;
   readonly leftSplit: number;
   readonly rightSplit: number;
-  readonly goals: readonly LedgerRow[];
-  readonly tasks: readonly LedgerRow[];
-  readonly goalsOpen: boolean;
-  readonly tasksOpen: boolean;
-  readonly selectedGoalId: Uint8Array;
+  readonly goals: readonly GoalRow[];
+  readonly tasks: readonly TaskRow[];
+  readonly inbox: readonly InboxRow[];
+  readonly collapsedSections: readonly SectionCollapse[];
   readonly selectedTaskId: Uint8Array;
+  readonly statusFilter: StatusFilter;
+  readonly goalFilter: GoalFilter;
+  readonly ordering: Ordering;
+  readonly viewOpen: boolean;
+  readonly ledgerOpen: boolean;
   readonly shapeOpen: boolean;
+  readonly layoutMode: LayoutMode;
   readonly ledgerStatus: Uint8Array;
   readonly previewUrl: Uint8Array;
   readonly reloadToken: number;
@@ -92,11 +127,34 @@ export type Msg =
   | { readonly kind: "tasksOk"; readonly status: number; readonly body: Uint8Array }
   | { readonly kind: "tasksErr"; readonly reason: Uint8Array }
   | { readonly kind: "refreshTick"; readonly at: number }
-  | { readonly kind: "toggleGoals" }
-  | { readonly kind: "toggleTasks" }
+  | { readonly kind: "toggleView" }
+  | { readonly kind: "closeView" }
+  | { readonly kind: "filterStatusActive" }
+  | { readonly kind: "filterStatusDone" }
+  | { readonly kind: "filterStatusAll" }
+  | { readonly kind: "filterGoalProgress" }
+  | { readonly kind: "filterGoalIdle" }
+  | { readonly kind: "filterGoalAll" }
+  | { readonly kind: "orderByUpdated" }
+  | { readonly kind: "orderByStatus" }
+  | { readonly kind: "resetFilters" }
+  | { readonly kind: "collapseAll" }
+  | { readonly kind: "toggleSection"; readonly id: Uint8Array }
+  | { readonly kind: "toggleLedger" }
   | { readonly kind: "toggleShape" }
-  | { readonly kind: "selectGoal"; readonly id: Uint8Array }
+  | { readonly kind: "focusLedger" }
+  | { readonly kind: "focusTerminal" }
+  | { readonly kind: "focusShape" }
+  | { readonly kind: "exitFocus" }
   | { readonly kind: "selectTask"; readonly id: Uint8Array }
+  | {
+      readonly kind: "key";
+      readonly key: string;
+      readonly shift: boolean;
+      readonly control: boolean;
+      readonly alt: boolean;
+      readonly super: boolean;
+    }
   | {
       readonly kind: "chrome_changed";
       readonly insets: ChromeInsets;
@@ -104,17 +162,84 @@ export type Msg =
       readonly tabsProjected: boolean;
     };
 
-export const viewUnbound = ["shell", "chrome_changed"] as const;
+export const viewUnbound = [
+  "shell",
+  "chrome_changed",
+  "key",
+  "goals",
+  "tasks",
+  "collapsedSections",
+] as const;
 
-/** Window-chrome geometry — header IS the titlebar (NAT-010). */
 export const chromeMsg = "chrome_changed";
 
-export function goalCount(model: Model): number {
-  return model.goals.length;
+export function keyMsg(ev: KeyEvent): Msg | null {
+  if (ev.key === "escape") return { kind: "exitFocus" };
+  return null;
 }
 
-export function taskCount(model: Model): number {
-  return model.tasks.length;
+export function inboxCount(model: Model): number {
+  let n = 0;
+  for (let i = 0; i < model.inbox.length; i += 1) {
+    if (model.inbox[i]!.rowKind === "task") n += 1;
+  }
+  return n;
+}
+
+export function viewDirty(model: Model): boolean {
+  return (
+    model.statusFilter !== "active" ||
+    model.goalFilter !== "progress" ||
+    model.ordering !== "updated"
+  );
+}
+
+export function layoutIsSplit(model: Model): boolean {
+  return model.layoutMode === "split";
+}
+
+export function layoutIsLedger(model: Model): boolean {
+  return model.layoutMode === "ledger";
+}
+
+export function layoutIsTerminal(model: Model): boolean {
+  return model.layoutMode === "terminal";
+}
+
+export function layoutIsShape(model: Model): boolean {
+  return model.layoutMode === "shape";
+}
+
+export function statusActive(model: Model): boolean {
+  return model.statusFilter === "active";
+}
+
+export function statusDone(model: Model): boolean {
+  return model.statusFilter === "done";
+}
+
+export function statusAll(model: Model): boolean {
+  return model.statusFilter === "all";
+}
+
+export function goalProgress(model: Model): boolean {
+  return model.goalFilter === "progress";
+}
+
+export function goalIdle(model: Model): boolean {
+  return model.goalFilter === "idle";
+}
+
+export function goalAll(model: Model): boolean {
+  return model.goalFilter === "all";
+}
+
+export function orderUpdated(model: Model): boolean {
+  return model.ordering === "updated";
+}
+
+export function orderStatus(model: Model): boolean {
+  return model.ordering === "status";
 }
 
 function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
@@ -141,6 +266,15 @@ function bytesIncludes(hay: Uint8Array, needle: Uint8Array): boolean {
   return false;
 }
 
+function asciiLower(bytes: Uint8Array): Uint8Array {
+  const out = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i += 1) {
+    const c = bytes[i]!;
+    out[i] = c >= 65 && c <= 90 ? c + 32 : c;
+  }
+  return out;
+}
+
 function statusTone(tag: Uint8Array): StatusTone {
   const lower = asciiLower(tag);
   if (
@@ -154,41 +288,325 @@ function statusTone(tag: Uint8Array): StatusTone {
     bytesIncludes(lower, asciiBytes("progress")) ||
     bytesIncludes(lower, asciiBytes("claimed")) ||
     bytesIncludes(lower, asciiBytes("running")) ||
-    bytesIncludes(lower, asciiBytes("live"))
+    bytesIncludes(lower, asciiBytes("live")) ||
+    bytesIncludes(lower, asciiBytes("blocked"))
   ) {
     return "live";
   }
   return "neutral";
 }
 
-function asciiLower(bytes: Uint8Array): Uint8Array {
-  const out = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i += 1) {
-    const c = bytes[i]!;
-    out[i] = c >= 65 && c <= 90 ? c + 32 : c;
+function taskIsActive(status: Uint8Array): boolean {
+  const lower = asciiLower(status);
+  if (
+    bytesIncludes(lower, asciiBytes("completed")) ||
+    bytesIncludes(lower, asciiBytes("done")) ||
+    bytesIncludes(lower, asciiBytes("closed"))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function taskIsDone(status: Uint8Array): boolean {
+  return !taskIsActive(status);
+}
+
+function goalIsProgress(state: Uint8Array): boolean {
+  return bytesIncludes(asciiLower(state), asciiBytes("progress"));
+}
+
+function goalIsIdle(state: Uint8Array): boolean {
+  return !goalIsProgress(state);
+}
+
+/** Derive goal id from task id: QK-NAT-012 → QK-NAT; bare QK-001 → empty. */
+function goalIdOfTask(taskId: Uint8Array): Uint8Array {
+  let lastDash = -1;
+  for (let i = 0; i < taskId.length; i += 1) {
+    if (taskId[i]! === 45) lastDash = i;
+  }
+  if (lastDash <= 0) return asciiBytes("");
+  let allDigits = lastDash + 1 < taskId.length;
+  for (let i = lastDash + 1; i < taskId.length; i += 1) {
+    const c = taskId[i]!;
+    if (c < 48 || c > 57) {
+      allDigits = false;
+      break;
+    }
+  }
+  if (!allDigits) return asciiBytes("");
+  const prefix = taskId.slice(0, lastDash);
+  if (prefix.length < 4) return asciiBytes("");
+  if (prefix[0]! !== 81 || prefix[1]! !== 75 || prefix[2]! !== 45) return asciiBytes("");
+  if (prefix[3]! < 65 || prefix[3]! > 90) return asciiBytes("");
+  return prefix;
+}
+
+function headerId(goalId: Uint8Array): Uint8Array {
+  if (goalId.length === 0) return asciiBytes("h:other");
+  return goalId;
+}
+
+function sectionCollapsed(
+  collapsed: readonly SectionCollapse[],
+  sectionId: Uint8Array,
+): boolean {
+  for (let i = 0; i < collapsed.length; i += 1) {
+    if (bytesEq(collapsed[i]!.id, sectionId)) return true;
+  }
+  return false;
+}
+
+function compareBytesDesc(a: Uint8Array, b: Uint8Array): number {
+  const n = a.length < b.length ? a.length : b.length;
+  for (let i = 0; i < n; i += 1) {
+    if (a[i] !== b[i]) return b[i]! - a[i]!;
+  }
+  return b.length - a.length;
+}
+
+function compareStatus(a: Uint8Array, b: Uint8Array): number {
+  return compareBytesDesc(asciiLower(b), asciiLower(a)) * -1;
+}
+
+function sortTasks(tasks: readonly TaskRow[], ordering: Ordering): readonly TaskRow[] {
+  if (ordering === "updated") {
+    return tasks.toSorted((a, b) => {
+      const c = compareBytesDesc(a.updatedAt, b.updatedAt);
+      if (c !== 0) return c;
+      return compareBytesDesc(a.id, b.id);
+    });
+  }
+  return tasks.toSorted((a, b) => {
+    const c = compareStatus(a.status, b.status);
+    if (c !== 0) return c;
+    return compareBytesDesc(a.id, b.id);
+  });
+}
+
+function filterTasks(
+  tasks: readonly TaskRow[],
+  statusFilter: StatusFilter,
+): readonly TaskRow[] {
+  const out: TaskRow[] = [];
+  for (let i = 0; i < tasks.length; i += 1) {
+    const t = tasks[i]!;
+    if (statusFilter === "active" && !taskIsActive(t.status)) continue;
+    if (statusFilter === "done" && !taskIsDone(t.status)) continue;
+    out[out.length] = t;
   }
   return out;
 }
 
-function withSelection(
-  rows: readonly LedgerRow[],
-  selectedId: Uint8Array,
-): readonly LedgerRow[] {
-  const out: LedgerRow[] = [];
-  for (let i = 0; i < rows.length; i += 1) {
-    const r = rows[i]!;
+function tasksForGoal(tasks: readonly TaskRow[], goalId: Uint8Array): readonly TaskRow[] {
+  const out: TaskRow[] = [];
+  for (let i = 0; i < tasks.length; i += 1) {
+    const t = tasks[i]!;
+    if (bytesEq(t.goalId, goalId)) out[out.length] = t;
+  }
+  return out;
+}
+
+function tasksWithoutGoal(tasks: readonly TaskRow[]): readonly TaskRow[] {
+  const out: TaskRow[] = [];
+  for (let i = 0; i < tasks.length; i += 1) {
+    const t = tasks[i]!;
+    if (t.goalId.length === 0) out[out.length] = t;
+  }
+  return out;
+}
+
+function findGoal(
+  goals: readonly GoalRow[],
+  goalId: Uint8Array,
+): GoalRow | null {
+  for (let i = 0; i < goals.length; i += 1) {
+    if (bytesEq(goals[i]!.id, goalId)) return goals[i]!;
+  }
+  return null;
+}
+
+/** Unique non-empty goal ids present in tasks, stable order of first appearance. */
+function goalIdsFromTasks(tasks: readonly TaskRow[]): readonly Uint8Array[] {
+  const out: Uint8Array[] = [];
+  for (let i = 0; i < tasks.length; i += 1) {
+    const gid = tasks[i]!.goalId;
+    if (gid.length === 0) continue;
+    let seen = false;
+    for (let j = 0; j < out.length; j += 1) {
+      if (bytesEq(out[j]!, gid)) {
+        seen = true;
+        break;
+      }
+    }
+    if (!seen) out[out.length] = gid;
+  }
+  return out;
+}
+
+function rebuildInbox(
+  goals: readonly GoalRow[],
+  tasks: readonly TaskRow[],
+  statusFilter: StatusFilter,
+  goalFilter: GoalFilter,
+  ordering: Ordering,
+  collapsed: readonly SectionCollapse[],
+  selectedTaskId: Uint8Array,
+): readonly InboxRow[] {
+  const filtered = filterTasks(tasks, statusFilter);
+  const out: InboxRow[] = [];
+  const goalIds = goalIdsFromTasks(filtered);
+
+  for (let gi = 0; gi < goalIds.length; gi += 1) {
+    const gid = goalIds[gi]!;
+    const g = findGoal(goals, gid);
+    const state = g !== null ? g.status : asciiBytes("in progress");
+    if (goalFilter === "progress" && !goalIsProgress(state)) continue;
+    if (goalFilter === "idle" && !goalIsIdle(state)) continue;
+    const group = tasksForGoal(filtered, gid);
+    if (group.length === 0) continue;
+    const sid = headerId(gid);
+    const isExpanded = !sectionCollapsed(collapsed, sid);
+    const title = g !== null && g.title.length > 0 ? g.title : gid;
+    const tone = g !== null ? g.tone : statusTone(state);
     out[out.length] = {
-      id: r.id,
-      title: r.title,
-      status: r.status,
-      tone: r.tone,
-      selected: bytesEq(r.id, selectedId),
+      id: sid,
+      rowKind: "header",
+      title: title,
+      detail: state,
+      status: asciiBytes(""),
+      tone: tone,
+      selected: false,
+      sectionOpen: isExpanded,
     };
+    if (isExpanded) {
+      const sorted = sortTasks(group, ordering);
+      for (let ti = 0; ti < sorted.length; ti += 1) {
+        const t = sorted[ti]!;
+        out[out.length] = {
+          id: t.id,
+          rowKind: "task",
+          title: t.title,
+          detail: t.id,
+          status: t.status,
+          tone: t.tone,
+          selected: bytesEq(t.id, selectedTaskId),
+          sectionOpen: true,
+        };
+      }
+    }
   }
+
+  const other = tasksWithoutGoal(filtered);
+  if (other.length > 0) {
+    const sid = headerId(asciiBytes(""));
+    const isExpanded = !sectionCollapsed(collapsed, sid);
+    out[out.length] = {
+      id: sid,
+      rowKind: "header",
+      title: asciiBytes("Other"),
+      detail: asciiBytes("no goal"),
+      status: asciiBytes(""),
+      tone: "neutral",
+      selected: false,
+      sectionOpen: isExpanded,
+    };
+    if (isExpanded) {
+      const sorted = sortTasks(other, ordering);
+      for (let ti = 0; ti < sorted.length; ti += 1) {
+        const t = sorted[ti]!;
+        out[out.length] = {
+          id: t.id,
+          rowKind: "task",
+          title: t.title,
+          detail: t.id,
+          status: t.status,
+          tone: t.tone,
+          selected: bytesEq(t.id, selectedTaskId),
+          sectionOpen: true,
+        };
+      }
+    }
+  }
+
   return out;
 }
 
-function parseRows(body: Uint8Array, selectedId: Uint8Array): readonly LedgerRow[] {
+function withInbox(model: Model): Model {
+  return {
+    ...model,
+    inbox: rebuildInbox(
+      model.goals,
+      model.tasks,
+      model.statusFilter,
+      model.goalFilter,
+      model.ordering,
+      model.collapsedSections,
+      model.selectedTaskId,
+    ),
+  };
+}
+
+function applyLayout(model: Model): Model {
+  if (model.layoutMode === "ledger") {
+    return { ...model, leftSplit: 1.0, rightSplit: 1.0, ledgerOpen: true };
+  }
+  if (model.layoutMode === "terminal") {
+    return { ...model, leftSplit: 0, rightSplit: 1.0, ledgerOpen: false, shapeOpen: false };
+  }
+  if (model.layoutMode === "shape") {
+    return { ...model, leftSplit: 0, rightSplit: 0, ledgerOpen: false, shapeOpen: true };
+  }
+  const left = model.ledgerOpen ? LEFT_OPEN : 0;
+  const right = model.shapeOpen ? RIGHT_SHAPE : 1.0;
+  return { ...model, leftSplit: left, rightSplit: right };
+}
+
+/** Advance i past a JSON string that starts at body[i] === `"`. */
+function skipJsonString(body: Uint8Array, at: number): number {
+  let i = at + 1;
+  while (i < body.length) {
+    const c = body[i]!;
+    if (c === 92) {
+      i += 2;
+      continue;
+    }
+    if (c === 34) return i + 1;
+    i += 1;
+  }
+  return i;
+}
+
+/** End index (exclusive) of next top-level `{...}` at/after `from`, or -1. String-aware. */
+function nextJsonObjectEnd(body: Uint8Array, from: number): number {
+  let i = from;
+  while (i < body.length && body[i]! !== 123 && body[i]! !== 93) i += 1;
+  if (i >= body.length || body[i]! === 93) return -1;
+  let depth = 0;
+  while (i < body.length) {
+    const c = body[i]!;
+    if (c === 34) {
+      i = skipJsonString(body, i);
+      continue;
+    }
+    if (c === 123) depth += 1;
+    else if (c === 125) {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+function objectStartAt(body: Uint8Array, from: number, end: number): number {
+  let i = from;
+  while (i < end && body[i]! !== 123) i += 1;
+  return i;
+}
+
+function parseGoals(body: Uint8Array): readonly GoalRow[] {
   const itemsKey = asciiBytes('"items"');
   const itemsAt = body.indexOf(itemsKey);
   if (itemsAt < 0) return [];
@@ -197,38 +615,60 @@ function parseRows(body: Uint8Array, selectedId: Uint8Array): readonly LedgerRow
   if (i >= body.length) return [];
   i += 1;
 
-  const out: LedgerRow[] = [];
+  const out: GoalRow[] = [];
   while (i < body.length && out.length < 40) {
-    while (i < body.length && body[i]! !== 123 && body[i]! !== 93) i += 1;
-    if (i >= body.length || body[i]! === 93) break;
-    const start = i;
-    let depth = 0;
-    while (i < body.length) {
-      const c = body[i]!;
-      if (c === 123) depth += 1;
-      else if (c === 125) {
-        depth -= 1;
-        if (depth === 0) {
-          i += 1;
-          break;
-        }
-      }
-      i += 1;
-    }
-    const obj = body.slice(start, i);
+    const end = nextJsonObjectEnd(body, i);
+    if (end < 0) break;
+    const start = objectStartAt(body, i, end);
+    i = end;
+    const obj = body.slice(start, end);
     const id = jsonStringField(obj, asciiBytes('"id"'));
+    if (id.length === 0) continue;
+    if (bytesEq(id, asciiBytes("(no goal)"))) continue;
     const titleRaw = jsonStringField(obj, asciiBytes('"title"'));
-    const status = jsonStringField(obj, asciiBytes('"status"'));
     const state = jsonStringField(obj, asciiBytes('"state"'));
     const title = titleRaw.length > 0 ? titleRaw : id;
-    const tag = status.length > 0 ? status : state;
-    const label = tag.length > 0 ? tag : asciiBytes("—");
+    const label = state.length > 0 ? state : asciiBytes("—");
     out[out.length] = {
       id,
       title,
       status: label,
       tone: statusTone(label),
-      selected: bytesEq(id, selectedId),
+    };
+  }
+  return out;
+}
+
+function parseTasks(body: Uint8Array): readonly TaskRow[] {
+  const itemsKey = asciiBytes('"items"');
+  const itemsAt = body.indexOf(itemsKey);
+  if (itemsAt < 0) return [];
+  let i = itemsAt + itemsKey.length;
+  while (i < body.length && body[i]! !== 91) i += 1;
+  if (i >= body.length) return [];
+  i += 1;
+
+  const out: TaskRow[] = [];
+  while (i < body.length && out.length < 80) {
+    const end = nextJsonObjectEnd(body, i);
+    if (end < 0) break;
+    const start = objectStartAt(body, i, end);
+    i = end;
+    const obj = body.slice(start, end);
+    const id = jsonStringField(obj, asciiBytes('"id"'));
+    if (id.length === 0) continue;
+    const titleRaw = jsonStringField(obj, asciiBytes('"title"'));
+    const status = jsonStringField(obj, asciiBytes('"status"'));
+    const updatedAt = jsonStringField(obj, asciiBytes('"updatedAt"'));
+    const title = titleRaw.length > 0 ? titleRaw : id;
+    const label = status.length > 0 ? status : asciiBytes("—");
+    out[out.length] = {
+      id,
+      title,
+      status: label,
+      tone: statusTone(label),
+      goalId: goalIdOfTask(id),
+      updatedAt,
     };
   }
   return out;
@@ -250,6 +690,16 @@ function jsonStringField(obj: Uint8Array, key: Uint8Array): Uint8Array {
   return obj.slice(start, i);
 }
 
+function exitFocusModel(model: Model): Model {
+  if (model.layoutMode === "split" && !model.viewOpen) return model;
+  return applyLayout({
+    ...model,
+    layoutMode: "split",
+    ledgerOpen: true,
+    viewOpen: false,
+  });
+}
+
 export function initialModel(): [Model, Cmd<Msg>] {
   return [
     {
@@ -259,15 +709,20 @@ export function initialModel(): [Model, Cmd<Msg>] {
       outputBytes: 0,
       termCols: 80,
       termRows: 24,
-      leftSplit: 0.24,
+      leftSplit: LEFT_OPEN,
       rightSplit: 1.0,
       goals: [],
       tasks: [],
-      goalsOpen: true,
-      tasksOpen: true,
-      selectedGoalId: asciiBytes(""),
+      inbox: [],
+      collapsedSections: [],
       selectedTaskId: asciiBytes(""),
+      statusFilter: "active",
+      goalFilter: "progress",
+      ordering: "updated",
+      viewOpen: false,
+      ledgerOpen: true,
       shapeOpen: false,
+      layoutMode: "split",
       ledgerStatus: asciiBytes("loading"),
       previewUrl: PREVIEW_URL,
       reloadToken: 0,
@@ -307,51 +762,144 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
       }
       return { ...model, outputBytes: model.outputBytes + msg.bytes.length };
     case "leftResized":
+      if (model.layoutMode !== "split" || !model.ledgerOpen) {
+        return { ...model, leftSplit: model.leftSplit };
+      }
       return { ...model, leftSplit: msg.fraction };
     case "rightResized":
-      if (!model.shapeOpen) return { ...model, rightSplit: 1.0 };
-      return { ...model, rightSplit: msg.fraction };
-    case "toggleGoals":
-      return { ...model, goalsOpen: !model.goalsOpen };
-    case "toggleTasks":
-      return { ...model, tasksOpen: !model.tasksOpen };
-    case "toggleShape":
-      if (model.shapeOpen) {
-        return { ...model, shapeOpen: false, rightSplit: 1.0 };
+      if (model.layoutMode !== "split" || !model.shapeOpen) {
+        return { ...model, rightSplit: model.rightSplit };
       }
-      return { ...model, shapeOpen: true, rightSplit: 0.65 };
-    case "selectGoal":
-      return {
+      return { ...model, rightSplit: msg.fraction };
+    case "toggleView":
+      return { ...model, viewOpen: !model.viewOpen };
+    case "closeView":
+      return { ...model, viewOpen: false };
+    case "filterStatusActive":
+      return withInbox({ ...model, statusFilter: "active", viewOpen: false });
+    case "filterStatusDone":
+      return withInbox({ ...model, statusFilter: "done", viewOpen: false });
+    case "filterStatusAll":
+      return withInbox({ ...model, statusFilter: "all", viewOpen: false });
+    case "filterGoalProgress":
+      return withInbox({ ...model, goalFilter: "progress", viewOpen: false });
+    case "filterGoalIdle":
+      return withInbox({ ...model, goalFilter: "idle", viewOpen: false });
+    case "filterGoalAll":
+      return withInbox({ ...model, goalFilter: "all", viewOpen: false });
+    case "orderByUpdated":
+      return withInbox({ ...model, ordering: "updated", viewOpen: false });
+    case "orderByStatus":
+      return withInbox({ ...model, ordering: "status", viewOpen: false });
+    case "resetFilters":
+      return withInbox({
         ...model,
-        selectedGoalId: msg.id,
-        goals: withSelection(model.goals, msg.id),
-      };
+        statusFilter: "active",
+        goalFilter: "progress",
+        ordering: "updated",
+        viewOpen: false,
+      });
+    case "collapseAll": {
+      const ids: SectionCollapse[] = [];
+      for (let i = 0; i < model.inbox.length; i += 1) {
+        const row = model.inbox[i]!;
+        if (row.rowKind === "header") {
+          ids[ids.length] = { id: row.id };
+        }
+      }
+      return withInbox({ ...model, collapsedSections: ids, viewOpen: false });
+    }
+    case "toggleSection": {
+      const sectionId = msg.id;
+      const next: SectionCollapse[] = [];
+      let found = false;
+      for (let i = 0; i < model.collapsedSections.length; i += 1) {
+        const c = model.collapsedSections[i]!;
+        if (bytesEq(c.id, sectionId)) {
+          found = true;
+        } else {
+          next[next.length] = c;
+        }
+      }
+      if (!found) {
+        next[next.length] = { id: msg.id };
+      }
+      return withInbox({ ...model, collapsedSections: next });
+    }
+    case "toggleLedger":
+      if (model.layoutMode === "ledger") {
+        return applyLayout({ ...model, layoutMode: "split", ledgerOpen: true });
+      }
+      if (model.layoutMode !== "split") {
+        return applyLayout({ ...model, layoutMode: "split", ledgerOpen: true });
+      }
+      return applyLayout({ ...model, ledgerOpen: !model.ledgerOpen });
+    case "toggleShape":
+      if (model.layoutMode === "shape") {
+        return applyLayout({ ...model, layoutMode: "split", shapeOpen: true });
+      }
+      if (model.layoutMode !== "split") {
+        return applyLayout({ ...model, layoutMode: "split", shapeOpen: true });
+      }
+      return applyLayout({ ...model, shapeOpen: !model.shapeOpen });
+    case "focusLedger":
+      if (model.layoutMode === "ledger") {
+        return applyLayout({
+          ...model,
+          layoutMode: "split",
+          ledgerOpen: true,
+          viewOpen: false,
+        });
+      }
+      return applyLayout({ ...model, layoutMode: "ledger", viewOpen: false });
+    case "focusTerminal":
+      if (model.layoutMode === "terminal") {
+        return applyLayout({
+          ...model,
+          layoutMode: "split",
+          ledgerOpen: true,
+          viewOpen: false,
+        });
+      }
+      return applyLayout({ ...model, layoutMode: "terminal", viewOpen: false });
+    case "focusShape":
+      if (model.layoutMode === "shape") {
+        return applyLayout({
+          ...model,
+          layoutMode: "split",
+          shapeOpen: true,
+          ledgerOpen: true,
+          viewOpen: false,
+        });
+      }
+      return applyLayout({ ...model, layoutMode: "shape", viewOpen: false });
+    case "exitFocus":
+      return exitFocusModel(model);
     case "selectTask":
-      return {
-        ...model,
-        selectedTaskId: msg.id,
-        tasks: withSelection(model.tasks, msg.id),
-      };
+      return withInbox({ ...model, selectedTaskId: msg.id });
+    case "key":
+      if (msg.key === "escape") return exitFocusModel(model);
+      return model;
     case "goalsOk":
       if (msg.status < 200 || msg.status >= 300) {
         return { ...model, ledgerStatus: asciiBytes("goals HTTP error") };
       }
-      return {
+      return withInbox({
         ...model,
-        goals: parseRows(msg.body, model.selectedGoalId),
+        goals: parseGoals(msg.body),
         ledgerStatus: asciiBytes("live"),
-      };
+      });
     case "goalsErr":
       return { ...model, ledgerStatus: asciiBytes("daemon unreachable") };
     case "tasksOk":
       if (msg.status < 200 || msg.status >= 300) {
         return { ...model, ledgerStatus: asciiBytes("tasks HTTP error") };
       }
-      return {
+      return withInbox({
         ...model,
-        tasks: parseRows(msg.body, model.selectedTaskId),
+        tasks: parseTasks(msg.body),
         ledgerStatus: asciiBytes("live"),
-      };
+      });
     case "tasksErr":
       return { ...model, ledgerStatus: asciiBytes("daemon unreachable") };
     case "refreshTick":
@@ -371,3 +919,5 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
       };
   }
 }
+
+// rebuild-bump 1785264274

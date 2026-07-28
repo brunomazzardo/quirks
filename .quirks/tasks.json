@@ -496,7 +496,7 @@
     {
       "id": "QK-SKILL-002",
       "title": "breakdown skill (the needs-breakdown flow)",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [],
       "acceptanceCriteria": [],
@@ -504,10 +504,12 @@
       "sourceRefs": [],
       "needsDesign": true,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-27T22:03:02.884Z",
-      "updatedAt": "2026-07-27T22:03:02.884Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T18:49:34.289Z",
+      "statusDetail": {
+        "evidence": "superseded by QK-SKILL-007. Shaped 2026-07-28: breakdown is ONE skill with two callers, not an operator-only flow — the executor invokes the same judgment mid-run and its parts land as run-record subtasks. Half of what 002 implied was already sitting in QK-SKILL-004. Mechanism is QK-RUN-009. See S15."
+      }
     },
     {
       "id": "QK-SKILL-003",
@@ -533,7 +535,7 @@
     {
       "id": "QK-SKILL-004",
       "title": "execution skill — internal subtasks, structured for the report",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "agent records internal subtasks in the run record, in a shape quirks report renders — never ledger tasks mid-run"
@@ -543,10 +545,12 @@
       "sourceRefs": [],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-27T22:03:02.957Z",
-      "updatedAt": "2026-07-27T22:03:02.957Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T18:49:34.345Z",
+      "statusDetail": {
+        "evidence": "superseded by QK-RUN-009 (the subtask record and the run subtask verb) and QK-SKILL-007 (the breakdown skill's executor half). Shaped 2026-07-28: the decomposition is recorded UP FRONT so a crashed run still shows the denominator; an append-as-you-go log cannot distinguish 3 of 3 from 3 of 7. See S15."
+      }
     },
     {
       "id": "QK-NAT-001",
@@ -1327,6 +1331,212 @@
       "revision": 1,
       "createdAt": "2026-07-28T18:37:54.089Z",
       "updatedAt": "2026-07-28T18:37:54.089Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-012",
+      "title": "ledger inbox — group by goal, View menu filters",
+      "status": "claimed",
+      "dependsOn": [
+        "QK-NAT-011"
+      ],
+      "deliverables": [
+        "replace dual Goals/Tasks accordions with one goal-grouped task list plus an Other bucket for goal-less tasks",
+        "Cursor-style View control in the ledger header (not always-on chips): Grouping (default Goal), Ordering (default Updated), Filters for Status and Goal state",
+        "defaults: Status=Active (open/claimed/blocked), Goal state=In progress; amber indicator when filters leave default; trailing mono status column on rows"
+      ],
+      "acceptanceCriteria": [
+        "default view shows only active tasks under in-progress goals, grouped by goal, with Other only when matching tasks exist",
+        "View menu can reveal Done/All tasks and Idle/All goals without leaving the rail",
+        "no always-visible filter chip row in the default chrome"
+      ],
+      "verification": [
+        "native check",
+        "zig build -Dautomation=true && native automate wait && native automate screenshot main-canvas"
+      ],
+      "sourceRefs": [
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        },
+        {
+          "path": "apps/workbench/src/core.ts",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "core filter model + markup; keep under widget budget",
+      "risk": "native menus/popovers may be limited — fall back to a compact panel if SDK has no menu widget",
+      "revision": 2,
+      "createdAt": "2026-07-28T18:41:38.834Z",
+      "updatedAt": "2026-07-28T18:49:49.394Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-013",
+      "title": "ledger collapse — header toggle mirrors Shape",
+      "status": "claimed",
+      "dependsOn": [
+        "QK-NAT-008"
+      ],
+      "deliverables": [
+        "header Ledger control toggles the left rail closed/open the way Shape toggles the right pane",
+        "when closed, terminal (and Shape if open) reclaim the width; left split parks like Shape's 1x1/zero pattern"
+      ],
+      "acceptanceCriteria": [
+        "closing Ledger expands the center; reopening restores a usable ledger width",
+        "collapse is independent of focus mode (focus can still override later)"
+      ],
+      "verification": [
+        "native check"
+      ],
+      "sourceRefs": [
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        },
+        {
+          "path": "apps/workbench/src/core.ts",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "small — mirror shapeOpen/rightSplit for ledgerOpen/leftSplit",
+      "revision": 2,
+      "createdAt": "2026-07-28T18:41:38.910Z",
+      "updatedAt": "2026-07-28T18:49:49.403Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-014",
+      "title": "header focus modes — full-bleed Ledger / Terminal / Shape",
+      "status": "open",
+      "dependsOn": [
+        "QK-NAT-008",
+        "QK-NAT-013"
+      ],
+      "deliverables": [
+        "layout mode: split | ledger | terminal | shape; header controls drive focus",
+        "focus = one surface edge-to-edge under the chrome header; other panes hidden",
+        "same header control or Esc returns to split; v1 is header-only (no in-pane maximize)"
+      ],
+      "acceptanceCriteria": [
+        "Shape focus hides terminal and ledger; Terminal focus hides ledger and Shape; Ledger focus hides terminal and Shape",
+        "split mode still supports Ledger/Shape collapse from NAT-008/013"
+      ],
+      "verification": [
+        "native check"
+      ],
+      "sourceRefs": [
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        },
+        {
+          "path": "apps/workbench/src/core.ts",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        },
+        {
+          "path": "apps/workbench/wiring/ts_core_main.zig",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "layout state machine + split fractions + webview park/snap",
+      "risk": "webview and pty must survive hide/show without losing session",
+      "revision": 1,
+      "createdAt": "2026-07-28T18:41:38.987Z",
+      "updatedAt": "2026-07-28T18:41:38.987Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-RUN-009",
+      "title": "run subtasks — the decomposition an executor records, up front",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "RunTaskRecord.subtasks[]: the decomposition recorded UP FRONT, each with title, order and status, then status updated as work proceeds",
+        "a quirks run subtask verb over HTTP — the agent writes through the daemon, because an agent subprocess must not become a second writer into .quirks (only src/store touches it)",
+        "subtasks live only in the run record; no ledger task is ever created mid-run",
+        "a shape quirks report renders — this is a contract QK-REP-001 must honour"
+      ],
+      "acceptanceCriteria": [
+        "a crashed run still shows the DENOMINATOR: how many subtasks were intended, not only those completed — an append-as-you-go log cannot distinguish 3 of 3 from 3 of 7",
+        "no ledger task is created by an executor mid-run",
+        "the write path is CLI to HTTP to daemon; nothing outside src/store touches .quirks",
+        "the verb works from the agent's worktree — resolveRoot returns the main repo root today only because parent.ts makes worktrees with plain mkdirSync; a test pins this so real git worktrees cannot silently break every agent-initiated write",
+        "a partial or malformed write is reported, never silently dropped"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "a run that decomposes shows intended versus reached, including after the parent is killed"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        },
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "risk": "protocol: the subtask shape is a contract quirks report depends on, and the worktree root assumption is load-bearing for every agent-initiated ledger write",
+      "revision": 1,
+      "createdAt": "2026-07-28T18:49:23.230Z",
+      "updatedAt": "2026-07-28T18:49:23.230Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SKILL-007",
+      "title": "breakdown skill — one judgment, two callers, two terminal states",
+      "status": "open",
+      "dependsOn": [
+        "QK-RUN-009",
+        "QK-SKILL-005"
+      ],
+      "deliverables": [
+        "ONE skill stating the decomposition judgment once: what the parts are, their order, and when a task is small enough not to split",
+        "operator caller — a needs-breakdown ledger task becomes several ledger tasks, linked with --supersedes (QK-SRV-007)",
+        "executor caller mid-run — the parts become run-record subtasks via the run subtask verb, never ledger tasks",
+        "the skill makes which caller you are explicit, because the judgment is identical and only the terminal state differs",
+        "add its own reference to the rendered brief, so an executor knows the skill exists",
+        "authored in .claude/skills/, reachable via the .agents/skills symlink (S10)"
+      ],
+      "acceptanceCriteria": [
+        "one skill file, not two — the decomposition judgment is stated once",
+        "an executor following it never creates a ledger task",
+        "the operator path ends in ledger tasks; the executor path ends in run-record subtasks",
+        "the brief references it, and a test asserts the reference resolves",
+        "reachable from both .claude/skills and .agents/skills"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        },
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "9a45fe49d92c075789ae0820e97b5e4f09656b6b"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "revision": 1,
+      "createdAt": "2026-07-28T18:49:23.317Z",
+      "updatedAt": "2026-07-28T18:49:23.317Z",
       "statusDetail": {}
     }
   ]
