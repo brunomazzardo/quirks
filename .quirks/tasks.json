@@ -92,25 +92,31 @@
     {
       "id": "QK-COMP-003",
       "title": "the companion becomes a service client",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-COMP-001",
         "QK-COMP-002"
       ],
       "deliverables": [
-        "the screen loop as a route family on the quirks daemon; the vendored server retired"
+        "the screen loop as a route family on the quirks daemon; the vendored shape server retired",
+        "shape skill scripts become thin clients of the daemon (same port derivation as the CLI)"
       ],
       "acceptanceCriteria": [
-        "screens push and events read over the daemon's loopback HTTP with the 0600 token — no second server, no session-key scheme"
+        "screens push and events read over the daemon loopback HTTP — no second server, no session-key scheme",
+        "auth is deliberately deferred: routes are open on loopback for now; the 0600 token lands with QK-SRV-003 later, not as a companion blocker"
       ],
       "verification": [],
       "sourceRefs": [],
-      "needsDesign": true,
+      "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 3,
+      "revision": 6,
       "createdAt": "2026-07-27T21:04:51.280Z",
-      "updatedAt": "2026-07-28T12:52:02.152Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T13:33:20.243Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "103/103 suite green + tsc clean. Daemon serves /shape/ (page, SSE, events, fonts, files) and /v1/shape/{ensure,end,events,screens}; one session at .quirks/shape-sessions/current/; no session key; auth deferred to QK-SRV-003. start/stop-server.sh are thin clients of the quirks daemon (same port derivation); server.cjs retired. test/shape.test.ts covers ensure→push→click→end, SSE reload, file-write reload, retired stub."
+      },
+      "risk": "auth deferred with QK-SRV-003 — loopback-only bind is the interim; do not invent a companion-only secret"
     },
     {
       "id": "QK-SRV-001",
@@ -190,10 +196,10 @@
       "needsDesign": false,
       "needsBreakdown": false,
       "future": true,
-      "risk": "deferred by owner 2026-07-27 — loopback-only bind carries the interim; revisit before anything but localhost can reach the daemon",
-      "revision": 1,
+      "risk": "deferred by owner 2026-07-27 — loopback-only bind carries the interim; COMP-003 ships open routes and must not invent a parallel secret. Revisit before anything but localhost can reach the daemon.",
+      "revision": 2,
       "createdAt": "2026-07-27T22:03:02.193Z",
-      "updatedAt": "2026-07-27T22:03:02.193Z",
+      "updatedAt": "2026-07-28T13:26:29.139Z",
       "statusDetail": {}
     },
     {

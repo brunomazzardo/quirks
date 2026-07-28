@@ -21,6 +21,21 @@ import { assemblePlan, getRun, listRuns, startRun } from "../ops/runs.ts";
 import { executeRun, resumeRun } from "../run/parent.ts";
 import { defaultParentHooks } from "../run/hooks.ts";
 import type { RunMode } from "../store/types.ts";
+import {
+  contentFilePath,
+  endShapeSession,
+  ensureShapeSession,
+  fontPath,
+  hubFor,
+  notifyScreenChange,
+  pushScreen,
+  readEvents,
+  recordEvent,
+  renderShapePage,
+  startContentWatch,
+  stopContentWatch,
+} from "../shape/session.ts";
+import { readFileSync } from "node:fs";
 
 /** Paginate a list route: ?offset=&limit= (native-app budgets force it — the
  *  real v1 ledger sat at 82% of the 256 KiB fetch ceiling). */
@@ -213,6 +228,100 @@ export function createApp(store: Store): Hono {
     });
     const result = await resumeRun(store, c.req.param("id"), hooks);
     return c.json(result.run);
+  });
+
+  // ---- shape companion (QK-COMP-003) — open on loopback; auth is QK-SRV-003 ----
+  app.post("/v1/shape/ensure", (c) => {
+    const host = c.req.header("host") ?? "127.0.0.1";
+    const url = `http://${host}/shape/`;
+    const paths = ensureShapeSession(store.root, url);
+    startContentWatch(store.root);
+    return c.json({
+      url,
+      screen_dir: paths.contentDir,
+      state_dir: paths.stateDir,
+      session_dir: paths.sessionDir,
+    });
+  });
+
+  app.post("/v1/shape/end", (c) => {
+    stopContentWatch(store.root);
+    endShapeSession(store.root);
+    return c.json({ status: "ended" });
+  });
+
+  app.get("/v1/shape/events", (c) => c.json({ events: readEvents(store.root) }));
+
+  app.post("/v1/shape/screens", async (c) => {
+    const body = (await c.req.json()) as { name?: string; html?: string };
+    if (!body.name || typeof body.html !== "string") {
+      return c.json({ error: "name and html are required" }, 400);
+    }
+    ensureShapeSession(
+      store.root,
+      `http://${c.req.header("host") ?? "127.0.0.1"}/shape/`,
+    );
+    startContentWatch(store.root);
+    const result = pushScreen(store.root, body.name, body.html);
+    notifyScreenChange(store.root);
+    return c.json(result, 201);
+  });
+
+  app.get("/shape/", (c) =>
+    c.html(renderShapePage(store.root), 200, {
+      "Cache-Control": "no-store",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
+    }),
+  );
+
+  app.get("/shape/events-stream", (c) => {
+    const hub = hubFor(store.root);
+    const stream = hub.subscribe();
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+      },
+    });
+  });
+
+  app.post("/shape/event", async (c) => {
+    const text = await c.req.text();
+    if (text.length > 64 * 1024) return c.body(null, 413);
+    let event: unknown;
+    try {
+      event = JSON.parse(text);
+    } catch {
+      return c.json({ error: "invalid JSON" }, 400);
+    }
+    if (event && typeof event === "object" && "choice" in event && (event as { choice: unknown }).choice) {
+      recordEvent(store.root, event);
+    }
+    return c.body(null, 204);
+  });
+
+  app.get("/shape/fonts/:name", (c) => {
+    const fp = fontPath(c.req.param("name"));
+    if (!fp) return c.text("Not found", 404);
+    return new Response(readFileSync(fp), {
+      headers: {
+        "Content-Type": "font/woff2",
+        "Cache-Control": "private, max-age=86400",
+      },
+    });
+  });
+
+  app.get("/shape/files/:name", (c) => {
+    const fp = contentFilePath(store.root, c.req.param("name"));
+    if (!fp) return c.text("Not found", 404);
+    const ext = fp.toLowerCase().endsWith(".html")
+      ? "text/html; charset=utf-8"
+      : "application/octet-stream";
+    return new Response(readFileSync(fp), {
+      headers: { "Content-Type": ext, "Cache-Control": "no-store" },
+    });
   });
 
   return app;

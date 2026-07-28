@@ -5,8 +5,9 @@ looks and clicks, the session reads the clicks back. **A conversation surface on
 it shows things that do not exist yet, to help the operator decide. Ledger browsing,
 runs, and reports are the native app's job, never this.
 
-Adapted from Superpowers' visual companion (MIT). Vendored here until QK-COMP-003
-folds it into the quirks daemon.
+Adapted from Superpowers' visual companion (MIT). Served by the quirks daemon at
+`/shape/` (QK-COMP-003) — one session per repo, same loopback port as the CLI. Auth
+is deferred to QK-SRV-003; routes are open on loopback for now.
 
 ## Offering it
 
@@ -74,14 +75,14 @@ explain-and-recommend rule carried into the medium.
 .claude/skills/shape/scripts/start-server.sh --project-dir "$(git rev-parse --show-toplevel)" --open
 ```
 
-Returns JSON: `url` (carries `?key=…` — always give the operator the complete URL),
-`screen_dir`, `state_dir`. Session files live under `.quirks/shape-sessions/`
-(gitignored); the server auto-exits after 4h idle (`--idle-timeout-minutes` to change).
-If launched in the background without captured stdout, read `$state_dir/server-info`.
+Returns JSON: `url` (stable: `http://127.0.0.1:<quirks-port>/shape/`), `screen_dir`,
+`state_dir`, `session_dir`. Session files live under `.quirks/shape-sessions/current/`
+(gitignored). The quirks daemon is started if needed; there is no second server and no
+session key. If stdout was not captured, read `$state_dir/server-info`.
 
 Before every push, confirm `$state_dir/server-info` exists and `$state_dir/server-stopped`
-does not. If it stopped, rerun start-server.sh with the same `--project-dir` — it reuses
-the port and key, so the operator's open tab reconnects by itself.
+does not. If it stopped, rerun start-server.sh with the same `--project-dir` — same URL,
+so the operator's open tab reconnects.
 
 ## The loop
 
@@ -153,4 +154,5 @@ mini-tree inside. The recommended side carries `data-recommended` + the badge, f
 .claude/skills/shape/scripts/stop-server.sh <session_dir>
 ```
 
-Project-dir sessions keep their files for later reference; `/tmp` sessions are deleted.
+Ends the shape session on the daemon (writes `server-stopped`). Does **not** stop the
+quirks daemon. Project-dir session files are kept for later reference.

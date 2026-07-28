@@ -12,13 +12,14 @@
         }
       },
       "doneWhen": [
-        "a shape session can push screens to the operator's browser and read back clicks with nothing but the skill vendored in this repo",
-        "the companion is a client of the quirks daemon (same port, same 0600 token) and can sit side-by-side with the native app"
+        "a shape session can push screens to the operator browser and read back clicks with nothing but the skill vendored in this repo",
+        "the companion is a client of the quirks daemon (same port) and can sit side-by-side with the native app — token auth is QK-SRV-003, not a companion gate"
       ],
-      "state": "active",
-      "revision": 1,
+      "state": "done",
+      "revision": 3,
       "createdAt": "2026-07-27T21:04:51.125Z",
-      "updatedAt": "2026-07-27T21:04:51.125Z"
+      "updatedAt": "2026-07-28T13:33:33.604Z",
+      "stateReason": "COMP-001..003 complete: companion lives on the quirks daemon at /shape/, skill scripts are thin clients, auth deferred to SRV-003"
     },
     {
       "id": "QK-SRV",

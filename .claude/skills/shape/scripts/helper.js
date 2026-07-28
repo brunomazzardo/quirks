@@ -1,9 +1,9 @@
 // Client-side helper for the shape companion. Adapted from Superpowers'
-// visual-companion helper (MIT) — session key renamed, API exposed as
-// window.shape. Transport diverges from upstream: SSE + fetch POST instead of
-// WebSocket, because the Bun-run server has no upgrade support (see server.cjs).
+// visual-companion helper (MIT) — API exposed as window.shape. Served under
+// /shape/ on the quirks daemon (QK-COMP-003); no session-key scheme.
 (function() {
   const TOMBSTONE_AFTER_MS = 15000; // show the "paused" overlay after this long disconnected
+  const BASE = '/shape';
 
   function escapeHtml(v) {
     return String(v)
@@ -73,27 +73,12 @@
   let everConnected = false;
   let tombstoneShown = false;
 
-  function sessionKey() {
-    try {
-      return window.sessionStorage && window.sessionStorage.getItem('shape-session-key');
-    } catch (e) {}
-    return null;
-  }
-
-  // The key rides the query string when we have it; otherwise the HttpOnly
-  // session cookie (set at bootstrap) authenticates same-origin requests.
-  function keyedPath(pathname) {
-    const key = sessionKey();
-    return pathname + (key ? '?key=' + encodeURIComponent(key) : '');
+  function shapePath(pathname) {
+    return BASE + pathname;
   }
 
   function reloadAfterRecovery() {
-    const key = sessionKey();
-    if (key) {
-      window.location.replace('/?key=' + encodeURIComponent(key));
-    } else {
-      window.location.reload();
-    }
+    window.location.replace(BASE + '/');
   }
 
   // Reflect connection state in the frame's status pill (absent on full-doc screens).
@@ -129,7 +114,7 @@
 
   function connect() {
     setStatus(everConnected ? 'reconnecting' : 'connecting');
-    es = new EventSource(keyedPath('/events-stream'));
+    es = new EventSource(shapePath('/events-stream'));
 
     es.onopen = () => {
       const recovered = tombstoneShown;
@@ -140,9 +125,6 @@
       const queued = eventQueue;
       eventQueue = [];
       queued.forEach(e => sendEvent(e));
-      // Recovered from a tombstoned outage (e.g. the server restarted on the same
-      // port) — reload through the keyed bootstrap when possible so the cookie is
-      // refreshed before the visible URL returns to bare /.
       if (recovered) reloadAfterRecovery();
     };
 
@@ -167,7 +149,7 @@
 
   function sendEvent(event) {
     if (!event.timestamp) event.timestamp = Date.now();
-    fetch(keyedPath('/event'), {
+    fetch(shapePath('/event'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(event)
