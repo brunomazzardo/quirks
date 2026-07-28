@@ -42,8 +42,10 @@ Its `main` sits 406 commits ahead of `origin/main` and has never been pushed.
 
 ## Status
 
-Bootstrap steps 1 and 2 are built: the JSON store and the `goal` / `task` verbs
-(`bun run src/main.ts help`; `bun test`), and the **`shape` skill**
-(`.claude/skills/shape/`) — the interactive session that turns intent into recorded goals
-and tasks, never a plan document. Next: step 3, loading `docs/DECISIONS.md` in as goals
-and tasks — v2's backlog created by v2.
+Bootstrap steps 1–4 are built: the store and the `goal` / `task` verbs; the **`shape`
+skill** and its browser companion (`.claude/skills/shape/`); the backlog loaded from
+`docs/DECISIONS.md` by Quirks itself; and the **service** — Hono routes over the store,
+bind-or-attach daemon, and a CLI that is an HTTP client with autostart and no
+direct-store fallback (`bun run src/main.ts help`; `bun test`). The ledger is the plan:
+`quirks goal list`. Next: the native workbench (`QK-NAT`, blocked on an upstream SDK gap
+— see `docs/upstream/native-terminal-gap/`), then runs (`QK-RUN`).
