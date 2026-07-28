@@ -146,15 +146,60 @@ export interface RunStartBody extends RunPlanBody {
   yes?: boolean;
 }
 
+/** One pinned source, compared against HEAD at brief-assembly time — the pin
+ *  is the baseline that makes "this changed" computable, and the diff reaches
+ *  the agent (D17). */
+export interface SourceFact {
+  path: string;
+  pinnedCommit: string | null;
+  /** HEAD at assembly time — the other end of the pin comparison. */
+  headCommit: string | null;
+  /** True when the file's content at pin differs from content at HEAD. */
+  changed: boolean;
+  /** `git diff pin..HEAD -- path`, empty string when unchanged, null when incomparable. */
+  diff: string | null;
+  /** ISO author/committer date of the last change to the path at the pin (or null). */
+  pinnedLastChanged: string | null;
+  headLastChanged: string | null;
+}
+
+/** The brief an agent receives: CLI supplies facts, skills supply judgment
+ *  (D17). Note S11 reshapes the rendering into a Markdown document; this is
+ *  the assembled fact structure underneath. */
+export interface TaskBrief {
+  task: {
+    id: string;
+    title: string;
+    goal: string | null;
+    deliverables: string[];
+    acceptanceCriteria: string[];
+    verification: string[];
+    dependsOn: string[];
+    effort?: string;
+    risk?: string;
+    revision: number;
+  };
+  goal: {
+    id: string;
+    title: string;
+    why: Goal["why"];
+    doneWhen: string[];
+  } | null;
+  sources: SourceFact[];
+  git: {
+    baseCommit: string | null;
+    candidateCommit: string | null;
+    worktree: string | null;
+  };
+  operatorNotes: string;
+  /** sha256:… of the instruction files the agent would hold at this moment. */
+  instructionsHash: string;
+}
+
 export interface RunStartDryResponse {
   dryRun: true;
   plan: RunPlan;
-  /** The brief is being reshaped into a rendered Markdown document (S11);
-   *  its wire type lands with the Effect service (QK-MONO-003/005). */
-  briefs: unknown[];
-  /** Present while brief assembly is unported (QK-MONO-005), so an empty
-   *  `briefs` cannot read as "this run needs no briefs". */
-  briefsPending?: string;
+  briefs: TaskBrief[];
 }
 
 export interface RunStartApprovedResponse {

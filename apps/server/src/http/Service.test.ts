@@ -1,7 +1,7 @@
 // The service routes, exercised in-process through the Effect router's Fetch
 // handler — every CLI verb has a route equivalent, list routes paginate, errors
 // map to honest statuses, and the three QK-MONO-005 routes refuse loudly.
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { makeWebHandler } from "../App.ts";
@@ -152,10 +152,13 @@ describe("service routes", () => {
     const dry = await app.post("/v1/runs", { name: "svc run", goal: "QK-RN", dryRun: true });
     expect(dry.status).toBe(200);
     const dryBody = await dry.json();
-    // Brief assembly is QK-MONO-005 — the empty list says so rather than
-    // pretending the run needs no briefs.
-    expect(dryBody.briefs).toEqual([]);
-    expect(dryBody.briefsPending).toContain("QK-MONO-005");
+    // Brief assembly landed in QK-MONO-005: a brief per planned task, in plan
+    // order, and no `briefsPending` because nothing is pending.
+    expect(dryBody.briefs.map((b: { task: { id: string } }) => b.task.id)).toEqual([
+      t1.id,
+      "QK-RN-002",
+    ]);
+    expect(dryBody.briefsPending).toBeUndefined();
 
     const created = await app.post("/v1/runs", { name: "svc run", goal: "QK-RN", yes: true });
     expect(created.status).toBe(201);
@@ -166,16 +169,64 @@ describe("service routes", () => {
     expect(listed.total).toBe(1);
   });
 
-  it("the QK-MONO-005 routes exist and refuse — 501, never a fake success", async () => {
+  it("the three QK-MONO-005 routes answer for real — no 501 left on the surface", async () => {
     const app = appFor();
-    for (const res of [
-      await app.post("/v1/runs/run-001/execute", {}),
-      await app.post("/v1/runs/run-001/resume", {}),
-      await app.get("/v1/harness"),
-    ]) {
-      expect(res.status).toBe(501);
-      expect(await res.json()).toEqual({ error: "ported in QK-MONO-005" });
+
+    // GET /v1/harness: no ?probe, so nothing is executed and every row says so.
+    const harness = await app.get("/v1/harness");
+    expect(harness.status).toBe(200);
+    const view = await harness.json();
+    expect(view.probed).toBe(false);
+    expect(view.harnesses.map((h: { runner: string }) => h.runner)).toEqual([
+      "claude",
+      "codex",
+      "cursor",
+    ]);
+    expect(view.tiers.map((t: { tier: string }) => t.tier)).toEqual([
+      "mechanical",
+      "standard",
+      "high",
+      "principal",
+    ]);
+    // Empty ledger: nothing has been dispatched, and no row may claim otherwise.
+    for (const row of view.harnesses) {
+      expect(row.version).toBeNull();
+      expect(row.liveness).toBe("never-dispatched");
+      expect(row.lean).not.toBe("yes");
     }
+
+    // execute / resume: a run that does not exist is 404 on every machine —
+    // these routes resolve the run before they ask what is installed, so the
+    // answer does not depend on the developer's PATH.
+    for (const path of ["execute", "resume"]) {
+      const res = await app.post(`/v1/runs/run-001/${path}`, {});
+      expect(res.status).toBe(404);
+      expect((await res.json()).error).toContain("run-001");
+    }
+  });
+
+  it("resume refuses a completed run, and execute refuses to re-run it", async () => {
+    const app = appFor();
+    await app.post("/v1/tasks", { title: "t" });
+    const created = await (
+      await app.post("/v1/runs", { name: "finished", taskIds: ["QK-001"], yes: true })
+    ).json();
+
+    // Drive it to completed through the ledger the way a finished run leaves it.
+    await app.post("/v1/tasks/QK-001/claim", {});
+    await app.post("/v1/tasks/QK-001/complete", { evidence: "by hand" });
+    const runsPath = join(app.root, ".quirks", "runs.json");
+    const runs = JSON.parse(readFileSync(runsPath, "utf8"));
+    runs.runs[0].status = "completed";
+    writeFileSync(runsPath, JSON.stringify(runs));
+
+    const resumed = await app.post(`/v1/runs/${created.run.id}/resume`, {});
+    expect(resumed.status).toBe(409);
+    expect((await resumed.json()).error).toContain("already completed");
+
+    const executed = await app.post(`/v1/runs/${created.run.id}/execute`, {});
+    expect(executed.status).toBe(409);
+    expect((await executed.json()).error).toContain("only approved/running runs execute");
   });
 
   it("/health reports the root it serves, and never claims a corrupt runs file is clear", async () => {

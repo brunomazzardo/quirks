@@ -8,7 +8,7 @@ import { HttpRouter } from "effect/unstable/http";
 import { codeIdentity } from "@quirks/shared";
 import { NodeServices } from "@effect/platform-node";
 import { Ledger, layer as ledgerLayer, layerAt, layerFromCwd, Store } from "./store/Store.ts";
-import { layerUnrouted, RunRouting } from "./ops/Routing.ts";
+import { layerHarness, RunRouting } from "./ops/Routing.ts";
 import { runsInFlight } from "./ops/Runs.ts";
 import { routes } from "./http/Routes.ts";
 import { json, respond } from "./http/Wire.ts";
@@ -45,11 +45,14 @@ const healthRoute = (instanceId: string) =>
     ),
   );
 
-/** Everything the routes need at request time. */
+/** Everything the routes need at request time. The served surface routes through
+ *  the real harness layer (QK-MONO-005): presence on disk, the tier table, and
+ *  liveness off the run record. */
 export const servicesLayer = (
   storeLayer: Layer.Layer<Store>,
 ): Layer.Layer<Store | Ledger | RunRouting | NodeServices.NodeServices> =>
-  Layer.mergeAll(ledgerLayer, layerUnrouted).pipe(
+  layerHarness.pipe(
+    Layer.provideMerge(ledgerLayer),
     Layer.provideMerge(storeLayer),
     Layer.provideMerge(NodeServices.layer),
   );

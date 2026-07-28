@@ -1,0 +1,36 @@
+// Cursor argv. Learned facts:
+// - there is NO --file flag (2026.07.20); the prompt is a trailing positional
+// - --trust suppresses the workspace trust prompt that blocks headless runs
+// - --force is the write posture (not a separate capability negotiation)
+// Ported verbatim from the bun-era src/runner/cursor.ts (QK-MONO-005).
+
+export interface CursorArgvInput {
+  readonly executable: string;
+  readonly model: string;
+  readonly briefPath: string;
+  readonly workspace: string;
+  readonly artifactDir: string;
+}
+
+export function cursorPromptText(briefPath: string): string {
+  // argv is world-visible in `ps` — reference the brief by path, never inline it.
+  return `Read the brief at ${briefPath} and complete it.`;
+}
+
+export function buildCursorArgv(input: CursorArgvInput): readonly string[] {
+  return [
+    input.executable,
+    "-p",
+    "--output-format",
+    "json",
+    "--model",
+    input.model,
+    "--trust",
+    "--workspace",
+    input.workspace,
+    "--add-dir",
+    input.artifactDir,
+    "--force",
+    cursorPromptText(input.briefPath),
+  ];
+}

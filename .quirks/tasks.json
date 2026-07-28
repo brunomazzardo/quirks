@@ -1779,7 +1779,7 @@
     {
       "id": "QK-MONO-005",
       "title": "runner, harness, ops — the honesty machinery on Effect",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-MONO-003"
       ],
@@ -1800,11 +1800,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:17.261Z",
-      "updatedAt": "2026-07-28T21:29:18.305Z",
+      "updatedAt": "2026-07-28T22:12:13.014Z",
       "statusDetail": {
-        "claimedBy": "opus-5"
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: runner dispatch (platform Command API: group kill, SIGTERM->SIGKILL, exit-event resolution), harness tiers/liveness/probe, brief assembly with pin->HEAD diffs, parent loop + failure policy + resume, quote-verified verdicts w/ real transcript fixtures. RunRouting seam held (ops/Runs.ts unchanged for routing); 501s filled; legacy diff 10/10 byte-identical incl harness?probe. All 4 carried defects are tests; 2 strengthened by construction (no-spawner layer). FIXED legacy defect: bun-era claude dispatch passed job id as --session-id -> guaranteed exit 1; now mintSessionId() with test lock. 213 server tests, workspace 5/5 typecheck, lint clean. Contracts: TaskBrief/SourceFact moved into wire, briefsPending removed (Fable). Flag carried to QK-MONO-004: processAlive EPERM-not-death test travels with daemon port"
       }
     },
     {

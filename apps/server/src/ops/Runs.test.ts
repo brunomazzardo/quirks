@@ -171,7 +171,7 @@ describe("assemblePlan / startRun", () => {
     expect(plan.warnings.some((w) => w.includes("QK-MONO-005"))).toBe(true);
   });
 
-  it("--dry-run writes nothing, and says why briefs are empty", async () => {
+  it("--dry-run writes nothing, and carries the brief each task would be handed", async () => {
     const root = tempRoot("quirks-run-");
     const result = await runOp(
       root,
@@ -185,10 +185,14 @@ describe("assemblePlan / startRun", () => {
     );
     expect(result.dryRun).toBe(true);
     if (result.dryRun !== true) throw new Error("unreachable");
-    // Brief assembly is QK-MONO-005; an empty list must not read as "no briefs
-    // needed", so the response says which task fills it.
-    expect(result.briefs).toEqual([]);
-    expect(result.briefsPending).toContain("QK-MONO-005");
+    // Brief assembly landed in QK-MONO-005: one brief per planned task, in plan
+    // order, and `briefsPending` is gone because nothing is pending.
+    expect(result.briefs).toHaveLength(1);
+    expect(result.briefs[0]?.task.id).toBe(result.plan.taskIds[0]);
+    expect(result.briefs[0]?.task.deliverables).toEqual(["d"]);
+    expect(result.briefs[0]?.goal?.doneWhen).toEqual(["done"]);
+    expect(result.briefs[0]?.instructionsHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect("briefsPending" in result).toBe(false);
   });
 
   it("no durable run without --yes", async () => {

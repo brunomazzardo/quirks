@@ -1,19 +1,20 @@
 // The /v1 route surface — every CLI verb has a route equivalent (QK-SRV-001),
 // reproduced from the bun-era src/service/app.ts (QK-MONO-003).
 //
-// Three routes exist but refuse: POST /v1/runs/:id/execute, POST
-// /v1/runs/:id/resume, and GET /v1/harness all answer 501, because dispatch,
-// the parent agent, and the harness/model tables port in QK-MONO-005. They are
-// registered rather than omitted so a client gets "not yet" instead of a 404
-// that reads like "never".
+// The three routes QK-MONO-003 registered as 501 — POST /v1/runs/:id/execute,
+// POST /v1/runs/:id/resume, and GET /v1/harness — answer for real as of
+// QK-MONO-005.
 
 import { readFileSync } from "node:fs";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import type { RunMode } from "@quirks/contracts";
-import { Store } from "../store/Store.ts";
+import { Ledger, Store } from "../store/Store.ts";
+import type { StoreError } from "../store/JsonFile.ts";
+import type { ValidationError } from "../ops/Errors.ts";
 import { createGoal, getGoal, leaveActive, rollup } from "../ops/Goals.ts";
 import {
   blockTask,
@@ -25,6 +26,10 @@ import {
   releaseTask,
 } from "../ops/Tasks.ts";
 import { assemblePlan, getRun, listRuns, startRun } from "../ops/Runs.ts";
+import { availability, harnessView } from "../ops/Harness.ts";
+import { executeRun, runForExecute, runForResume } from "../run/Parent.ts";
+import { defaultParentHooks } from "../run/Hooks.ts";
+import type { ParentHooks } from "../run/Parent.ts";
 import {
   contentFilePath,
   endShapeSession,
@@ -39,7 +44,7 @@ import {
   startContentWatch,
   stopContentWatch,
 } from "../shape/Session.ts";
-import { intParam, json, jsonError, notPortedYet, page, queryOne, respond } from "./Wire.ts";
+import { intParam, json, jsonError, page, queryOne, respond } from "./Wire.ts";
 
 /** A route path parameter. Absent is impossible for a matched route, but the
  *  router types it as optional — refuse rather than coerce. */
@@ -283,6 +288,32 @@ const taskRoutes = Layer.mergeAll(
 
 // ---- runs ----
 
+/** execute and resume take the same body and the same hooks. */
+const hooksFromBody = (
+  input: Record<string, unknown> | null,
+): Effect.Effect<
+  ParentHooks,
+  StoreError | ValidationError,
+  Ledger | ChildProcessSpawner.ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const implementerModel = str(input, "implementerModel");
+    const reviewerModel = str(input, "reviewerModel");
+    const review = bool(input, "review");
+    const timeoutMs = field<number>(input, "timeoutMs");
+    return yield* defaultParentHooks({
+      // What is actually installed, so reviewer independence is resolved against
+      // the machine rather than assuming claude-only (QK-HARN-002).
+      available: (yield* availability()).routable,
+      ...(implementerModel
+        ? { implementer: { runner: "claude" as const, model: implementerModel } }
+        : {}),
+      ...(reviewerModel ? { reviewer: { runner: "claude" as const, model: reviewerModel } } : {}),
+      ...(review !== undefined ? { review } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    });
+  });
+
 const runRoutes = Layer.mergeAll(
   HttpRouter.add(
     "GET",
@@ -355,11 +386,57 @@ const runRoutes = Layer.mergeAll(
     ),
   ),
 
-  // Dispatch, the parent agent, and resume are QK-MONO-005.
-  HttpRouter.add("POST", "/v1/runs/:id/execute", Effect.succeed(notPortedYet)),
-  HttpRouter.add("POST", "/v1/runs/:id/resume", Effect.succeed(notPortedYet)),
-  // Presence, the tier table, and liveness are QK-MONO-005.
-  HttpRouter.add("GET", "/v1/harness", Effect.succeed(notPortedYet)),
+  HttpRouter.add(
+    "POST",
+    "/v1/runs/:id/execute",
+    respond(
+      Effect.gen(function* () {
+        // Resolve the run BEFORE consulting the machine for a harness: a missing
+        // or finished run is 404/409 on every machine, rather than 400 "no
+        // harness installed" on the ones with nothing on PATH. The bun-era route
+        // built hooks first and had the opposite property.
+        const run = yield* runForExecute(yield* pathParam("id"));
+        const hooks = yield* hooksFromBody(yield* body);
+        return json((yield* executeRun(run.id, hooks)).run);
+      }),
+    ),
+  ),
+
+  HttpRouter.add(
+    "POST",
+    "/v1/runs/:id/resume",
+    respond(
+      Effect.gen(function* () {
+        const run = yield* runForResume(yield* pathParam("id"));
+        const hooks = yield* hooksFromBody(yield* body);
+        return json((yield* executeRun(run.id, hooks)).run);
+      }),
+    ),
+  ),
+
+  // Presence and the tier table are free; `?probe=true` additionally runs
+  // `--version` and the runner's own auth-status command against each present
+  // harness. Liveness always comes from the run record, so the default answer
+  // costs no round trip (QK-HARN-001).
+  HttpRouter.add(
+    "GET",
+    "/v1/harness",
+    respond(
+      Effect.gen(function* () {
+        const params = yield* query;
+        const raw = queryOne(params, "timeoutMs");
+        const timeoutMs = raw === undefined ? undefined : Number.parseInt(raw, 10);
+        return json(
+          yield* harnessView({
+            probe: queryOne(params, "probe") === "true",
+            ...(timeoutMs !== undefined && Number.isInteger(timeoutMs) && timeoutMs > 0
+              ? { timeoutMs }
+              : {}),
+          }),
+        );
+      }),
+    ),
+  ),
 );
 
 // ---- shape companion (QK-COMP-003) — open on loopback; auth is QK-SRV-003 ----

@@ -1,15 +1,17 @@
 // Run operations — plan assembly, durable approval, dry-run briefs.
 // Ported from the bun-era src/ops/runs.ts (QK-MONO-003).
 //
-// Two things this build deliberately does not do, both QK-MONO-005:
-//   - brief assembly (`briefs` on a dry run is `[]`, see startRun), and
-//   - harness routing (see ops/Routing.ts).
+// Harness routing stays behind the `RunRouting` seam (see ops/Routing.ts): when
+// QK-MONO-005 replaced the unrouted layer with the real tier/presence/liveness
+// one, not a line of this file moved. Brief assembly did land here, because the
+// dry-run response carries the briefs themselves.
 
 import * as Effect from "effect/Effect";
 import type { Run, RunMode, RunPlan, RunPlanEntry, RunnerKind, Task } from "@quirks/contracts";
 import { goalIdOfTask } from "../store/Ids.ts";
-import { Ledger } from "../store/Store.ts";
+import { Ledger, Store } from "../store/Store.ts";
 import type { StoreError } from "../store/JsonFile.ts";
+import { assembleBrief, type TaskBrief } from "./Brief.ts";
 import { conflict, invalid, missing, type OpError } from "./Errors.ts";
 import { RunRouting } from "./Routing.ts";
 
@@ -201,16 +203,10 @@ export interface CreateRunInput extends PlanInput {
 export interface DryRunResult {
   readonly dryRun: true;
   readonly plan: RunPlan;
-  /**
-   * Empty in this build. Brief assembly is QK-MONO-005 (ops/brief.ts is not
-   * ported yet), and a fabricated brief is exactly the kind of invented fact
-   * this repo refuses. The field stays on the wire so the shape does not move
-   * under clients when 005 fills it.
-   */
-  readonly briefs: unknown[];
-  /** Says out loud why `briefs` is empty, rather than letting `[]` read as
-   *  "this run needs no briefs". */
-  readonly briefsPending: string;
+  /** One brief per planned task, in execution order — the facts the agent would
+   *  actually be handed, including each sourceRef's pin→HEAD diff. `briefsPending`
+   *  is gone from this response now that there is nothing pending. */
+  readonly briefs: TaskBrief[];
 }
 
 export interface ApprovedRunResult {
@@ -221,17 +217,25 @@ export interface ApprovedRunResult {
 /** Assemble a plan; with dryRun return the plan and stop; with yes persist approved. */
 export const startRun = (
   input: CreateRunInput,
-): Effect.Effect<DryRunResult | ApprovedRunResult, StoreError | OpError, Ledger | RunRouting> =>
+): Effect.Effect<
+  DryRunResult | ApprovedRunResult,
+  StoreError | OpError,
+  Ledger | Store | RunRouting
+> =>
   Effect.gen(function* () {
     const ledger = yield* Ledger;
     const plan = yield* assemblePlan(input);
 
     if (input.dryRun) {
+      const byId = new Map((yield* ledger.loadTasks).map((t) => [t.id, t]));
+      const planned = plan.taskIds.flatMap((id) => {
+        const task = byId.get(id);
+        return task ? [task] : [];
+      });
       return {
         dryRun: true,
         plan,
-        briefs: [],
-        briefsPending: "brief assembly ports in QK-MONO-005",
+        briefs: yield* Effect.forEach(planned, (task) => assembleBrief(task)),
       };
     }
 

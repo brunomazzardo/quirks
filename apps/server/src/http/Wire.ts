@@ -73,10 +73,3 @@ export const respond = <E, R>(
       );
     }),
   );
-
-/** The three routes whose machinery ports in QK-MONO-005. They exist, and they
- *  refuse loudly rather than pretending to work. */
-export const notPortedYet: HttpServerResponse.HttpServerResponse = jsonError(
-  "ported in QK-MONO-005",
-  501,
-);
