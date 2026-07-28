@@ -17,6 +17,7 @@ import {
   taskShow,
 } from "./cli/task.ts";
 import { CliError } from "./cli/output.ts";
+import { ConflictError, NotFoundError, ValidationError } from "./ops/errors.ts";
 import { StoreCorruptError } from "./store/json-file.ts";
 import { TransitionError } from "./store/transitions.ts";
 
@@ -149,7 +150,14 @@ for (const coming of ["run", "status", "report", "harness"]) {
 try {
   program.parse();
 } catch (err) {
-  if (err instanceof CliError || err instanceof TransitionError || err instanceof StoreCorruptError) {
+  if (
+    err instanceof CliError ||
+    err instanceof TransitionError ||
+    err instanceof StoreCorruptError ||
+    err instanceof ValidationError ||
+    err instanceof NotFoundError ||
+    err instanceof ConflictError
+  ) {
     console.error(`quirks: ${err.message}`);
     process.exit(1);
   }

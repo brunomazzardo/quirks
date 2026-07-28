@@ -118,7 +118,7 @@
     {
       "id": "QK-SRV-001",
       "title": "Hono routes over the store",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "goal/task routes mirroring the CLI verbs, paginated JSON",
@@ -137,10 +137,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.100Z",
-      "updatedAt": "2026-07-27T22:03:02.100Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T12:43:44.199Z",
+      "statusDetail": {
+        "claimedBy": "claude, live session with Bruno",
+        "evidence": "Every CLI verb has a route equivalent under /v1 (goals: list/new/show/done/abandon; tasks: propose/list/show/claim/block/complete/release); list routes take ?offset=&limit=. Logic extracted to src/ops (shared by CLI and routes — the store moved fully behind the boundary); errors map to honest statuses (400/404/409/500, corrupt never an empty list). 5 service tests via app.request(), suite 33/33, tsc clean."
+      }
     },
     {
       "id": "QK-SRV-002",
