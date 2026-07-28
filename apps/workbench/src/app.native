@@ -1,25 +1,65 @@
-<!-- Quirks workbench — ledger | terminal | preview (QK-NAT-002).
-     Single center <terminal> only (NAT-005 ceiling). No scrollback=.
-     Ledger lists are pre-joined text (markup for-each over pointer slices
-     failed the iterable gate on SDK 0.6.1). -->
+<!-- Quirks workbench — NAT-007 ledger chrome + NAT-008 Shape hide/show.
+     Single center <terminal> (NAT-005). No scrollback=.
+     for each="field" without braces (SDK iterable gate).
+     Shape closed: rightSplit→1.0; web_panes still snaps to 0-width preview-pane. -->
 <column grow="1" background="background">
   <row height="34" window-drag="true" padding="8" gap="8">
     <text>Quirks</text>
     <spacer grow="1" />
-    <text>{ledgerStatus}</text>
+    <text foreground="text_muted">{ledgerStatus}</text>
+    <button on-press="toggleShape" size="sm" variant="ghost" selected="{shapeOpen}">Shape</button>
   </row>
   <split value="{leftSplit}" on-resize="leftResized" gap="4" grow="1">
-    <column width="240" min-width="160" padding="8" gap="6">
-      <text>Goals</text>
-      <scroll grow="1">
-        <text wrap="true">{goalsText}</text>
-      </scroll>
-      <text>Tasks</text>
-      <scroll grow="1">
-        <text wrap="true">{tasksText}</text>
-      </scroll>
-    </column>
-    <split value="{rightSplit}" on-resize="rightResized" gap="4" grow="1">
+    <scroll width="240" min-width="180" grow="1">
+      <column padding="6" gap="4">
+        <accordion text="Goals" selected="{goalsOpen}" on-toggle="toggleGoals">
+          <column gap="2">
+            <for each="goals" key="id" as="g">
+              <list-item
+                on-press="selectGoal:{g.id}"
+                selected="{g.selected}"
+                label="{g.title}"
+              >
+                <row gap="6" cross="center" grow="1" padding="4">
+                  <column gap="1" grow="1">
+                    <text>{g.title}</text>
+                  </column>
+                  <badge>{g.status}</badge>
+                </row>
+              </list-item>
+            </for>
+          </column>
+        </accordion>
+        <accordion text="Tasks" selected="{tasksOpen}" on-toggle="toggleTasks">
+          <column gap="2">
+            <for each="tasks" key="id" as="t">
+              <list-item
+                on-press="selectTask:{t.id}"
+                selected="{t.selected}"
+                label="{t.title}"
+              >
+                <row gap="6" cross="center" grow="1" padding="4">
+                  <column gap="1" grow="1">
+                    <text>{t.title}</text>
+                    <text foreground="text_muted">{t.id}</text>
+                  </column>
+                  <badge>{t.status}</badge>
+                </row>
+              </list-item>
+            </for>
+          </column>
+        </accordion>
+        <text foreground="text_muted">Runs</text>
+      </column>
+    </scroll>
+    <split
+      value="{rightSplit}"
+      on-resize="rightResized"
+      gap="4"
+      grow="1"
+      resize-duration="180"
+      resize-easing="emphasized"
+    >
       <terminal
         pty="{shellKey}"
         on-terminal="termState"
@@ -29,7 +69,7 @@
         focus-ring="background"
         label="Shell"
       />
-      <panel grow="1" min-width="200" label="preview-pane"></panel>
+      <panel grow="1" min-width="0" label="preview-pane"></panel>
     </split>
   </split>
 </column>

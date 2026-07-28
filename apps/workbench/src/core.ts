@@ -1,25 +1,13 @@
-// Quirks workbench core — QK-NAT-005 terminal + QK-NAT-002 three-pane shell.
-// Plain TypeScript in the app-core subset; compiled to Zig at build time.
+// Quirks workbench — NAT-005 terminal, NAT-007 ledger chrome, NAT-008 Shape toggle.
 
 import { Cmd, Sub, asciiBytes } from "@native-sdk/core";
 
 // ts_core_host.zig: pub const pty_key_base: u64 = 0x5453_5054_0000_0000.
-// Index 0's engine key IS the base.
-//
-// Standing rules (docs/upstream/native-terminal-gap/single-terminal-workaround.md):
-// - First and only pty in this app — index 0 is the only f64-safe key.
-// - ABI, not API — re-verify against the SDK source on every bump.
-// - NEVER assign shellKey from any Msg field (loses integer proof → float).
-//
-// CRITICAL: do NOT write `0x5453505400000000` as a TS number literal.
-// The emitter's formatNumber uses String(n); past 2^53 that prints a nearby
-// decimal which Zig then treats as a different i64 (orphan terminal).
+// NEVER write 0x5453505400000000 as a TS literal — emitter String(n) orphans the pty.
 function shellPtyBinding(): number {
   return 1414746196 * 4294967296;
 }
 
-// Loopback daemon for this repo (portForRoot → 47301). Preview loads the
-// shape companion (QK-NAT-003 / COMP-003); ledger stays on /v1/*.
 const GOALS_URL = asciiBytes("http://127.0.0.1:47301/v1/goals?limit=50");
 const TASKS_URL = asciiBytes("http://127.0.0.1:47301/v1/tasks?limit=50");
 const PREVIEW_URL = asciiBytes("http://127.0.0.1:47301/shape/");
@@ -32,8 +20,12 @@ export type ShellExitReason =
   | "rejected"
   | "spawn_failed";
 
-export interface LedgerLine {
-  readonly line: Uint8Array;
+/** Density-A ledger row (QK-NAT-007). */
+export interface LedgerRow {
+  readonly id: Uint8Array;
+  readonly title: Uint8Array;
+  readonly status: Uint8Array;
+  readonly selected: boolean;
 }
 
 export interface HistoryEntry {
@@ -49,8 +41,13 @@ export interface Model {
   readonly termRows: number;
   readonly leftSplit: number;
   readonly rightSplit: number;
-  readonly goalsText: Uint8Array;
-  readonly tasksText: Uint8Array;
+  readonly goals: readonly LedgerRow[];
+  readonly tasks: readonly LedgerRow[];
+  readonly goalsOpen: boolean;
+  readonly tasksOpen: boolean;
+  readonly selectedGoalId: Uint8Array;
+  readonly selectedTaskId: Uint8Array;
+  readonly shapeOpen: boolean;
   readonly ledgerStatus: Uint8Array;
   readonly previewUrl: Uint8Array;
   readonly reloadToken: number;
@@ -82,42 +79,52 @@ export type Msg =
   | { readonly kind: "goalsErr"; readonly reason: Uint8Array }
   | { readonly kind: "tasksOk"; readonly status: number; readonly body: Uint8Array }
   | { readonly kind: "tasksErr"; readonly reason: Uint8Array }
-  | { readonly kind: "refreshTick"; readonly at: number };
+  | { readonly kind: "refreshTick"; readonly at: number }
+  | { readonly kind: "toggleGoals" }
+  | { readonly kind: "toggleTasks" }
+  | { readonly kind: "toggleShape" }
+  | { readonly kind: "selectGoal"; readonly id: Uint8Array }
+  | { readonly kind: "selectTask"; readonly id: Uint8Array };
 
 export const viewUnbound = ["shell"] as const;
 
-function joinLines(lines: readonly LedgerLine[]): Uint8Array {
-  if (lines.length === 0) return asciiBytes("(none)");
-  let total = 0;
-  for (let i = 0; i < lines.length; i += 1) {
-    total += lines[i]!.line.length;
-    if (i + 1 < lines.length) total += 1;
+function bytesEq(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
   }
-  const out = new Uint8Array(total);
-  let at = 0;
-  for (let i = 0; i < lines.length; i += 1) {
-    out.set(lines[i]!.line, at);
-    at += lines[i]!.line.length;
-    if (i + 1 < lines.length) {
-      out[at] = 10; // '\n'
-      at += 1;
-    }
+  return true;
+}
+
+function withSelection(
+  rows: readonly LedgerRow[],
+  selectedId: Uint8Array,
+): readonly LedgerRow[] {
+  const out: LedgerRow[] = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i]!;
+    out[out.length] = {
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      selected: bytesEq(r.id, selectedId),
+    };
   }
   return out;
 }
 
-function parseItemLines(body: Uint8Array, idKey: Uint8Array, titleKey: Uint8Array): readonly LedgerLine[] {
+function parseRows(body: Uint8Array, selectedId: Uint8Array): readonly LedgerRow[] {
   const itemsKey = asciiBytes('"items"');
   const itemsAt = body.indexOf(itemsKey);
   if (itemsAt < 0) return [];
   let i = itemsAt + itemsKey.length;
-  while (i < body.length && body[i]! !== 91) i += 1; // '['
+  while (i < body.length && body[i]! !== 91) i += 1;
   if (i >= body.length) return [];
   i += 1;
 
-  const out: LedgerLine[] = [];
+  const out: LedgerRow[] = [];
   while (i < body.length && out.length < 40) {
-    while (i < body.length && body[i]! !== 123 && body[i]! !== 93) i += 1; // '{' or ']'
+    while (i < body.length && body[i]! !== 123 && body[i]! !== 93) i += 1;
     if (i >= body.length || body[i]! === 93) break;
     const start = i;
     let depth = 0;
@@ -134,13 +141,18 @@ function parseItemLines(body: Uint8Array, idKey: Uint8Array, titleKey: Uint8Arra
       i += 1;
     }
     const obj = body.slice(start, i);
-    const id = jsonStringField(obj, idKey);
-    const title = jsonStringField(obj, titleKey);
+    const id = jsonStringField(obj, asciiBytes('"id"'));
+    const titleRaw = jsonStringField(obj, asciiBytes('"title"'));
     const status = jsonStringField(obj, asciiBytes('"status"'));
     const state = jsonStringField(obj, asciiBytes('"state"'));
-    const label = title.length > 0 ? title : id;
+    const title = titleRaw.length > 0 ? titleRaw : id;
     const tag = status.length > 0 ? status : state;
-    out[out.length] = { line: joinParts(label, tag) };
+    out[out.length] = {
+      id,
+      title,
+      status: tag.length > 0 ? tag : asciiBytes("—"),
+      selected: bytesEq(id, selectedId),
+    };
   }
   return out;
 }
@@ -149,8 +161,8 @@ function jsonStringField(obj: Uint8Array, key: Uint8Array): Uint8Array {
   const at = obj.indexOf(key);
   if (at < 0) return asciiBytes("");
   let i = at + key.length;
-  while (i < obj.length && (obj[i]! === 32 || obj[i]! === 58)) i += 1; // space or ':'
-  if (i < obj.length && obj[i]! === 110) return asciiBytes(""); // null
+  while (i < obj.length && (obj[i]! === 32 || obj[i]! === 58)) i += 1;
+  if (i < obj.length && obj[i]! === 110) return asciiBytes("");
   if (i >= obj.length || obj[i]! !== 34) return asciiBytes("");
   i += 1;
   const start = i;
@@ -159,16 +171,6 @@ function jsonStringField(obj: Uint8Array, key: Uint8Array): Uint8Array {
     else i += 1;
   }
   return obj.slice(start, i);
-}
-
-function joinParts(label: Uint8Array, tag: Uint8Array): Uint8Array {
-  if (tag.length === 0) return label;
-  const sep = asciiBytes(" — ");
-  const out = new Uint8Array(label.length + sep.length + tag.length);
-  out.set(label, 0);
-  out.set(sep, label.length);
-  out.set(tag, label.length + sep.length);
-  return out;
 }
 
 export function initialModel(): [Model, Cmd<Msg>] {
@@ -181,9 +183,15 @@ export function initialModel(): [Model, Cmd<Msg>] {
       termCols: 80,
       termRows: 24,
       leftSplit: 0.22,
-      rightSplit: 0.62,
-      goalsText: asciiBytes("(loading)"),
-      tasksText: asciiBytes("(loading)"),
+      // Shape starts closed — terminal owns the full right column (NAT-008).
+      rightSplit: 1.0,
+      goals: [],
+      tasks: [],
+      goalsOpen: true,
+      tasksOpen: true,
+      selectedGoalId: asciiBytes(""),
+      selectedTaskId: asciiBytes(""),
+      shapeOpen: false,
       ledgerStatus: asciiBytes("loading"),
       previewUrl: PREVIEW_URL,
       reloadToken: 0,
@@ -222,14 +230,36 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
     case "leftResized":
       return { ...model, leftSplit: msg.fraction };
     case "rightResized":
+      if (!model.shapeOpen) return { ...model, rightSplit: 1.0 };
       return { ...model, rightSplit: msg.fraction };
+    case "toggleGoals":
+      return { ...model, goalsOpen: !model.goalsOpen };
+    case "toggleTasks":
+      return { ...model, tasksOpen: !model.tasksOpen };
+    case "toggleShape":
+      if (model.shapeOpen) {
+        return { ...model, shapeOpen: false, rightSplit: 1.0 };
+      }
+      return { ...model, shapeOpen: true, rightSplit: 0.65 };
+    case "selectGoal":
+      return {
+        ...model,
+        selectedGoalId: msg.id,
+        goals: withSelection(model.goals, msg.id),
+      };
+    case "selectTask":
+      return {
+        ...model,
+        selectedTaskId: msg.id,
+        tasks: withSelection(model.tasks, msg.id),
+      };
     case "goalsOk":
       if (msg.status < 200 || msg.status >= 300) {
         return { ...model, ledgerStatus: asciiBytes("goals HTTP error") };
       }
       return {
         ...model,
-        goalsText: joinLines(parseItemLines(msg.body, asciiBytes('"id"'), asciiBytes('"title"'))),
+        goals: parseRows(msg.body, model.selectedGoalId),
         ledgerStatus: asciiBytes("live"),
       };
     case "goalsErr":
@@ -240,7 +270,7 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
       }
       return {
         ...model,
-        tasksText: joinLines(parseItemLines(msg.body, asciiBytes('"id"'), asciiBytes('"title"'))),
+        tasks: parseRows(msg.body, model.selectedTaskId),
         ledgerStatus: asciiBytes("live"),
       };
     case "tasksErr":

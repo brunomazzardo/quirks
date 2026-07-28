@@ -168,6 +168,18 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn previewPanes(model: *const Model, out: []App.WebViewPane) usize {
+    // Collapsed anchors (width < 1) are ignored by UiApp — the webview keeps
+    // its last/scene frame, which would leave a /shape/ gutter over the
+    // terminal. Park at 1×1 when closed; snap to preview-pane when open.
+    if (!model.shapeOpen) {
+        out[0] = .{
+            .label = "preview",
+            .frame = native_sdk.geometry.RectF.init(0, 0, 1, 1),
+            .url = model.previewUrl,
+            .reload_token = @intCast(model.reloadToken),
+        };
+        return 1;
+    }
     out[0] = .{
         .label = "preview",
         .anchor = "preview-pane",

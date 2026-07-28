@@ -21,8 +21,9 @@
                 .restore_policy = "center_on_primary",
                 .views = .{
                     .{ .label = "main-canvas", .kind = "gpu_surface", .fill = true, .role = "Workbench canvas", .accessibility_label = "Workbench", .gpu_backend = "metal", .gpu_pixel_format = "bgra8_unorm", .gpu_present_mode = "timer", .gpu_alpha_mode = "opaque", .gpu_color_space = "srgb", .gpu_vsync = true },
-                    // Child webview; web_panes snaps it to the preview-pane anchor.
-                    .{ .label = "preview", .kind = "webview", .parent = "main-canvas", .url = "http://127.0.0.1:47301/shape/", .x = 900, .y = 34, .width = 380, .height = 766 },
+                    // Child webview; web_panes parks it at 1×1 when Shape is
+                    // closed and snaps to preview-pane when open (NAT-008).
+                    .{ .label = "preview", .kind = "webview", .parent = "main-canvas", .url = "http://127.0.0.1:47301/shape/", .x = 0, .y = 0, .width = 1, .height = 1 },
                 },
             },
         },

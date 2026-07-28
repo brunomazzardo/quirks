@@ -717,6 +717,186 @@
       "statusDetail": {
         "evidence": "availability(store) is sync (presence via accessSync + liveness via ledger, no spawn); buildPlan routes over it with PlanInput.routable injectable for determinism; planWarnings surfaces unassigned rows and non-yes harnesses above the [y/N]; execute/resume share hooksFromRequest which passes available. Policy: absence excludes, a recorded failure only annotates — attribution is untrusted. Review table resolves over routable so display matches behaviour. 189 tests pass, tsc clean, real dry-run shows: '! harness claude: installed, but no run has dispatched to it yet'."
       }
+    },
+    {
+      "id": "QK-NAT-006",
+      "title": "workbench chrome design — ledger, terminal, companion collapse & density",
+      "status": "completed",
+      "dependsOn": [
+        "QK-NAT-002",
+        "QK-NAT-003"
+      ],
+      "deliverables": [
+        "a design spec for the three-pane workbench chrome: left ledger (rows, collapse/minimize, density), center terminal chrome, right companion (show-when-needed, collapse icons, context)",
+        "research notes: Native SDK markup components and tokens that can carry the chrome (split, list-item, icon, panel, scroll, theme) without fighting the 1024-node / single-pty ceilings",
+        "shape (and/or Cursor cloud design) explorations that validate the chrome before implementation tasks are cut"
+      ],
+      "acceptanceCriteria": [
+        "spec covers all three panes and the collapse/show-when-used behaviors for ledger and companion",
+        "spec names which Native components to use (and what not to invent in HTML when the canvas can own it)",
+        "follow-on implementation tasks are proposed or listed with clear dependsOn once the design is approved"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/native-app-and-service.md",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        },
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        }
+      ],
+      "needsDesign": true,
+      "needsBreakdown": false,
+      "effort": "design research + shape explorations; implementation is separate tasks after approval",
+      "risk": "companion chrome lives partly in native canvas and partly in /shape/ HTML — design must keep that seam honest",
+      "revision": 3,
+      "createdAt": "2026-07-28T14:27:28.534Z",
+      "updatedAt": "2026-07-28T14:45:45.415Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Design recorded on follow-on tasks (shape skill — no Superpowers plan/spec). Locked: (1) native canvas owns ledger; Shape companion is helper-only at /shape/. (2) Shape fully hidden by default; toolbar reopens it; terminal takes the width. (3) Goals/Tasks accordion only — sidebar width stays; Runs stub later. (4) UI-only this pass — no propose/claim/complete in UI; CLI stays mutation path. (5) density A — title primary, muted task id, status chip. (6) Native mapping: list-item/panel rows, pressable section headers, scroll, split; avoid left-rail HTML. Cut QK-NAT-007 (ledger chrome) and QK-NAT-008 (Shape hide/show). Visual explorations used Cursor canvas in-session; future shape sessions should use /shape/ night-ledger companion per shape skill."
+      }
+    },
+    {
+      "id": "QK-SRV-006",
+      "title": "daemon code identity: drift detection + snapshot isolation",
+      "status": "completed",
+      "dependsOn": [],
+      "deliverables": [
+        "src/fingerprint.ts — dependency-free code identity (digest over sorted src/**/*.ts path+size+mtime); falls back to the executable; returns 'unknown' rather than guessing",
+        "/health reports the daemon's own identity, the tree fingerprint it was promoted from, and git provenance (describe + dirty)",
+        "ensureDaemon compares tree-now against promoted-from and WARNS on stderr; it never auto-restarts",
+        "promote: copy src/ to an immutable snapshot the daemon runs from, so editing the tree cannot change or break the running service",
+        "quirks daemon status | restart | stop; restart promotes the current tree and refuses while a run is in flight unless --force",
+        "move daemon.json and service.log out of .quirks/ into a per-root state dir — machine state is not ledger and must not be committed"
+      ],
+      "acceptanceCriteria": [
+        "the CLI never silently attaches to a daemon whose code differs from the working tree",
+        "editing src/ never changes what the running daemon serves; only an explicit promote does",
+        "a half-saved or non-booting working tree cannot take down a daemon another agent is using",
+        "a failed or unknown fingerprint never triggers an action — fail open, and never a restart loop",
+        "restart refuses while any run is status=running unless --force, naming the run",
+        ".quirks/ holds ledger only; git ls-files .quirks shows no machine-specific runtime record"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "manual: start daemon, edit a src file, see the drift warning, quirks daemon restart, warning gone",
+        "manual: git ls-files .quirks shows only goals.json and tasks.json"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/daemon-lifecycle.md",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "high",
+      "risk": "concurrency: two agents share one daemon per repo root. Also module resolution — a snapshot outside the repo must still resolve node_modules (symlink, or keep the snapshot under a gitignored dir inside the root)",
+      "revision": 2,
+      "createdAt": "2026-07-28T14:35:38.558Z",
+      "updatedAt": "2026-07-28T14:55:19.353Z",
+      "statusDetail": {
+        "evidence": "Simplified to detection + restart, no snapshot. src/fingerprint.ts computes code identity (digest of sorted src/**/*.ts path+size+mtime, no file reads); /health reports it; ensureDaemon warns on stderr when the tree differs; quirks daemon status|restart. hasDrifted fails open so unknown is never drift (no restart loop). restart refuses while a run executes in-process unless --force, with a pid fallback for daemons predating /shutdown. Machine state moved to a per-root state dir; .quirks/service/daemon.json untracked. 336 lines across 3 files; 208 tests pass, tsc clean. Verified live: edit a file -> warning fires on any command and status reads STALE; restart clears it."
+      }
+    },
+    {
+      "id": "QK-NAT-007",
+      "title": "ledger chrome — accordion Goals/Tasks + density-A rows",
+      "status": "completed",
+      "dependsOn": [
+        "QK-NAT-006"
+      ],
+      "deliverables": [
+        "Goals and Tasks as accordion sections (sidebar width fixed); later Runs header stub only",
+        "density-A rows: title primary, task id muted under title, status as compact chip/label using theme tokens",
+        "selectable rows — selection stored in model only; no propose/claim/complete from the UI",
+        "replace goalsText/tasksText blobs with list-item (or pressable panel) rows under scroll"
+      ],
+      "acceptanceCriteria": [
+        "Goals and Tasks sections collapse/expand without changing sidebar width",
+        "rows show title + status chip (tasks also show muted id); selection is visible",
+        "no write verbs in the ledger UI — CLI remains the mutation path"
+      ],
+      "verification": [
+        "native check",
+        "zig build -Dautomation=true && native automate wait && native automate snapshot"
+      ],
+      "sourceRefs": [
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        },
+        {
+          "path": "apps/workbench/src/core.ts",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        },
+        {
+          "path": "docs/specs/native-app-and-service.md",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "UI-only chrome on existing Cmd.fetch ledger",
+      "risk": "widget-node budget — keep row chrome lean under 1024 nodes",
+      "revision": 3,
+      "createdAt": "2026-07-28T14:45:38.325Z",
+      "updatedAt": "2026-07-28T15:06:22.822Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "native check clean. Automate: Goals/Tasks <accordion> (sidebar width fixed via leftSplit=0.22); density-A list-item rows — title primary, task id text_muted, status <badge>; selection model-only (listitem value=1 state=selected after press); Tasks accordion toggle collapses 38→7 listitems (goals remain); Runs stub text only; no propose/claim/complete in UI. widget_nodes=240/1024."
+      }
+    },
+    {
+      "id": "QK-NAT-008",
+      "title": "Shape toolbar — fully hide companion; terminal takes the width",
+      "status": "completed",
+      "dependsOn": [
+        "QK-NAT-006",
+        "QK-NAT-003"
+      ],
+      "deliverables": [
+        "toolbar/title-bar Shape control toggles companion visibility",
+        "when Shape is off: right split collapses to 0 / web pane hidden; terminal owns remaining width",
+        "when Shape is on: webview loads daemon /shape/ as today (helper only, not a second product UI)"
+      ],
+      "acceptanceCriteria": [
+        "default launch has Shape hidden and terminal expanded",
+        "toggling Shape open/closed reflows the pty and does not leave an empty right gutter"
+      ],
+      "verification": [
+        "native check",
+        "zig build -Dautomation=true && native automate wait && native automate snapshot"
+      ],
+      "sourceRefs": [
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        },
+        {
+          "path": "apps/workbench/app.zon",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        },
+        {
+          "path": "docs/specs/native-app-and-service.md",
+          "pinnedCommit": "679797b0603135cb1a9e73ea227545412a11a6ef"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "model flag + split fraction / web_panes visibility",
+      "risk": "webview must not navigate when hidden; allowed_origins already pin loopback:47301",
+      "revision": 3,
+      "createdAt": "2026-07-28T14:45:38.435Z",
+      "updatedAt": "2026-07-28T15:06:22.906Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "native check clean. Default shapeOpen=false, rightSplit=1.0; webview parked at 1×1 (app.zon + previewPanes) so scene bounds never overlay terminal; Shell owns width (~991px), preview-pane width 0. Shape toolbar press → rightSplit=0.65, preview-pane ~347px with /shape/; press again collapses to value=1 / pane 0. wiring overlay always snaps; zero-width anchors ignored by SDK so closed uses explicit 1×1 frame."
+      }
     }
   ]
 }
