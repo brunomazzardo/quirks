@@ -2,10 +2,11 @@
 // route surface behind one layer. `toWebHandler` gives tests an in-process
 // `fetch`; `dev.ts` serves the same layer over a socket.
 
+import { fileURLToPath } from "node:url";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpRouter } from "effect/unstable/http";
-import { codeIdentity } from "@quirks/shared";
+import { codeIdentity, type CodeIdentity } from "@quirks/shared";
 import { NodeServices } from "@effect/platform-node";
 import { Ledger, layer as ledgerLayer, layerAt, layerFromCwd, Store } from "./store/Store.ts";
 import { layerHarness, RunRouting } from "./ops/Routing.ts";
@@ -15,11 +16,23 @@ import { json, respond } from "./http/Wire.ts";
 
 export const VERSION = "0.1.0";
 
-/** The code THIS process compiled at startup, captured once — after this point
- *  edits to src/ cannot change what this process runs, which is the whole
- *  problem QK-SRV-006 exists to make visible. */
-const code = codeIdentity(new URL(".", import.meta.url).pathname);
-const startedAt = new Date().toISOString();
+/**
+ * The code THIS process compiled at startup, captured once — after this point
+ * edits to src/ cannot change what this process runs, which is the whole
+ * problem QK-SRV-006 exists to make visible.
+ *
+ * `fileURLToPath`, not `URL.pathname`: a repo checked out under a path with a
+ * space yields `%20` from `pathname`, the directory walk fails, and the identity
+ * silently degrades to the *executable* fingerprint — which the CLI, measuring
+ * the same tree successfully, would then read as drift and warn about forever.
+ * Exported so the daemon record and `/health` cannot disagree about them.
+ */
+export const PROCESS_CODE: CodeIdentity = codeIdentity(
+  fileURLToPath(new URL(".", import.meta.url)),
+);
+export const PROCESS_STARTED_AT: string = new Date().toISOString();
+const code = PROCESS_CODE;
+const startedAt = PROCESS_STARTED_AT;
 
 /**
  * /health confirms an attach reached the right service: id, version, and the

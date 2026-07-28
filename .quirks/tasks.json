@@ -1750,7 +1750,7 @@
     {
       "id": "QK-MONO-004",
       "title": "CLI verbs as the same artifact's HTTP client",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-MONO-003"
       ],
@@ -1771,11 +1771,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:17.190Z",
-      "updatedAt": "2026-07-28T22:12:31.549Z",
+      "updatedAt": "2026-07-28T22:40:30.069Z",
       "statusDetail": {
-        "claimedBy": "opus-5"
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: full verb inventory verbatim (goal/task/run/harness/daemon + hidden serve; no legacy verb missed — checked), commander front + Effect behind, HTTP client with bind-or-attach autostart and NO direct-store fallback (D4), single portForRoot source (legacy had two hand-synced copies), drift warning wording preserved, EPERM-not-death test traveled (3 cases), [y/N] only outside execution path with EOF=no. 61 new tests (274 total server), workspace 5/5 typecheck + all suites + lint green. Smoke: autostart 0.87s, TTY tables vs piped JSON, refusal without --yes, daemon stop/restart. User's legacy daemon never touched (verified /health before+after)"
       }
     },
     {

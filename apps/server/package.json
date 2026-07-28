@@ -2,6 +2,9 @@
   "name": "quirks-server",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "quirks": "./src/bin.ts"
+  },
   "type": "module",
   "scripts": {
     "dev": "node --watch src/dev.ts",
