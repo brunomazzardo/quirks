@@ -1,2 +1,3 @@
-// QK-MONO-002 ports the wire contract here; it is imported type-only (D3a).
-export const packageName = "@quirks/contracts";
+// @quirks/contracts — the wire contract, imported type-only by clients (D3a).
+export type * from "./domain.ts";
+export type * from "./wire.ts";

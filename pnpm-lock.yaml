@@ -60,6 +60,12 @@ importers:
 
   apps/server:
     devDependencies:
+      '@quirks/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@quirks/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@types/node':
         specifier: 24.12.4
         version: 24.12.4

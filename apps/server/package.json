@@ -8,6 +8,8 @@
     "test": "vp test run --passWithNoTests"
   },
   "devDependencies": {
+    "@quirks/contracts": "workspace:*",
+    "@quirks/shared": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "vite-plus": "catalog:"

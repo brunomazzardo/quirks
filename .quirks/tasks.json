@@ -1684,7 +1684,7 @@
     {
       "id": "QK-MONO-002",
       "title": "packages/contracts + packages/shared — the wire contract, type-only",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-MONO-001"
       ],
@@ -1706,10 +1706,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:04.756Z",
-      "updatedAt": "2026-07-28T20:27:04.756Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T20:55:27.741Z",
+      "statusDetail": {
+        "claimedBy": "claude",
+        "evidence": "packages/contracts: domain.ts (verbatim store/types.ts port incl. RunnerKind) + wire.ts (full /v1 request/response shapes; harness body and briefs left opaque until QK-MONO-003/005) exported type-only; packages/shared: paths.ts + fingerprint.ts ported dependency-free; apps/server imports Task type-only via workspace:* as the D3a proof; pnpm typecheck + lint + test green under pipefail"
+      }
     },
     {
       "id": "QK-MONO-003",
