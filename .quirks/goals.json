@@ -127,10 +127,54 @@
         "the workbench is the daily driver: ledger pane live against the service, a real shell at center, companion screens in the right pane",
         "run views render live in the same surface once runs exist"
       ],
+      "state": "abandoned",
+      "revision": 2,
+      "createdAt": "2026-07-27T22:03:02.993Z",
+      "updatedAt": "2026-07-28T20:28:08.457Z",
+      "stateReason": "Reversed by S17 (2026-07-28): the Native SDK delivered one terminal via the index-0 workaround and no scrollback binding, and the operator dropped the TS-core + .native authoring model. The workbench continues as QK-WB on Electron/React/shadcn; the built chrome (QK-NAT-006..014) is QK-WB's parity spec; QK-NAT-004 carries forward as QK-WB-007."
+    },
+    {
+      "id": "QK-MONO",
+      "title": "The t3code monorepo — pnpm workspace, Effect server, one toolchain",
+      "why": {
+        "text": "Adopt pingdotgg/t3code's structure, libraries, and toolchain wholesale (S18-S20) so the CLI+server+desktop shape stops fighting its platform.",
+        "ref": {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      },
+      "doneWhen": [
+        "pnpm workspace mirrors t3code's layout; vp run -r typecheck, vp run -r test, and vp lint are green",
+        "quirks is one Effect artifact in apps/server: every existing verb works against the existing .quirks JSON ledger unchanged — tables on TTY, JSON piped, writes emit JSON",
+        "packages/contracts holds the wire contract, imported type-only by clients",
+        "only the store boundary in apps/server touches .quirks",
+        "CLAUDE.md conventions rewritten to pnpm/vite-plus/tsgo/oxlint/Node; bun-era src/ deleted"
+      ],
       "state": "active",
       "revision": 1,
-      "createdAt": "2026-07-27T22:03:02.993Z",
-      "updatedAt": "2026-07-27T22:03:02.993Z"
+      "createdAt": "2026-07-28T20:25:37.364Z",
+      "updatedAt": "2026-07-28T20:25:37.364Z"
+    },
+    {
+      "id": "QK-WB",
+      "title": "The Electron workbench — ledger, terminal, preview on React/shadcn",
+      "why": {
+        "text": "The workbench gets a platform whose terminal works — Electron + React + shadcn on the t3code template (S17, S21) — keeping the chrome QK-NAT designed.",
+        "ref": {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      },
+      "doneWhen": [
+        "the Electron app launches from workspace scripts showing ledger | terminal | shape with the recorded chrome behaviors: focus modes, mirrored collapse, goal-grouped inbox with View filters, density-A rows, geist theme + lamp accent, titlebar band",
+        "at least two concurrent terminals with working scrollback",
+        "run views exist: live and retrospective",
+        "apps/workbench (the Native SDK app) is deleted"
+      ],
+      "state": "active",
+      "revision": 1,
+      "createdAt": "2026-07-28T20:25:47.007Z",
+      "updatedAt": "2026-07-28T20:25:47.007Z"
     }
   ]
 }

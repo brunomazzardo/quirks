@@ -638,7 +638,7 @@
     {
       "id": "QK-NAT-004",
       "title": "run views: live and retrospective",
-      "status": "open",
+      "status": "blocked",
       "dependsOn": [
         "QK-RUN-005"
       ],
@@ -649,10 +649,14 @@
       "needsDesign": false,
       "needsBreakdown": true,
       "risk": "one data shape with quirks report — build against QK-REP-001's record, not a second one",
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-27T22:03:03.163Z",
-      "updatedAt": "2026-07-27T22:03:03.163Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T20:28:43.734Z",
+      "statusDetail": {
+        "blockedReason": "superseded by QK-WB-007 (S17 reversal, goal abandoned) — run views continue on the Electron workbench",
+        "priorStatus": "open",
+        "blockedUntil": "never; QK-WB-007 is the successor"
+      }
     },
     {
       "id": "QK-NAT-005",
@@ -1644,6 +1648,479 @@
       "revision": 1,
       "createdAt": "2026-07-28T19:04:51.252Z",
       "updatedAt": "2026-07-28T19:04:51.252Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-MONO-001",
+      "title": "workspace scaffold — pnpm 11 + vite-plus + tsgo + oxlint, t3code layout",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "pnpm-workspace.yaml with catalog and allowBuilds, tsconfig.base.json, root scripts mirroring t3code",
+        "apps/ and packages/ shells wired to vite-plus so the workspace builds empty"
+      ],
+      "acceptanceCriteria": [
+        "pnpm install then vp-driven typecheck and lint pass on the scaffold"
+      ],
+      "verification": [
+        "pnpm install && pnpm typecheck && pnpm lint"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:04.682Z",
+      "updatedAt": "2026-07-28T20:27:04.682Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-MONO-002",
+      "title": "packages/contracts + packages/shared — the wire contract, type-only",
+      "status": "open",
+      "dependsOn": [
+        "QK-MONO-001"
+      ],
+      "deliverables": [
+        "the bun-era wire contract ported to packages/contracts, imported type-only by clients (D3a carried)",
+        "packages/shared for cross-app utilities"
+      ],
+      "acceptanceCriteria": [
+        "no runtime import of contracts anywhere; typecheck green"
+      ],
+      "verification": [
+        "pnpm typecheck"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:04.756Z",
+      "updatedAt": "2026-07-28T20:27:04.756Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-MONO-003",
+      "title": "apps/server — store + HTTP service on Effect",
+      "status": "open",
+      "dependsOn": [
+        "QK-MONO-002"
+      ],
+      "deliverables": [
+        "the store (same .quirks JSON format, temp+rename writes, corrupt distinguished from absent) and the HTTP surface rewritten on Effect platform inside apps/server"
+      ],
+      "acceptanceCriteria": [
+        "existing service routes respond identically against the existing .quirks ledger",
+        "carried defects stay tests: corrupt vs absent, non-zero exit never terminal success"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": true,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:04.827Z",
+      "updatedAt": "2026-07-28T20:27:04.827Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-MONO-004",
+      "title": "CLI verbs as the same artifact's HTTP client",
+      "status": "open",
+      "dependsOn": [
+        "QK-MONO-003"
+      ],
+      "deliverables": [
+        "every quirks verb served by the apps/server artifact acting as HTTP client with autostart (D4 carried)"
+      ],
+      "acceptanceCriteria": [
+        "reads print tables on TTY and JSON piped; writes print JSON; nothing prompts"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:17.190Z",
+      "updatedAt": "2026-07-28T20:27:17.190Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-MONO-005",
+      "title": "runner, harness, ops — the honesty machinery on Effect",
+      "status": "open",
+      "dependsOn": [
+        "QK-MONO-003"
+      ],
+      "deliverables": [
+        "run dispatch, parent agent, brief assembly, harness and model tables ported"
+      ],
+      "acceptanceCriteria": [
+        "runner and report keep their test coverage per the founding rule"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:17.261Z",
+      "updatedAt": "2026-07-28T20:27:17.261Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-MONO-006",
+      "title": "conventions and skills rewrite — CLAUDE.md, shape, parity",
+      "status": "open",
+      "dependsOn": [
+        "QK-MONO-004"
+      ],
+      "deliverables": [
+        "CLAUDE.md conventions rewritten to pnpm/vite-plus/tsgo/oxlint/Node; skill references to bun run src/main.ts updated; .agents symlink parity intact"
+      ],
+      "acceptanceCriteria": [
+        "no skill or doc still references bun run src/main.ts"
+      ],
+      "verification": [
+        "! grep -rq 'bun run src/main.ts' .claude docs CLAUDE.md"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:17.331Z",
+      "updatedAt": "2026-07-28T20:27:17.331Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-MONO-007",
+      "title": "delete the bun-era src/ — green sweep",
+      "status": "open",
+      "dependsOn": [
+        "QK-MONO-004",
+        "QK-MONO-005",
+        "QK-MONO-006"
+      ],
+      "deliverables": [
+        "src/ removed, bin points at the new artifact, no dual implementation"
+      ],
+      "acceptanceCriteria": [
+        "vp run -r typecheck, test, and lint green; quirks goal list works against the ledger"
+      ],
+      "verification": [
+        "pnpm typecheck && pnpm test && pnpm lint"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:17.402Z",
+      "updatedAt": "2026-07-28T20:27:17.402Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-001",
+      "title": "apps/web scaffold — React, TanStack Router, Tailwind 4, shadcn on base-ui, atom-react",
+      "status": "open",
+      "dependsOn": [
+        "QK-MONO-002"
+      ],
+      "deliverables": [
+        "apps/web on the t3code web stack, wired to packages/contracts type-only, components.json for shadcn-on-base-ui"
+      ],
+      "acceptanceCriteria": [
+        "vp dev serves the app shell; typecheck green"
+      ],
+      "verification": [
+        "pnpm typecheck"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:34.769Z",
+      "updatedAt": "2026-07-28T20:27:34.769Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-002",
+      "title": "apps/desktop — the Electron shell",
+      "status": "open",
+      "dependsOn": [
+        "QK-WB-001"
+      ],
+      "deliverables": [
+        "Electron app wrapping apps/web, electron-builder packaging, dev and dist workspace scripts; no electron-updater (S22)"
+      ],
+      "acceptanceCriteria": [
+        "pnpm dev:desktop opens the workbench window; a dist build produces a launchable app"
+      ],
+      "verification": [
+        "pnpm typecheck"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:34.841Z",
+      "updatedAt": "2026-07-28T20:27:34.841Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-003",
+      "title": "the ledger pane — accordion goals/tasks, goal-grouped inbox, View filters, density-A rows",
+      "status": "open",
+      "dependsOn": [
+        "QK-WB-001",
+        "QK-MONO-003"
+      ],
+      "deliverables": [
+        "ledger pane recreating QK-NAT-007/011/012 behaviors against the HTTP service"
+      ],
+      "acceptanceCriteria": [
+        "goals/tasks accordion, inbox grouped by goal with View-menu filters, density-A rows match the native workbench"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        },
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        },
+        {
+          "path": "apps/workbench/src/core.ts",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:34.913Z",
+      "updatedAt": "2026-07-28T20:27:34.913Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-004",
+      "title": "the terminal pane — node-pty sessions, xterm view, many terminals, scrollback",
+      "status": "open",
+      "dependsOn": [
+        "QK-WB-001",
+        "QK-MONO-003"
+      ],
+      "deliverables": [
+        "pty sessions owned by apps/server over the wire contract; xterm rendering in apps/web"
+      ],
+      "acceptanceCriteria": [
+        "at least two concurrent terminals with working scrollback — the two documented native gaps"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        },
+        {
+          "path": "docs/upstream/native-terminal-gap/single-terminal-workaround.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:35.013Z",
+      "updatedAt": "2026-07-28T20:27:35.013Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-005",
+      "title": "the shape pane — companion screens and preview",
+      "status": "open",
+      "dependsOn": [
+        "QK-WB-001"
+      ],
+      "deliverables": [
+        "shape/preview pane recreating QK-NAT-003/008 behaviors: companion screens, fully hideable so the terminal takes the width"
+      ],
+      "acceptanceCriteria": [
+        "companion screens render; hiding Shape gives the terminal the full width"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        },
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        },
+        {
+          "path": "apps/workbench/src/core.ts",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:57.738Z",
+      "updatedAt": "2026-07-28T20:27:57.738Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-006",
+      "title": "workbench chrome — focus modes, mirrored collapse, geist theme, titlebar band",
+      "status": "open",
+      "dependsOn": [
+        "QK-WB-003",
+        "QK-WB-004",
+        "QK-WB-005"
+      ],
+      "deliverables": [
+        "QK-NAT-006/009/010/013/014 behaviors recreated: header focus modes with full-bleed switching, collapse toggles mirroring, geist theme with night-ledger lamp accent, titlebar band and hairline separators"
+      ],
+      "acceptanceCriteria": [
+        "chrome behaviors match the native workbench task record"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        },
+        {
+          "path": "apps/workbench/src/app.native",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        },
+        {
+          "path": "apps/workbench/src/core.ts",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:57.848Z",
+      "updatedAt": "2026-07-28T20:27:57.848Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-007",
+      "title": "run views — live and retrospective (ex QK-NAT-004)",
+      "status": "open",
+      "dependsOn": [
+        "QK-WB-003",
+        "QK-MONO-005"
+      ],
+      "deliverables": [
+        "live run view and retrospective run view in the workbench"
+      ],
+      "acceptanceCriteria": [
+        "a dispatched run is watchable live; a finished run is readable retrospectively"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": true,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:57.958Z",
+      "updatedAt": "2026-07-28T20:27:57.958Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-008",
+      "title": "parity pass — assert the QK-WB doneWhen, delete apps/workbench",
+      "status": "open",
+      "dependsOn": [
+        "QK-WB-002",
+        "QK-WB-006",
+        "QK-WB-007"
+      ],
+      "deliverables": [
+        "parity walkthrough against the goal doneWhen; apps/workbench removed"
+      ],
+      "acceptanceCriteria": [
+        "every QK-WB doneWhen criterion asserted; apps/workbench gone from the tree"
+      ],
+      "verification": [
+        "test ! -d apps/workbench && pnpm typecheck && pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "7d1393783e7b3ef57f7f2ec413fd4a94a5acba3a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T20:27:58.035Z",
+      "updatedAt": "2026-07-28T20:27:58.035Z",
       "statusDetail": {}
     }
   ]
