@@ -4,12 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "node --watch src/dev.ts",
     "typecheck": "tsgo --noEmit",
     "test": "vp test run --passWithNoTests"
   },
-  "devDependencies": {
-    "@quirks/contracts": "workspace:*",
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/platform-node-shared": "catalog:",
     "@quirks/shared": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@quirks/contracts": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "vite-plus": "catalog:"
