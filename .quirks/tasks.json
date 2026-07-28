@@ -338,7 +338,7 @@
     {
       "id": "QK-RUN-004",
       "title": "quote verification — the honesty core",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "verdict quotes byte-checked against the retained transcript; only the runner's own messages count; quotes begin where sentences begin; accept cannot rest on words a refusal was leading up to"
@@ -362,10 +362,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.503Z",
-      "updatedAt": "2026-07-27T22:03:02.503Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T13:06:03.825Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Quote verification (TDD): transcriptQuoteHaystack keeps only runner-authored messages (claude assistant / result, codex item.completed; brief/tool_result excluded); quoteSupportedByTranscript requires statement-boundary start, forgives markup/wrapping, refuses mid-negation lifts and accept-on-refusal; resolveVerdict maps absence/unsupported to indeterminate — nothing maps absence to accept. Real fixtures carried from v1. Suite 86/86, tsc clean."
+      }
     },
     {
       "id": "QK-RUN-005",
