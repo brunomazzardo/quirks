@@ -9,6 +9,7 @@ packages:
 # electron and node-pty arrive with QK-WB / QK-MONO-003).
 allowBuilds:
   electron: true
+  electron-winstaller: false
   esbuild: true
   msgpackr-extract: true
   node-pty: true

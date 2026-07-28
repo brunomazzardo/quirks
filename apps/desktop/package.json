@@ -3,13 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "typecheck": "tsgo --noEmit",
     "test": "vp test run --passWithNoTests"
   },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@quirks/contracts": "workspace:*",
+    "@quirks/shared": "workspace:*",
+    "effect": "catalog:",
+    "electron": "41.5.0",
+    "electron-store": "^8.2.0"
+  },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "cross-env": "^10.1.0",
+    "electron-builder": "26.15.6",
     "vite-plus": "catalog:"
-  }
+  },
+  "productName": "Quirks Workbench"
 }
