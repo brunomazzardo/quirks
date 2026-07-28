@@ -1285,6 +1285,49 @@
       "createdAt": "2026-07-28T18:11:39.163Z",
       "updatedAt": "2026-07-28T18:11:39.163Z",
       "statusDetail": {}
+    },
+    {
+      "id": "QK-SRV-008",
+      "title": "quirks goal update — refine why, doneWhen, and re-pin a why-ref",
+      "status": "open",
+      "dependsOn": [
+        "QK-SRV-007"
+      ],
+      "deliverables": [
+        "quirks goal update <id> with --title --why --why-ref --done-when (doneWhen replaces wholesale when passed, untouched when omitted)",
+        "--why-ref re-pins at current HEAD, which is how an operator resolves a source that legitimately moved",
+        "--if-revision <n>, matching the task verbs",
+        "bounded like S14: refuse a goal whose state has left active — done and abandoned are history, and goal done/abandon still own state"
+      ],
+      "acceptanceCriteria": [
+        "state is never settable through update; goal done and goal abandon keep sole ownership, reason still required",
+        "updating a done or abandoned goal is refused, naming the state and its recorded reason",
+        "the brief carries goal why and doneWhen, so a criterion asserts an updated goal reaches the next brief assembled",
+        "revision and updatedAt bump on every successful update"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "re-pin QK-SKILL's why-ref, stale since docs/specs/runs-goals-and-reports.md changed in dee0795"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "bf814eeda923f8951c1d8eb9093b396a83746c29"
+        },
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "bf814eeda923f8951c1d8eb9093b396a83746c29"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "risk": "the goal's doneWhen is asserted, never derived — update must not become a way to quietly move the bar after the fact",
+      "revision": 1,
+      "createdAt": "2026-07-28T18:37:54.089Z",
+      "updatedAt": "2026-07-28T18:37:54.089Z",
+      "statusDetail": {}
     }
   ]
 }
