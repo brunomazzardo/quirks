@@ -1750,7 +1750,7 @@
     {
       "id": "QK-MONO-004",
       "title": "CLI verbs as the same artifact's HTTP client",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-MONO-003"
       ],
@@ -1771,10 +1771,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:17.190Z",
-      "updatedAt": "2026-07-28T20:27:17.190Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T22:12:31.549Z",
+      "statusDetail": {
+        "claimedBy": "opus-5"
+      }
     },
     {
       "id": "QK-MONO-005",
@@ -2145,6 +2147,37 @@
       "revision": 1,
       "createdAt": "2026-07-28T20:27:58.035Z",
       "updatedAt": "2026-07-28T20:27:58.035Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-WB-009",
+      "title": "single-origin serve — the service serves apps/web dist; shape framing SAMEORIGIN",
+      "status": "open",
+      "dependsOn": [
+        "QK-MONO-004",
+        "QK-WB-001"
+      ],
+      "deliverables": [
+        "the Effect service serves the built apps/web renderer on its own origin (t3code pattern: server serves web), making packaged/desktop use single-origin with no proxy or CORS story",
+        "GET /shape/ answers X-Frame-Options SAMEORIGIN instead of DENY so the workbench shape pane iframe paints when same-origin"
+      ],
+      "acceptanceCriteria": [
+        "the workbench loads from the service origin end-to-end: ledger reads /v1, shape iframe paints"
+      ],
+      "verification": [
+        "pnpm test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "af0a1220ab9e21e7690771c63f03c966b245e791"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-28T22:12:31.486Z",
+      "updatedAt": "2026-07-28T22:12:31.486Z",
       "statusDetail": {}
     }
   ]

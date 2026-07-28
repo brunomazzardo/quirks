@@ -12,6 +12,7 @@
     "@effect/platform-node": "catalog:",
     "@effect/platform-node-shared": "catalog:",
     "@quirks/shared": "workspace:*",
+    "commander": "^15.0.0",
     "effect": "catalog:"
   },
   "devDependencies": {
