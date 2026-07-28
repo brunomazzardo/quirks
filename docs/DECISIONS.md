@@ -28,9 +28,9 @@ Spec: [`specs/native-app-and-service.md`](specs/native-app-and-service.md)
 
 | | Decision | Where | Ledger |
 |---|---|---|---|
-| D1 | Native-rendered app, not a WebView shell | spec | `QK-NAT` |
+| D1 | ~~Native-rendered app, not a WebView shell~~ **reversed 2026-07-28 (S17)** — the workbench continues as an Electron shell, `QK-WB` | spec | `QK-NAT` |
 | D2 | TypeScript app core, not Zig | spec | `QK-NAT-001` |
-| D3 | One Bun binary is both service and CLI; Hono for routing | spec | `QK-SRV` |
+| D3 | One Bun binary is both service and CLI; Hono for routing — **reshaped 2026-07-28 (S19)**: one artifact survives, Effect replaces Bun+Hono | spec | `QK-SRV` |
 | D3a | One shared wire contract, imported type-only by the core | spec | `QK-NAT-001` |
 | D4 | The CLI is an HTTP client; fails loudly, with autostart | spec | `QK-SRV-004` |
 | D5 | Spawn the runtime from PATH now; bundle when packaging for others | spec | `QK-NAT` |
@@ -98,12 +98,30 @@ step 3 loads them in.
 
 | S16 | **`QK-SKILL-001`'s title did not match intent, and it was two tasks.** *"design skill (the needs-design flow)"* read as unambiguous for four earlier tasks this session; the operator meant **visual** design. Both halves now exist. **(a)** The needs-design flow becomes a **fourth placement inside `shape`** rather than its own skill — `shape` already has new / growth / split, so adding "refine one flagged task" avoids a second file restating the six conversational rules. Design has **one** caller, the operator, unlike breakdown's two (S15): the execution path is never interactive, so an executor that finds a task unknowable `block`s it and it surfaces in NEEDS YOU. **(b)** The visual design skill is a **decision aid** — explore alternatives, refine existing UI, via the companion with the recommended option leading. Its opening move is **"map existing patterns"**, a per-stack scan for the project's real style source (tailwind config, CSS custom properties, native theme constants); greenfield falls back to principles and references. **No design-system document is maintained** — a doc claiming "our scale is 4/8/16" is a claim about code, and claims about code rot; facts are derived each session, only chosen *directions* are recorded, because code shows what won and never what was rejected. | `.claude/skills/` | `QK-SKILL-008`, `QK-SKILL-009` |
 
+## 2026-07-28 — The t3code reversal (`QK-MONO`, `QK-WB`)
+
+Template: [`pingdotgg/t3code`](https://github.com/pingdotgg/t3code) @
+`887dd6e455bb969c1a0c9659a6bdf2baceac030d`. Evidence for the reversal:
+[`upstream/native-terminal-gap/`](upstream/native-terminal-gap/).
+
+| | Decision | Where | Ledger |
+|---|---|---|---|
+| S17 | **D1 is reversed: the workbench becomes an Electron shell over React + shadcn.** The SDK delivered one terminal via the index-0 key workaround and no scrollback binding (`upstream/native-terminal-gap/single-terminal-workaround.md`), and the operator does not want the TS-core + `.native` authoring model. The runtime-weight objection loses to a terminal that works. | — | `QK-WB` |
+| S18 | **The repo adopts t3code's structure, libraries, and toolchain wholesale**: pnpm 11 workspace, vite-plus, tsgo, oxlint, Node engines; `apps/{server,web,desktop}`, `packages/{contracts,shared}`. Clerk, tailscale/ssh, mobile, and marketing are not cloned — remote access and auth stay on the do-NOT-build table. | — | `QK-MONO` |
+| S19 | **The Hono service and commander CLI are rewritten on Effect** (t3code's server architecture). D3's spirit survives — `apps/server` is one artifact that is both CLI and server — and D3a's type-only wire contract moves to `packages/contracts`. Bun conventions retire; CLAUDE.md is rewritten. | — | `QK-MONO` |
+| S20 | **Big bang: main may break and quirks-managed work pauses** until the workspace is green — the operator's explicit call over an incremental strangler. | — | `QK-MONO` |
+| S21 | **The workbench bar is parity + a better terminal + run views**: the QK-NAT-006…014 chrome behaviors recreated, at least two concurrent terminals with scrollback, run views (live + retrospective, ex-`QK-NAT-004`), and `apps/workbench` deleted at the end. | — | `QK-WB` |
+| S22 | **electron-updater is skipped** — auto-update infra on a loopback single-user tool belongs on the do-NOT-build table; electron-builder stays for packaging. | — | `QK-WB` |
+
 ## Sequencing
 
 From [`FOUNDING.md`](FOUNDING.md). The order exists so the system can hold its own intent as
 early as possible.
 
 Reordered 2026-07-27 (S9): the native workbench moves ahead of runs — owner call.
+
+Reversed 2026-07-28 (S17–S19): rows 4–5 continue as `QK-MONO` / `QK-WB` on the t3code
+shape; Bun+Hono and the native renderer are retired.
 
 | | Work | Ledger | Why |
 |---|---|---|---|
