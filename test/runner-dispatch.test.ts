@@ -1,6 +1,6 @@
 // Dispatch honesty: non-zero ≠ success; transcripts retained on timeout and flood.
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchRunner, retainableTranscript, writeTranscript } from "../src/runner/dispatch.ts";
@@ -79,14 +79,18 @@ describe("dispatchRunner", () => {
 
   test("timeout retains whatever was said before the kill", async () => {
     const dir = mkdtempSync(join(tmpdir(), "quirks-dispatch-"));
-    const script = join(dir, "slow.ts");
-    // Bun writes stdout without TTY line-buffering, so the line is visible before sleep.
-    writeFileSync(script, `console.log("still working"); await Bun.sleep(30_000);\n`);
     const art = join(dir, "art");
+    // Deliberately /bin/sh and not `bun run a script`: Bun's startup can exceed
+    // the 400ms timeout on a loaded machine, so the child would be killed before
+    // it ever printed and the test would fail on a race rather than on the
+    // property. sh starts in about a millisecond, so the line is always emitted.
     const result = await dispatchRunner({
       jobId: "j3",
       runner: "cursor",
-      argv: [process.execPath, "run", script],
+      // No `exec`: sh FORKS `sleep`, so the grandchild inherits the stdout pipe.
+      // That is the QK-RUN-007 case, and it is the realistic one — agent CLIs
+      // spawn children constantly.
+      argv: ["/bin/sh", "-c", 'echo "still working"; sleep 30'],
       artifactDir: art,
       timeoutMs: 400,
       cwd: dir,
@@ -96,4 +100,46 @@ describe("dispatchRunner", () => {
     expect(readFileSync(result.transcriptPath!, "utf8")).toContain("still working");
     expect(result.failure?.code).toBe("timeout");
   }, 10000);
+
+  test("a timeout is a real bound: a forked grandchild cannot extend it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "quirks-dispatch-"));
+    const started = Date.now();
+    const result = await dispatchRunner({
+      jobId: "j4",
+      runner: "codex",
+      // sh forks sleep, which inherits stdout. Killing only sh leaves that pipe
+      // open, so waiting for stream 'close' waits for the sleep to finish.
+      argv: ["/bin/sh", "-c", 'echo "begun"; sleep 30'],
+      artifactDir: join(dir, "art"),
+      timeoutMs: 300,
+      cwd: dir,
+    });
+    const elapsed = Date.now() - started;
+
+    expect(result.status).toBe("timeout");
+    // Generous, but nothing like the 30s sleep — a timeout that can be exceeded
+    // without bound is not a timeout.
+    expect(elapsed).toBeLessThan(6000);
+    // And the honesty property still holds on this path.
+    expect(result.transcriptPath).toBeTruthy();
+    expect(readFileSync(result.transcriptPath!, "utf8")).toContain("begun");
+  }, 20000);
+
+  test("the whole process group dies, leaving no orphan behind", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "quirks-dispatch-"));
+    const marker = join(dir, "still-alive");
+    const result = await dispatchRunner({
+      jobId: "j5",
+      runner: "codex",
+      // The grandchild would create the marker at 3s. If the group is killed at
+      // 300ms it never gets there.
+      argv: ["/bin/sh", "-c", `echo go; (sleep 3; touch ${marker}) & wait`],
+      artifactDir: join(dir, "art"),
+      timeoutMs: 300,
+      cwd: dir,
+    });
+    expect(result.status).toBe("timeout");
+    await new Promise((r) => setTimeout(r, 4000));
+    expect(existsSync(marker)).toBe(false);
+  }, 20000);
 });

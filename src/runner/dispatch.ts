@@ -1,7 +1,7 @@
 // Spawn a runner, bound its streams, retain the transcript always — including
 // on timeout and flood. A non-zero exit is never recorded as durable success.
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
@@ -11,6 +11,11 @@ const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
 const MAX_STDERR_BYTES = 1_048_576;
 const MAX_RETAINED_TRANSCRIPT_BYTES = 1024 * 1024;
 const KILL_GRACE_MS = 100;
+/** How long to wait for stdio to finish after the process has exited (QK-RUN-007).
+ *  Bounded, because a grandchild that inherited the pipe can hold it open for as
+ *  long as it likes — and a timeout that can be exceeded without bound is not a
+ *  timeout. */
+const STREAM_DRAIN_GRACE_MS = 2_000;
 
 export interface DispatchInput {
   jobId: string;
@@ -26,13 +31,27 @@ export interface DispatchInput {
 interface StreamCollectResult {
   text: string;
   overflow: boolean;
+  /** Set when the stream faulted. The bytes already read are still returned. */
+  error?: string;
 }
 
+/**
+ * Collect a stream up to `maxBytes`, and NEVER reject: a stream fault must not
+ * discard what was already read, because the transcript is always retained
+ * (FOUNDING). Rejecting here used to lose the whole transcript on any stdio error.
+ */
 function collectBounded(stream: Readable, maxBytes: number): Promise<StreamCollectResult> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let total = 0;
     let overflow = false;
+    let settled = false;
+    const finish = (error?: string) => {
+      if (settled) return;
+      settled = true;
+      const text = Buffer.concat(chunks).toString("utf8");
+      resolve(error === undefined ? { text, overflow } : { text, overflow, error });
+    };
     stream.on("data", (chunk: Buffer | string) => {
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       total += buf.length;
@@ -43,14 +62,60 @@ function collectBounded(stream: Readable, maxBytes: number): Promise<StreamColle
       }
       chunks.push(buf);
     });
-    stream.on("error", reject);
-    stream.on("close", () =>
-      resolve({ text: Buffer.concat(chunks).toString("utf8"), overflow }),
-    );
-    stream.on("end", () =>
-      resolve({ text: Buffer.concat(chunks).toString("utf8"), overflow }),
-    );
+    stream.on("error", (err: Error) => finish(err.message));
+    stream.on("close", () => finish());
+    stream.on("end", () => finish());
   });
+}
+
+/**
+ * Wait for a collector, but never longer than `graceMs`. Destroying the stream
+ * makes the collector settle with whatever arrived, so a pipe held open by a
+ * process we could not signal costs us a truncated transcript rather than a hang.
+ */
+async function collectWithGrace(
+  stream: Readable | null | undefined,
+  collector: Promise<StreamCollectResult> | undefined,
+  graceMs: number,
+): Promise<StreamCollectResult> {
+  if (!collector) return { text: "", overflow: false };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const grace = new Promise<"grace">((resolve) => {
+    timer = setTimeout(() => resolve("grace"), graceMs);
+  });
+  try {
+    const first = await Promise.race([collector, grace]);
+    if (first !== "grace") return first;
+    stream?.destroy();
+    return await collector;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Signal the runner's whole process group, not just the process we spawned.
+ *
+ * Agent CLIs spawn children constantly. Killing only the direct child leaves the
+ * grandchildren running AND holding the stdout pipe open, which is what let a
+ * 30-second sleep outlive a 400ms timeout. A negative pid targets the group —
+ * available because the child is spawned `detached`, making it group leader.
+ */
+function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // ESRCH: already gone. EPERM or an unsupported platform: fall back to the
+      // direct child, which is still better than nothing.
+    }
+  }
+  try {
+    child.kill(signal);
+  } catch {
+    /* already gone */
+  }
 }
 
 /** Tail-preferring retention — findings come last. Always attempts to write. */
@@ -107,12 +172,15 @@ export async function dispatchRunner(input: DispatchInput): Promise<DispatchResu
     cwd: input.cwd,
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, ...input.env },
+    // Own process group, so the timeout can kill everything the runner spawned
+    // (QK-RUN-007). We never unref: this process still awaits the child.
+    detached: true,
   });
 
   const timeoutTimer = setTimeout(() => {
     timedOut = true;
-    child.kill("SIGTERM");
-    killTimer = setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS);
+    killTree(child, "SIGTERM");
+    killTimer = setTimeout(() => killTree(child, "SIGKILL"), KILL_GRACE_MS);
   }, input.timeoutMs);
 
   try {
@@ -131,20 +199,25 @@ export async function dispatchRunner(input: DispatchInput): Promise<DispatchResu
     stdoutPromise = collectBounded(child.stdout, MAX_STDOUT_BYTES);
     const stderrPromise = collectBounded(child.stderr, MAX_STDERR_BYTES);
 
-    const [exitCode, stdout, stderr] = await new Promise<
-      [number | null, StreamCollectResult, StreamCollectResult]
-    >((resolve, reject) => {
+    // Wait for 'exit', NOT 'close'. 'close' waits for the stdio streams too, and
+    // a grandchild that inherited the pipe keeps them open — that is precisely how
+    // a 30-second sleep outlived a 400ms timeout (QK-RUN-007).
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
       child.once("error", reject);
-      child.once("close", (code) => {
-        Promise.all([stdoutPromise!, stderrPromise])
-          .then(([out, err]) => resolve([code, out, err]))
-          .catch(reject);
-      });
+      child.once("exit", (code) => resolve(code));
     });
+
+    // The process is gone; give stdio a bounded moment to finish.
+    const [stdout, stderr] = await Promise.all([
+      collectWithGrace(child.stdout, stdoutPromise, STREAM_DRAIN_GRACE_MS),
+      collectWithGrace(child.stderr, stderrPromise, STREAM_DRAIN_GRACE_MS),
+    ]);
 
     const notes: string[] = [];
     if (stdout.overflow) notes.push("stdout flooded — retained the bound prefix");
     if (stderr.overflow) notes.push("stderr flooded — retained the bound prefix");
+    if (stdout.error) notes.push(`stdout faulted (${stdout.error}) — retained what was read`);
+    if (stderr.error) notes.push(`stderr faulted (${stderr.error}) — retained what was read`);
 
     // Always retain, including on timeout and flood. The interpreter (and the
     // operator) read this exact text.
