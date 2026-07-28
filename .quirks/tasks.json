@@ -305,7 +305,7 @@
     {
       "id": "QK-RUN-003",
       "title": "runner dispatch: claude, codex, cursor",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "argv assembly per harness — read v1 src/runner/*.ts first; each listed argv fact cost a repair cycle"
@@ -327,10 +327,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.443Z",
-      "updatedAt": "2026-07-27T22:03:02.443Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T13:04:13.421Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Runner dispatch: argv builders for claude/codex/cursor carrying the repair-cycle facts (claude: prompt before flags, --add-dir last, --verbose with stream-json; cursor: no --file, --trust + trailing positional; codex: -C workspace, effort map, inline-or-path brief). dispatchRunner always retains transcripts (incl. timeout/flood, non-clobbering attempts); statusFromExit never maps non-zero to success. Suite 71/71, tsc clean."
+      }
     },
     {
       "id": "QK-RUN-004",
