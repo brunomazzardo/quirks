@@ -580,7 +580,7 @@
     {
       "id": "QK-NAT-002",
       "title": "the workbench shell: ledger | terminal | preview",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-NAT-001",
         "QK-SRV-004"
@@ -596,15 +596,18 @@
       "sourceRefs": [],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:03.089Z",
-      "updatedAt": "2026-07-27T22:03:03.089Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T14:19:20.238Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Three-pane workbench: nested <split> ledger|terminal|preview; Cmd.fetch to 127.0.0.1:47301/v1/goals and /v1/tasks (status live, goal/task titles in pane); single NAT-005 terminal; preview webview via wiring overlay web_panes snapped to preview-pane (bounds match). Automate: widget_nodes=18, separators at 0.22/0.62, Shell textbox, webview open. Divider drag regrids pty + reflows web pane via web_panes."
+      }
     },
     {
       "id": "QK-NAT-003",
       "title": "companion screens in the preview pane",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-NAT-002"
       ],
@@ -616,10 +619,13 @@
       "sourceRefs": [],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:03.127Z",
-      "updatedAt": "2026-07-27T22:03:03.127Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T14:19:53.953Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Preview webview points at http://127.0.0.1:47301/shape/ (model.previewUrl + app.zon scene URL). native automate snapshot: view @w1/preview kind=webview url=\\\"http://127.0.0.1:47301/shape/\\\". Absorbs QK-COMP-003 companion surface in the right pane."
+      }
     },
     {
       "id": "QK-NAT-004",

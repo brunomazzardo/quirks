@@ -1,13 +1,35 @@
-<!-- Quirks workbench — single terminal (QK-NAT-005).
-     No scrollback= attribute: that is the load-bearing omission. -->
+<!-- Quirks workbench — ledger | terminal | preview (QK-NAT-002).
+     Single center <terminal> only (NAT-005 ceiling). No scrollback=.
+     Ledger lists are pre-joined text (markup for-each over pointer slices
+     failed the iterable gate on SDK 0.6.1). -->
 <column grow="1" background="background">
-  <row height="34" window-drag="true"></row>
-  <terminal
-    pty="{shellKey}"
-    on-terminal="termState"
-    autofocus="true"
-    grow="1"
-    focus-ring="background"
-    label="Shell"
-  />
+  <row height="34" window-drag="true" padding="8" gap="8">
+    <text>Quirks</text>
+    <spacer grow="1" />
+    <text>{ledgerStatus}</text>
+  </row>
+  <split value="{leftSplit}" on-resize="leftResized" gap="4" grow="1">
+    <column width="240" min-width="160" padding="8" gap="6">
+      <text>Goals</text>
+      <scroll grow="1">
+        <text wrap="true">{goalsText}</text>
+      </scroll>
+      <text>Tasks</text>
+      <scroll grow="1">
+        <text wrap="true">{tasksText}</text>
+      </scroll>
+    </column>
+    <split value="{rightSplit}" on-resize="rightResized" gap="4" grow="1">
+      <terminal
+        pty="{shellKey}"
+        on-terminal="termState"
+        autofocus="true"
+        grow="1"
+        min-width="280"
+        focus-ring="background"
+        label="Shell"
+      />
+      <panel grow="1" min-width="200" label="preview-pane"></panel>
+    </split>
+  </split>
 </column>

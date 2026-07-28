@@ -9,25 +9,27 @@
     // "command" is required for Cmd.ptySpawn — without it the spawn is
     // rejected and the terminal looks like a wrong-key orphan (QK-NAT-005).
     .permissions = .{ "view", "command" },
-    .capabilities = .{ "native_views", "gpu_surfaces" },
+    .capabilities = .{ "native_views", "gpu_surfaces", "webview" },
     .shell = .{
         .windows = .{
             .{
                 .label = "main",
                 .title = "Quirks",
-                .width = 1100,
-                .height = 720,
+                .width = 1280,
+                .height = 800,
                 .restore_state = false,
                 .restore_policy = "center_on_primary",
                 .views = .{
                     .{ .label = "main-canvas", .kind = "gpu_surface", .fill = true, .role = "Workbench canvas", .accessibility_label = "Workbench", .gpu_backend = "metal", .gpu_pixel_format = "bgra8_unorm", .gpu_present_mode = "timer", .gpu_alpha_mode = "opaque", .gpu_color_space = "srgb", .gpu_vsync = true },
+                    // Child webview; web_panes snaps it to the preview-pane anchor.
+                    .{ .label = "preview", .kind = "webview", .parent = "main-canvas", .url = "http://127.0.0.1:47301/shape/", .x = 900, .y = 34, .width = 380, .height = 766 },
                 },
             },
         },
     },
     .security = .{
         .navigation = .{
-            .allowed_origins = .{ "zero://app", "zero://inline", "http://127.0.0.1", "http://localhost" },
+            .allowed_origins = .{ "zero://app", "zero://inline", "http://127.0.0.1:47301", "http://127.0.0.1", "http://localhost" },
             .external_links = .{ .action = "deny" },
         },
     },
