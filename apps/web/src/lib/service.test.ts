@@ -12,20 +12,27 @@ afterEach(() => {
   }
 });
 
-it("falls back to the repo-derived default port when unset", () => {
+it("defaults to the same origin, so the dev proxy is what reaches the daemon", () => {
   // import.meta.env is backed by process.env in this test runtime, which
   // stringifies assignments — `= undefined` becomes the string "undefined".
   // Deleting the key is what actually simulates "unset".
   delete import.meta.env.VITE_QUIRKS_URL;
-  expect(serviceBaseUrl()).toBe("http://127.0.0.1:47301");
+  expect(serviceBaseUrl()).toBe("");
 });
 
-it("falls back when VITE_QUIRKS_URL is blank", () => {
+it("defaults to the same origin when VITE_QUIRKS_URL is blank", () => {
   import.meta.env.VITE_QUIRKS_URL = "   ";
-  expect(serviceBaseUrl()).toBe("http://127.0.0.1:47301");
+  expect(serviceBaseUrl()).toBe("");
 });
 
 it("prefers VITE_QUIRKS_URL when set, trimming a trailing slash", () => {
   import.meta.env.VITE_QUIRKS_URL = "http://127.0.0.1:9999/";
   expect(serviceBaseUrl()).toBe("http://127.0.0.1:9999");
+});
+
+it("composes onto a route path under either resolution", () => {
+  delete import.meta.env.VITE_QUIRKS_URL;
+  expect(`${serviceBaseUrl()}/v1/goals`).toBe("/v1/goals");
+  import.meta.env.VITE_QUIRKS_URL = "http://127.0.0.1:47301";
+  expect(`${serviceBaseUrl()}/v1/goals`).toBe("http://127.0.0.1:47301/v1/goals");
 });

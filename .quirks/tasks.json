@@ -1934,7 +1934,7 @@
     {
       "id": "QK-WB-003",
       "title": "the ledger pane — accordion goals/tasks, goal-grouped inbox, View filters, density-A rows",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-WB-001",
         "QK-MONO-003"
@@ -1964,11 +1964,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:34.913Z",
-      "updatedAt": "2026-07-28T21:35:14.477Z",
+      "updatedAt": "2026-07-28T21:55:43.748Z",
       "statusDetail": {
-        "claimedBy": "opus-5"
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: pure row model ported from core.ts (20 tests, divergences marked), atom-react data layer, all 11 native View-menu items reproduced (Ordering/Status/Goals/Reset/Collapse, defaults Active+InProgress+Updated), inbox grouped by goal with Other bucket, density-A rows. Same-origin dev proxy /v1+/shape with daemon port re-derivation (QUIRKS_URL/QUIRKS_PORT overrides); serviceBaseUrl now same-origin. Live evidence vs real daemon: 21 active tasks / 5 goals default view, filters + collapse + reset verified in browser, clean console, down-state honest. 27 web tests total; tsgo/build/lint green"
       }
     },
     {

@@ -11,14 +11,17 @@ const TASK_ID = "QK-WB-005";
 type ConnStatus = "checking" | "up" | "down";
 
 /**
- * Is anything answering at `url`? A plain `fetch` can't tell us — the
- * companion routes set no CORS headers (loopback-only tool, see
- * src/service/app.ts), so a cross-origin `fetch` in "cors" mode rejects
- * whether the service is down OR just not offering an
- * Access-Control-Allow-Origin. `mode: "no-cors"` sidesteps that: it resolves
- * (an opaque, unreadable response) as long as *something* answered, and
- * rejects only on an actual network failure — which is exactly the
- * up/down signal this pane needs, without reading the response body.
+ * Is anything answering at `url`? An ordinary status check, now that it can be.
+ *
+ * It used to need `mode: "no-cors"`: the companion routes set no CORS headers
+ * (loopback-only tool, see src/service/app.ts), so a cross-origin `fetch` in
+ * "cors" mode rejected whether the service was down OR merely not offering an
+ * Access-Control-Allow-Origin, and an opaque response was the only up/down
+ * signal available. QK-WB-003 made the base URL same-origin (lib/service.ts)
+ * and put a dev proxy in front of `/shape`, so the response is readable and
+ * `response.ok` is the honest answer. Reading the status matters, not just the
+ * absence of a throw: a stopped daemon now arrives as a proxy 5xx rather than
+ * a rejected fetch.
  */
 function useServiceProbe(url: string): { status: ConnStatus; retry: () => void; token: number } {
   const [status, setStatus] = useState<ConnStatus>("checking");
@@ -28,9 +31,9 @@ function useServiceProbe(url: string): { status: ConnStatus; retry: () => void; 
     let cancelled = false;
     setStatus("checking");
     const controller = new AbortController();
-    fetch(url, { mode: "no-cors", cache: "no-store", signal: controller.signal })
-      .then(() => {
-        if (!cancelled) setStatus("up");
+    fetch(url, { cache: "no-store", signal: controller.signal })
+      .then((response) => {
+        if (!cancelled) setStatus(response.ok ? "up" : "down");
       })
       .catch(() => {
         if (!cancelled) setStatus("down");
@@ -48,11 +51,12 @@ function useServiceProbe(url: string): { status: ConnStatus; retry: () => void; 
 type LiveState = "idle" | "live" | "offline";
 
 /**
- * Best-effort liveness dot from GET /shape/events-stream. Best-effort
- * because, like the probe above, this endpoint sets no CORS headers either —
- * a cross-origin EventSource can be expected to sit in "offline" even while
- * the service is healthy. Kept anyway per spec as a secondary signal; the
- * primary up/down read is `useServiceProbe`, and this never blocks it.
+ * Liveness dot from GET /shape/events-stream. This used to be best-effort for
+ * the same reason as the probe — a cross-origin EventSource against a
+ * CORS-less endpoint sits in "offline" even while the service is healthy — and
+ * became a real signal when the stream went same-origin through the dev proxy
+ * (QK-WB-003). Still secondary: the primary up/down read is `useServiceProbe`,
+ * and this never blocks it.
  */
 function useShapeLiveness(url: string, enabled: boolean): LiveState {
   const [state, setState] = useState<LiveState>("idle");
@@ -95,8 +99,10 @@ function useShapeLiveness(url: string, enabled: boolean): LiveState {
  * contend with, since it was not a browser frame. That is unconditional and
  * out of this task's reach (server routes live outside apps/web/src), so a
  * browser will refuse to paint the iframe's contents even while `status` is
- * "up". The "open in new tab" link is the working path until that header is
- * relaxed or a same-origin proxy exists.
+ * "up". The same-origin dev proxy added by QK-WB-003 does NOT fix this: it
+ * forwards the header verbatim, and DENY refuses framing from any origin,
+ * including its own. Relaxing it is the server lane's task; until then the
+ * "open in new tab" link is the working path.
  */
 export function ShapePane() {
   const shapeHidden = useLayoutStore((state) => state.shapeHidden);
