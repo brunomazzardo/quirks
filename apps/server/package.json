@@ -16,7 +16,8 @@
     "@effect/platform-node-shared": "catalog:",
     "@quirks/shared": "workspace:*",
     "commander": "^15.0.0",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",

@@ -1814,7 +1814,7 @@
     {
       "id": "QK-MONO-006",
       "title": "conventions and skills rewrite — CLAUDE.md, shape, parity",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-MONO-004"
       ],
@@ -1835,10 +1835,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:17.331Z",
-      "updatedAt": "2026-07-28T20:27:17.331Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T22:40:46.471Z",
+      "statusDetail": {
+        "claimedBy": "sonnet-5"
+      }
     },
     {
       "id": "QK-MONO-007",
@@ -1979,7 +1981,7 @@
     {
       "id": "QK-WB-004",
       "title": "the terminal pane — node-pty sessions, xterm view, many terminals, scrollback",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-WB-001",
         "QK-MONO-003"
@@ -2005,10 +2007,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:35.013Z",
-      "updatedAt": "2026-07-28T20:27:35.013Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T22:40:46.417Z",
+      "statusDetail": {
+        "claimedBy": "opus-5"
+      }
     },
     {
       "id": "QK-WB-005",
