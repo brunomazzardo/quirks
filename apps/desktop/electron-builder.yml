@@ -1,0 +1,48 @@
+# electron-builder packaging for the Quirks workbench.
+#
+# t3code generates this config from scripts/build-desktop-artifact.ts, because
+# it stages a whole second app tree (server bundle, node-pty prebuilds, icon
+# generation, notarization, GitHub publish) before handing it to the builder.
+# Quirks ships a window over apps/web, so the config is static and short.
+#
+# No `publish` block and no electron-updater (S22): auto-update infrastructure
+# on a loopback single-user tool is on the do-NOT-build table.
+
+appId: dev.quirks.workbench
+productName: Quirks Workbench
+copyright: Quirks
+
+directories:
+  output: release
+
+# `vp pack` bundles the main and preload entries completely — the main process
+# imports nothing but `electron` and node builtins — so the ASAR needs no
+# node_modules at all. package.json comes in automatically for the "main" field.
+files:
+  - dist-electron/**/*
+  - "!node_modules/**"
+  - "!**/*.map"
+
+# The renderer is apps/web's build output, which lives outside this package.
+# It lands at Contents/Resources/renderer and is found through
+# process.resourcesPath (see src/app/DesktopEnvironment.ts).
+extraResources:
+  - from: ../web/dist
+    to: renderer
+    filter:
+      - "**/*"
+
+# Nothing native is bundled, so there is nothing to rebuild against Electron's ABI.
+npmRebuild: false
+nodeGypRebuild: false
+
+mac:
+  # `--dir` on the CLI overrides this with an unpacked .app bundle.
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  category: public.app-category.developer-tools
+  # Local unsigned builds: electron-builder ad-hoc signs, which is all macOS
+  # arm64 needs to launch an app built on the same machine.
+  identity: null

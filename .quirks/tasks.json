@@ -1902,7 +1902,7 @@
     {
       "id": "QK-WB-002",
       "title": "apps/desktop — the Electron shell",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-WB-001"
       ],
@@ -1923,17 +1923,18 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:34.841Z",
-      "updatedAt": "2026-07-28T21:18:00.710Z",
+      "updatedAt": "2026-07-28T21:46:34.733Z",
       "statusDetail": {
-        "claimedBy": "opus-5"
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: Electron 41 shell — sandboxed window (contextIsolation, no nodeIntegration), quirks://app custom scheme serving apps/web dist with traversal refusal + SPA fallback (pure, 18 tests), nav guard opens externals in browser, no updater (S22). Three launch probes green: dev@5733, workspace prod, packaged .app (electron-builder --dir, 264M, ad-hoc signed). Two packaging bugs found+fixed (electron devDep + neverBundle). Root scripts dev:desktop/start:desktop/dist:desktop added. Fable verify: tsgo clean, 18/18 tests, .app renderer present"
       }
     },
     {
       "id": "QK-WB-003",
       "title": "the ledger pane — accordion goals/tasks, goal-grouped inbox, View filters, density-A rows",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-WB-001",
         "QK-MONO-003"
@@ -1963,10 +1964,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:34.913Z",
-      "updatedAt": "2026-07-28T20:27:34.913Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T21:35:14.477Z",
+      "statusDetail": {
+        "claimedBy": "opus-5"
+      }
     },
     {
       "id": "QK-WB-004",

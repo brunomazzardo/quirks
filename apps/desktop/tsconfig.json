@@ -1,4 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  "compilerOptions": {
+    "types": ["node", "electron"],
+    "lib": ["ESNext", "DOM"]
+  },
+  "include": ["src", "vite.config.ts"]
 }

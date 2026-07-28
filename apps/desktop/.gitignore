@@ -1,0 +1,5 @@
+# vp pack output (main.cjs / preload.cjs); the root .gitignore only covers dist/.
+dist-electron/
+
+# electron-builder output (directories.output).
+release/

@@ -7,6 +7,10 @@
   "scripts": {
     "quirks": "bun run src/main.ts",
     "test:legacy": "bun test",
+    "dev:desktop": "vp run --filter @quirks/desktop dev",
+    "start:desktop": "vp run --filter @quirks/desktop start",
+    "dist:desktop": "vp run --filter @quirks/desktop dist",
+    "dist:desktop:dir": "vp run --filter @quirks/desktop dist:dir",
     "build": "vp run --filter './apps/*' --filter './packages/*' build",
     "typecheck": "vp run -r --concurrency-limit 2 typecheck",
     "tc": "vp run -r --concurrency-limit 2 typecheck",

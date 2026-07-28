@@ -2,9 +2,13 @@
   "name": "@quirks/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "The Quirks workbench desktop shell.",
+  "author": "Quirks",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
+    "ensure:electron": "node scripts/ensure-electron-runtime.mjs",
+    "start": "node scripts/start-electron.mjs",
     "typecheck": "tsgo --noEmit",
     "test": "vp test run --passWithNoTests"
   },
@@ -13,7 +17,6 @@
     "@quirks/contracts": "workspace:*",
     "@quirks/shared": "workspace:*",
     "effect": "catalog:",
-    "electron": "41.5.0",
     "electron-store": "^8.2.0"
   },
   "devDependencies": {
@@ -21,6 +24,7 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "cross-env": "^10.1.0",
+    "electron": "41.5.0",
     "electron-builder": "26.15.6",
     "vite-plus": "catalog:"
   },
