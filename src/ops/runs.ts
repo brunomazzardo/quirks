@@ -4,11 +4,35 @@
 import { goalIdOfTask } from "../store/ids.ts";
 import { loadRuns, loadTasks, saveRuns, type Store } from "../store/store.ts";
 import type { Run, RunMode, RunPlanEntry, Task } from "../store/types.ts";
+import type { RunnerKind } from "../runner/types.ts";
 import { assembleBrief, type TaskBrief } from "./brief.ts";
+import { availability, routeTask, type HarnessRow } from "./harness.ts";
 import { ConflictError, NotFoundError, ValidationError } from "./errors.ts";
 
-const DEFAULT_HARNESS = "unassigned";
-const DEFAULT_MODEL = "unassigned";
+/**
+ * Warnings printed above the `[y/N]`. Derived at approval time and deliberately
+ * not persisted on the Run — they describe the machine now, and would go stale
+ * the moment the run is resumed on a different day.
+ */
+function planWarnings(plan: RunPlanEntry[], rows: readonly HarnessRow[]): string[] {
+  const warnings: string[] = [];
+
+  const unassigned = plan.filter((p) => p.harness === "unassigned");
+  if (unassigned.length > 0) {
+    warnings.push(
+      `${unassigned.length} task(s) have no usable harness at their tier and will not dispatch: ` +
+        unassigned.map((p) => p.id).join(", "),
+    );
+  }
+
+  // Only complain about harnesses this plan actually intends to use.
+  const used = new Set(plan.map((p) => p.harness).filter((h) => h !== "unassigned"));
+  for (const row of rows) {
+    if (!used.has(row.runner) || row.lean === "yes") continue;
+    warnings.push(`harness ${row.runner}: ${row.leanDetail}`);
+  }
+  return warnings;
+}
 
 /** A task is ready for a run when it is open work nobody has claimed, not
  *  parked as future, and not waiting on a design/breakdown flow. */
@@ -80,15 +104,20 @@ function mintRunId(runs: Run[]): string {
   return `run-${String(max + 1).padStart(3, "0")}`;
 }
 
-function buildPlan(ordered: Task[]): RunPlanEntry[] {
-  return ordered.map((t, i) => ({
-    id: t.id,
-    title: t.title,
-    order: i + 1,
-    harness: DEFAULT_HARNESS,
-    model: DEFAULT_MODEL,
-    estimatedCost: null,
-  }));
+function buildPlan(ordered: Task[], routable: readonly RunnerKind[]): RunPlanEntry[] {
+  return ordered.map((t, i) => {
+    const routing = routeTask(t, routable);
+    return {
+      id: t.id,
+      title: t.title,
+      order: i + 1,
+      harness: routing.harness,
+      model: routing.model,
+      // Still null: no cost model exists, and inventing a number is worse than
+      // admitting we do not have one.
+      estimatedCost: null,
+    };
+  });
 }
 
 export interface PlanInput {
@@ -96,6 +125,9 @@ export interface PlanInput {
   goal?: string;
   name: string;
   mode?: RunMode;
+  /** Override the machine's routable set. Tests inject a fixed list so a plan
+   *  assertion does not depend on which CLIs the developer happens to have. */
+  routable?: readonly RunnerKind[];
 }
 
 export interface RunPlan {
@@ -105,6 +137,8 @@ export interface RunPlan {
   mode: RunMode;
   plan: RunPlanEntry[];
   taskIds: string[];
+  /** Shown before approval. Empty when every row lands on a proven harness. */
+  warnings: string[];
 }
 
 /** Resolve the task set and print-ready plan. Does not write. */
@@ -142,13 +176,18 @@ export function assemblePlan(store: Store, input: PlanInput): RunPlan {
   }
 
   const ordered = orderTasks(selected);
-  const plan = buildPlan(ordered);
+  // Presence + the run record, no process spawned — the plan names a harness we
+  // actually checked instead of asserting one (QK-HARN-002).
+  const { rows, routable } = availability(store);
+  const effective = input.routable ?? routable;
+  const plan = buildPlan(ordered, effective);
   const result: RunPlan = {
     name: input.name.trim(),
     slug: slugify(input.name),
     mode,
     plan,
     taskIds: ordered.map((t) => t.id),
+    warnings: planWarnings(plan, rows),
   };
   if (input.goal !== undefined) result.goal = input.goal;
   return result;

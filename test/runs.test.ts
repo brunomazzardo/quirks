@@ -120,11 +120,59 @@ describe("assemblePlan / startRun", () => {
       future: false,
     });
 
-    const plan = assemblePlan(s, { name: "server work", goal: "QK-TST" });
+    // `routable` is injected: plan routing consults the real machine, and a
+    // bare assertion here would pass or fail on which CLIs are installed.
+    const plan = assemblePlan(s, { name: "server work", goal: "QK-TST", routable: ["claude"] });
     expect(plan.taskIds).toEqual([a.id, b.id]);
     expect(plan.slug).toBe("server-work");
-    expect(plan.plan[0]?.harness).toBe("unassigned");
+    // Routing resolves through the QK-HARN tier table; a task with no stated
+    // effort is `standard`, which claude serves.
+    expect(plan.plan[0]?.harness).toBe("claude");
+    expect(plan.plan[0]?.model).toBe("sonnet");
+    // Still null — there is no cost model, and a number would be invented.
     expect(plan.plan[0]?.estimatedCost).toBeNull();
+  });
+
+  test("no routable harness leaves every row unassigned and warns by task id", () => {
+    const s = store();
+    createGoal(s, { id: "QK-TST", title: "t", why: "w", doneWhen: ["done"] });
+    const t = proposeTask(s, {
+      title: "one", goal: "QK-TST", dependsOn: [], deliverables: [], criteria: [],
+      verify: [], sources: [], needsDesign: false, needsBreakdown: false, future: false,
+    });
+
+    const plan = assemblePlan(s, { name: "nowhere", goal: "QK-TST", routable: [] });
+    expect(plan.plan[0]?.harness).toBe("unassigned");
+    expect(plan.plan[0]?.model).toBe("unassigned");
+    expect(plan.warnings.some((w) => w.includes("will not dispatch") && w.includes(t.id))).toBe(true);
+  });
+
+  test("routes to the first routable harness that serves the tier", () => {
+    const s = store();
+    createGoal(s, { id: "QK-TST", title: "t", why: "w", doneWhen: ["done"] });
+    proposeTask(s, {
+      title: "one", goal: "QK-TST", dependsOn: [], deliverables: [], criteria: [],
+      verify: [], sources: [], needsDesign: false, needsBreakdown: false, future: false,
+    });
+
+    // Claude unavailable — standard tier falls to codex, not to "unassigned".
+    const plan = assemblePlan(s, { name: "codex only", goal: "QK-TST", routable: ["codex"] });
+    expect(plan.plan[0]?.harness).toBe("codex");
+    expect(plan.plan[0]?.model).toBe("gpt-5.5");
+  });
+
+  test("a plan warns about the harness it intends to use", () => {
+    const s = store();
+    createGoal(s, { id: "QK-TST", title: "t", why: "w", doneWhen: ["done"] });
+    proposeTask(s, {
+      title: "one", goal: "QK-TST", dependsOn: [], deliverables: [], criteria: [],
+      verify: [], sources: [], needsDesign: false, needsBreakdown: false, future: false,
+    });
+
+    // A fresh store has no dispatch history, so claude can be `unproven` at best
+    // (or `no` if it is not installed here) — either way it is never a silent yes.
+    const plan = assemblePlan(s, { name: "warned", goal: "QK-TST", routable: ["claude"] });
+    expect(plan.warnings.some((w) => w.startsWith("harness claude:"))).toBe(true);
   });
 
   test("--dry-run assembles briefs and writes nothing", () => {

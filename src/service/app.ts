@@ -18,6 +18,7 @@ import {
   releaseTask,
 } from "../ops/tasks.ts";
 import { assemblePlan, getRun, listRuns, startRun } from "../ops/runs.ts";
+import { availability, harnessView } from "../ops/harness.ts";
 import { executeRun, resumeRun } from "../run/parent.ts";
 import { defaultParentHooks } from "../run/hooks.ts";
 import type { RunMode } from "../store/types.ts";
@@ -188,14 +189,36 @@ export function createApp(store: Store): Hono {
 
   app.get("/v1/runs/:id", (c) => c.json(getRun(store, c.req.param("id"))));
 
-  app.post("/v1/runs/:id/execute", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
+  // ---- harness ----
+  // Presence and the tier table are free; `?probe=true` additionally runs
+  // `--version` against each present harness. Liveness always comes from the run
+  // record, so the default answer costs no round trip (QK-HARN-001).
+  app.get("/v1/harness", async (c) => {
+    const probe = c.req.query("probe") === "true";
+    const raw = c.req.query("timeoutMs");
+    const timeoutMs = raw === undefined ? undefined : Number.parseInt(raw, 10);
+    return c.json(
+      await harnessView(store, {
+        probe,
+        ...(timeoutMs !== undefined && Number.isInteger(timeoutMs) && timeoutMs > 0
+          ? { timeoutMs }
+          : {}),
+      }),
+    );
+  });
+
+  /** execute and resume take the same body and the same hooks. */
+  const hooksFromRequest = async (c: { req: { json: () => Promise<unknown> } }) => {
+    const body = ((await c.req.json().catch(() => ({}))) ?? {}) as {
       implementerModel?: string;
       reviewerModel?: string;
       review?: boolean;
       timeoutMs?: number;
     };
-    const hooks = defaultParentHooks({
+    return defaultParentHooks({
+      // What is actually installed, so reviewer independence is resolved against
+      // the machine rather than assuming claude-only (QK-HARN-002).
+      available: availability(store).routable,
       ...(body.implementerModel
         ? { implementer: { runner: "claude" as const, model: body.implementerModel } }
         : {}),
@@ -205,28 +228,15 @@ export function createApp(store: Store): Hono {
       ...(body.review !== undefined ? { review: body.review } : {}),
       ...(body.timeoutMs !== undefined ? { timeoutMs: body.timeoutMs } : {}),
     });
-    const result = await executeRun(store, c.req.param("id"), hooks);
+  };
+
+  app.post("/v1/runs/:id/execute", async (c) => {
+    const result = await executeRun(store, c.req.param("id"), await hooksFromRequest(c));
     return c.json(result.run);
   });
 
   app.post("/v1/runs/:id/resume", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      implementerModel?: string;
-      reviewerModel?: string;
-      review?: boolean;
-      timeoutMs?: number;
-    };
-    const hooks = defaultParentHooks({
-      ...(body.implementerModel
-        ? { implementer: { runner: "claude" as const, model: body.implementerModel } }
-        : {}),
-      ...(body.reviewerModel
-        ? { reviewer: { runner: "claude" as const, model: body.reviewerModel } }
-        : {}),
-      ...(body.review !== undefined ? { review: body.review } : {}),
-      ...(body.timeoutMs !== undefined ? { timeoutMs: body.timeoutMs } : {}),
-    });
-    const result = await resumeRun(store, c.req.param("id"), hooks);
+    const result = await resumeRun(store, c.req.param("id"), await hooksFromRequest(c));
     return c.json(result.run);
   });
 

@@ -17,6 +17,8 @@ import {
   taskShow,
 } from "./cli/task.ts";
 import { runList, runShow, runStart } from "./cli/run.ts";
+import { harnessShow } from "./cli/harness.ts";
+import { daemonRestart, daemonStatus } from "./cli/daemon.ts";
 import { CliError } from "./cli/output.ts";
 import { ServiceError } from "./cli/client.ts";
 
@@ -184,7 +186,31 @@ program
     }
   });
 
-for (const coming of ["status", "report", "harness"]) {
+const daemon = program
+  .command("daemon")
+  .description("the local service: what code it is running, and promoting a new tree");
+
+daemon
+  .command("status")
+  .description("is it up, what code is it serving, and has your tree drifted from it")
+  .option("--json", "JSON even on a TTY", false)
+  .action(daemonStatus);
+
+daemon
+  .command("restart")
+  .description("promote the current working tree into a fresh snapshot and rebind")
+  .option("--force", "restart even while runs are executing (they can be resumed)", false)
+  .option("--json", "JSON even on a TTY", false)
+  .action(daemonRestart);
+
+program
+  .command("harness")
+  .description("is each harness present, usable, answering — and what each tier resolves to")
+  .option("--json", "JSON even on a TTY", false)
+  .option("--probe", "also run --version against each present harness", false)
+  .action(harnessShow);
+
+for (const coming of ["status", "report"]) {
   program
     .command(coming, { hidden: true })
     .allowUnknownOption(true)

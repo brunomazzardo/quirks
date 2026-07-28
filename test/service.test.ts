@@ -111,6 +111,10 @@ describe("service routes", () => {
 
     const plan = await (await post(app, "/v1/runs/plan", { name: "svc run", goal: "QK-RN" })).json();
     expect(plan.taskIds).toEqual([t1.id, "QK-RN-002"]);
+    // The plan is the approval surface, so it carries what is doubtful about it.
+    // A fresh store has no dispatch history, so no harness can be a proven yes.
+    expect(Array.isArray(plan.warnings)).toBe(true);
+    expect(plan.warnings.length).toBeGreaterThan(0);
 
     expect((await post(app, "/v1/runs", { name: "svc run", goal: "QK-RN" })).status).toBe(400);
 
@@ -123,5 +127,48 @@ describe("service routes", () => {
     const body = await created.json();
     expect(body.run.status).toBe("approved");
     expect((await app.request(`/v1/runs/${body.run.slug}`)).status).toBe(200);
+  });
+
+  test("harness: both D7 views, no probing unless asked", async () => {
+    const { app } = appFor();
+    const res = await app.request("/v1/harness");
+    expect(res.status).toBe(200);
+    const view = await res.json();
+
+    expect(view.probed).toBe(false);
+    expect(view.harnesses.map((h: { runner: string }) => h.runner)).toEqual([
+      "claude",
+      "codex",
+      "cursor",
+    ]);
+    // Nothing dispatched in this repo yet — and it must not pretend otherwise.
+    for (const row of view.harnesses) {
+      expect(row.liveness).toBe("never-dispatched");
+      expect(row.version).toBeNull();
+      expect(row.lean).not.toBe("yes");
+    }
+    // The tier table, and the review-independence rows over it.
+    expect(view.tiers).toHaveLength(4);
+    expect(view.tiers[1].tier).toBe("standard");
+    expect(view.tiers[1].runners.claude).toEqual({ model: "sonnet", effort: "medium" });
+    expect(view.review).toHaveLength(4);
+  });
+
+  test("harness: ?probe=true opts into running --version", async () => {
+    const { app } = appFor();
+    const res = await app.request("/v1/harness?probe=true&timeoutMs=2000");
+    expect(res.status).toBe(200);
+    const view = await res.json();
+    expect(view.probed).toBe(true);
+    // Whatever is or is not installed on this machine, no row may read "unknown".
+    for (const row of view.harnesses) {
+      expect(row.versionDetail).not.toContain("unknown");
+    }
+  });
+
+  test("harness: a junk timeoutMs is ignored, not fatal", async () => {
+    const { app } = appFor();
+    expect((await app.request("/v1/harness?timeoutMs=nope")).status).toBe(200);
+    expect((await app.request("/v1/harness?timeoutMs=-5")).status).toBe(200);
   });
 });

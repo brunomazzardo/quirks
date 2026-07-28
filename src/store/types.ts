@@ -128,6 +128,25 @@ export type RunTaskOutcome =
   | "held"
   | "released";
 
+/** One runner invocation, as it actually happened. `quirks harness` derives
+ *  liveness from the newest of these per runner, and `quirks report` reads them
+ *  for the per-task story — so this is where "did codex answer tonight" lives.
+ *  Never a judgment of the work: that is `verdict`. */
+export interface RunDispatchRecord {
+  runner: "claude" | "codex" | "cursor";
+  role: "implementer" | "reviewer";
+  model: string;
+  /** When the dispatch was made. The whole point — a dated fact, not prose. */
+  dispatchedAt: string;
+  /** Transport status from DispatchResult: success | failure | timeout | cancelled. */
+  status: string;
+  exitCode: number | null;
+  durationMs: number;
+  /** Set when status is not success — the runner's own complaint, e.g. a quota refusal. */
+  failureCode?: string;
+  failureMessage?: string;
+}
+
 export interface RunTaskRecord {
   taskId: string;
   outcome: RunTaskOutcome;
@@ -139,6 +158,8 @@ export interface RunTaskRecord {
   continuationPath?: string;
   evidenceQuote?: string;
   verdict?: "accept" | "revise" | "indeterminate";
+  /** Appended per dispatch, oldest first. Retained across resume. */
+  dispatches?: RunDispatchRecord[];
 }
 
 export interface RunsFile {

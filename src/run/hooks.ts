@@ -1,5 +1,7 @@
 // Default parent hooks for the daemon — real argv + dispatchRunner.
-// Models come from the run plan once QK-HARN lands; until then defaults.
+// Models and efforts come from the QK-HARN tier table (src/harness/tiers.ts);
+// the reviewer is chosen for model-family independence, not just a different
+// string, so "the parent never reviews its own task's work" is checkable.
 
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -8,7 +10,71 @@ import { buildCodexArgv, codexPromptText } from "../runner/codex.ts";
 import { buildCursorArgv } from "../runner/cursor.ts";
 import { dispatchRunner } from "../runner/dispatch.ts";
 import type { RunnerKind } from "../runner/types.ts";
+import {
+  resolveTier,
+  selectIndependentReviewer,
+  type JudgmentTier,
+} from "../harness/tiers.ts";
+import { ValidationError } from "../ops/errors.ts";
 import type { ParentHooks, ParentDispatchRequest } from "./parent.ts";
+
+/** The implementer tier a run uses when the task says nothing. */
+const DEFAULT_TIER: JudgmentTier = "standard";
+const DEFAULT_RUNNER: RunnerKind = "claude";
+
+interface RoleRouting {
+  runner: RunnerKind;
+  model: string;
+  effort: string;
+}
+
+/** Tier table → implementer, plus an independent reviewer or none at all. */
+export function defaultRouting(
+  tier: JudgmentTier = DEFAULT_TIER,
+  available: readonly RunnerKind[] = [DEFAULT_RUNNER],
+): { implementer: RoleRouting; reviewer?: RoleRouting; reviewNote: string } {
+  // An empty set means nothing is installed. Refuse here with something readable
+  // rather than dispatching into a spawn error thirty minutes into the night.
+  const runner = available[0];
+  if (runner === undefined) {
+    throw new ValidationError(
+      "no harness is installed — quirks harness shows what was looked for and where",
+    );
+  }
+  const resolved = resolveTier(runner, tier);
+  if (resolved.model === null) {
+    throw new ValidationError(
+      `no probed model for ${runner} at tier ${tier} — quirks harness shows the table`,
+    );
+  }
+  const implementer: RoleRouting = {
+    runner,
+    model: resolved.model,
+    effort: resolved.effort ?? tier,
+  };
+
+  const selection = selectIndependentReviewer({
+    implementer: { runner, model: resolved.model, tier },
+    available,
+  });
+  if (selection.kind !== "independent") {
+    // Never silently review with the implementer's own model. Run without a
+    // reviewer and hand back the reason; `quirks harness` shows the same
+    // per-tier verdict in its review table, so this is not the only place it
+    // surfaces.
+    return { implementer, reviewNote: selection.reason };
+  }
+  const rev = resolveTier(selection.reviewer.runner, selection.reviewer.tier);
+  return {
+    implementer,
+    reviewer: {
+      runner: selection.reviewer.runner,
+      model: selection.reviewer.model,
+      effort: rev.effort ?? selection.reviewer.tier,
+    },
+    reviewNote: selection.reason,
+  };
+}
 
 function gitHead(cwd: string): string | null {
   try {
@@ -22,13 +88,17 @@ function gitHead(cwd: string): string | null {
   }
 }
 
-function buildArgv(req: ParentDispatchRequest, sessionId: string): readonly string[] {
+function buildArgv(
+  req: ParentDispatchRequest,
+  sessionId: string,
+  effort: string,
+): readonly string[] {
   if (req.runner === "claude") {
     return buildClaudeArgv({
       executable: "claude",
       sessionId,
       model: req.model,
-      effort: "standard",
+      effort,
       briefPath: req.briefPath,
       workspace: req.worktree,
       artifactDir: req.artifactDir,
@@ -46,7 +116,7 @@ function buildArgv(req: ParentDispatchRequest, sessionId: string): readonly stri
       model: req.model,
       workspace: req.worktree,
       artifactDir: req.artifactDir,
-      effort: "standard",
+      effort,
       promptText: codexPromptText(req.briefPath, contents),
     });
   }
@@ -64,13 +134,32 @@ export function defaultParentHooks(opts?: {
   reviewer?: { runner: RunnerKind; model: string };
   review?: boolean;
   timeoutMs?: number;
+  /** Implementer tier; the reviewer is derived one tier above it. */
+  tier?: JudgmentTier;
+  available?: readonly RunnerKind[];
 }): ParentHooks {
-  const implementer = opts?.implementer ?? { runner: "claude" as const, model: "sonnet" };
-  const reviewer = opts?.reviewer ?? { runner: "claude" as const, model: "opus" };
+  const routing = defaultRouting(opts?.tier, opts?.available);
+  const implementer = opts?.implementer ?? {
+    runner: routing.implementer.runner,
+    model: routing.implementer.model,
+  };
+  const reviewer =
+    opts?.reviewer ??
+    (routing.reviewer
+      ? { runner: routing.reviewer.runner, model: routing.reviewer.model }
+      : undefined);
+
+  // Effort follows the resolved tier per role. An explicitly overridden model
+  // keeps its role's effort — the caller chose the model, not a new tier.
+  const effortFor = (role: ParentDispatchRequest["role"]): string =>
+    role === "reviewer"
+      ? routing.reviewer?.effort ?? routing.implementer.effort
+      : routing.implementer.effort;
+
   return {
     implementer,
-    reviewer,
-    review: opts?.review ?? true,
+    ...(reviewer ? { reviewer } : {}),
+    review: opts?.review ?? reviewer !== undefined,
     detectLandingCommit: (worktree, base) => {
       const head = gitHead(worktree);
       if (!head || !base || head === base) return null;
@@ -78,7 +167,7 @@ export function defaultParentHooks(opts?: {
     },
     dispatch: async (req) => {
       const jobId = `${req.role}-${req.taskId}-${Date.now()}`;
-      const argv = buildArgv(req, jobId);
+      const argv = buildArgv(req, jobId, effortFor(req.role));
       const result = await dispatchRunner({
         jobId,
         runner: req.runner,

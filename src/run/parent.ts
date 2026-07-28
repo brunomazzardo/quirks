@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { assembleBrief } from "../ops/brief.ts";
 import { claimTask, completeTask, blockTask, releaseTask, getTask } from "../ops/tasks.ts";
 import { loadRuns, loadTasks, saveRuns, type Store } from "../store/store.ts";
-import type { Run, RunMode, RunTaskRecord, Task } from "../store/types.ts";
+import type { Run, RunDispatchRecord, RunMode, RunTaskRecord, Task } from "../store/types.ts";
 import { resolveVerdict, type Verdict } from "../runner/quote.ts";
 import type { DispatchResult, RunnerKind } from "../runner/types.ts";
 import { writeContinuationBrief } from "./continuation.ts";
@@ -171,6 +171,31 @@ export interface ParentResult {
   /** Ledger side effects already applied (claim/complete/block/release). */
 }
 
+/**
+ * Record one dispatch as it happened, so `quirks harness` can answer "did codex
+ * answer tonight" and `quirks report` can tell the per-task story — neither has
+ * to re-derive it or read a doc. A failure keeps the runner's own words: that is
+ * where a quota refusal lives, with a real date attached.
+ */
+function recordDispatch(
+  record: RunTaskRecord,
+  req: ParentDispatchRequest,
+  dispatchedAt: string,
+  result: DispatchResult,
+): void {
+  const entry: RunDispatchRecord = {
+    runner: req.runner,
+    role: req.role,
+    model: req.model,
+    dispatchedAt,
+    status: result.status,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    ...(result.failure ? { failureCode: result.failure.code, failureMessage: result.failure.message } : {}),
+  };
+  record.dispatches = [...(record.dispatches ?? []), entry];
+}
+
 /** Drive one task as its parent. */
 export async function runParent(
   store: Store,
@@ -202,7 +227,7 @@ export async function runParent(
   const briefPath = join(artifactDir, "brief.json");
   writeFileSync(briefPath, JSON.stringify(brief, null, 2));
 
-  const impl = await hooks.dispatch({
+  const implReq: ParentDispatchRequest = {
     role: "implementer",
     taskId,
     briefPath,
@@ -210,7 +235,10 @@ export async function runParent(
     artifactDir,
     model: hooks.implementer.model,
     runner: hooks.implementer.runner,
-  });
+  };
+  const implAt = new Date().toISOString();
+  const impl = await hooks.dispatch(implReq);
+  recordDispatch(record, implReq, implAt, impl);
 
   if (impl.status !== "success") {
     return finishFailure(store, run, record, impl.failure?.message ?? impl.status);
@@ -221,7 +249,7 @@ export async function runParent(
 
   const wantsReview = hooks.review !== false && hooks.reviewer !== undefined;
   if (wantsReview) {
-    const rev = await hooks.dispatch({
+    const revReq: ParentDispatchRequest = {
       role: "reviewer",
       taskId,
       briefPath,
@@ -229,7 +257,10 @@ export async function runParent(
       artifactDir,
       model: hooks.reviewer!.model,
       runner: hooks.reviewer!.runner,
-    });
+    };
+    const revAt = new Date().toISOString();
+    const rev = await hooks.dispatch(revReq);
+    recordDispatch(record, revReq, revAt, rev);
     const transcript = rev.transcript ?? "";
     const claimed: Verdict =
       rev.status === "success" ? "accept" : rev.status === "failure" ? "revise" : "indeterminate";
@@ -367,8 +398,12 @@ export async function executeRun(
       }
     }
 
+    // Dispatch history accumulates across resume — a re-attempt appends, it does
+    // not erase the attempt that failed last night.
+    const priorDispatches = rec.dispatches ?? [];
     const { record } = await runParent(store, exec, taskId, hooks);
     Object.assign(rec, record);
+    rec.dispatches = [...priorDispatches, ...(record.dispatches ?? [])];
     if (record.outcome !== "accepted") {
       failedIds.add(taskId);
       const decision = decideFailure({

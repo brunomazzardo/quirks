@@ -23,6 +23,7 @@ interface RunPlan {
   mode: string;
   plan: PlanEntry[];
   taskIds: string[];
+  warnings?: string[];
 }
 
 function renderPlan(plan: RunPlan): string {
@@ -46,7 +47,14 @@ function renderPlan(plan: RunPlan): string {
       p.title,
     ]),
   );
-  return `${header}\n${body}`;
+  // Warnings go last, immediately above the [y/N] — this is the whole approval
+  // surface, so what is doubtful about the plan must be the last thing read.
+  const warnings = plan.warnings ?? [];
+  const caveats =
+    warnings.length === 0
+      ? ""
+      : `\n\nbefore you approve:\n${warnings.map((w) => `  ! ${w}`).join("\n")}`;
+  return `${header}\n${body}${caveats}`;
 }
 
 async function confirmYesNo(): Promise<boolean> {
