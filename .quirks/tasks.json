@@ -1065,7 +1065,7 @@
     {
       "id": "QK-HARN-003",
       "title": "authorization for free, and independence that cannot be faked",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "probeAuth per runner via its own status command: claude auth status (loggedIn), codex doctor --json (checks.auth.credentials.status), cursor-agent status --format json (isAuthenticated)",
@@ -1095,10 +1095,12 @@
       "needsBreakdown": false,
       "effort": "standard",
       "risk": "security: 88 of cursor's 193 models are claude-*, so a wrong canonicalization silently certifies a reviewer as independent of a model it IS",
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T15:19:47.528Z",
-      "updatedAt": "2026-07-28T15:19:47.528Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T15:29:07.634Z",
+      "statusDetail": {
+        "evidence": "Authorization is free: probeAuth runs each runner's own status command — claude auth status (loggedIn), codex doctor --json (a checks entry with category=auth), cursor-agent status --format json (isAuthenticated). Only an explicit boolean counts; anything else is unknown and changes nothing, so a missing subcommand never takes a working harness out of service. A free check may demote to no or enrich the detail; only a real dispatch promotes to yes. canonicalModel() resolves aliases and decorated ids to one identity, closing a false-independence hole: 'opus' derived family 'opus' while cursor's claude-opus-5-thinking-high derived 'claude', so two names for one model passed the reviewer-independence guard (88 of cursor's 193 published models are claude-*). sonnet vs opus stays independent. cursor rows corrected: mechanical stays blank because composer-2.5 publishes no tier ladder (operator chose composer over the gpt-5.3-codex ladder to keep three distinct identities), and the 'no effort flag' comment was wrong. 232 tests pass across five consecutive runs, tsc clean; verified against the real CLIs — all three read authed=yes."
+      }
     }
   ]
 }
