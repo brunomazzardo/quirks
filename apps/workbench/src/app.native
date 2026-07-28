@@ -1,0 +1,13 @@
+<!-- Quirks workbench — single terminal (QK-NAT-005).
+     No scrollback= attribute: that is the load-bearing omission. -->
+<column grow="1" background="background">
+  <row height="34" window-drag="true"></row>
+  <terminal
+    pty="{shellKey}"
+    on-terminal="termState"
+    autofocus="true"
+    grow="1"
+    focus-ring="background"
+    label="Shell"
+  />
+</column>

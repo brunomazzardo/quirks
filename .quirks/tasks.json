@@ -458,7 +458,7 @@
     {
       "id": "QK-HARN-001",
       "title": "quirks harness — availability + tier table",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "port v1 hosts/*/discover.mjs probes",
@@ -470,10 +470,12 @@
       "needsDesign": false,
       "needsBreakdown": false,
       "risk": "open: where liveness comes from at runtime and how often it refreshes",
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-27T22:03:02.765Z",
-      "updatedAt": "2026-07-27T22:03:02.765Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T13:49:52.973Z",
+      "statusDetail": {
+        "evidence": "quirks harness ships: presence+version probe (src/harness/probe.ts), tier/model table ported from v1 routing.ts + model-selection.ts (src/harness/tiers.ts), liveness derived from RunDispatchRecord (src/harness/liveness.ts), GET /v1/harness, quirks harness [--probe]. 181 tests pass, tsc clean. Probed live: claude 2.1.220, codex-cli 0.145.0, cursor 2026.07.23-e383d2b."
+      }
     },
     {
       "id": "QK-SKILL-001",
@@ -641,7 +643,7 @@
     {
       "id": "QK-NAT-005",
       "title": "the workbench terminal rides the single-terminal workaround (index-0 engine key)",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-NAT-001"
       ],
@@ -663,10 +665,52 @@
       "needsDesign": false,
       "needsBreakdown": false,
       "risk": "rides an internal constant (ts_core_host.zig pty_key_base) and a 1-terminal ceiling — QK-NAT-002's single center pane fits, a second pane does not; collapses to deleting the constant when the upstream issue lands",
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-28T13:06:28.926Z",
-      "updatedAt": "2026-07-28T13:06:28.926Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T14:08:14.581Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Verified on stock SDK 0.6.1 (no fork/patch). apps/workbench: shellPtyBinding via 1414746196*4294967296 (avoids emitter String(n) i64 round-trip orphan), pty=\"{shellKey}\", no scrollback, app.zon permissions view+command, terminal_sessions+ghostty. native automate snapshot: role=textbox name=\"Shell\" with live zsh viewport text (prompt/path) in the label; widget_nodes=3. Workaround doc updated for the String(n) pitfall."
+      }
+    },
+    {
+      "id": "QK-HARN-002",
+      "title": "the run path consults harness availability",
+      "status": "completed",
+      "dependsOn": [],
+      "deliverables": [
+        "sync availability(store) in ops/harness.ts — presence + liveness, no version probe",
+        "buildPlan routes over it: absence hard-excludes, a recorded failure annotates only",
+        "renderPlan warns above the [y/N] on unassigned rows or an unproven harness",
+        "execute/resume pass available into defaultParentHooks so reviewer independence is computed against the machine"
+      ],
+      "acceptanceCriteria": [
+        "a plan never names a harness that is absent or not executable",
+        "a recorded dispatch failure never removes a harness from planning (attribution is untrusted: our own argv bugs also exit non-zero)",
+        "a high-tier run with codex installed gets an independent reviewer instead of silently running unreviewed",
+        "the displayed review table resolves over the same set the execute path routes over — no display/behaviour drift",
+        "the ops/runs.ts comment claiming plan assembly cannot check availability is deleted"
+      ],
+      "verification": [
+        "bun test",
+        "bunx tsc --noEmit",
+        "quirks run --dry-run shows the warning line"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/specs/runs-goals-and-reports.md",
+          "pinnedCommit": "05941a2fa573b98bcaee3271e786ab971dd83c47"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "risk": "plan tests become machine-dependent unless availability is injectable",
+      "revision": 2,
+      "createdAt": "2026-07-28T14:01:41.273Z",
+      "updatedAt": "2026-07-28T14:07:32.328Z",
+      "statusDetail": {
+        "evidence": "availability(store) is sync (presence via accessSync + liveness via ledger, no spawn); buildPlan routes over it with PlanInput.routable injectable for determinism; planWarnings surfaces unassigned rows and non-yes harnesses above the [y/N]; execute/resume share hooksFromRequest which passes available. Policy: absence excludes, a recorded failure only annotates — attribution is untrusted. Review table resolves over routable so display matches behaviour. 189 tests pass, tsc clean, real dry-run shows: '! harness claude: installed, but no run has dispatched to it yet'."
+      }
     }
   ]
 }
