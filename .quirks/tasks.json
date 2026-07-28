@@ -1338,7 +1338,7 @@
     {
       "id": "QK-NAT-012",
       "title": "ledger inbox — group by goal, View menu filters",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-NAT-011"
       ],
@@ -1370,15 +1370,21 @@
       "needsBreakdown": false,
       "effort": "core filter model + markup; keep under widget budget",
       "risk": "native menus/popovers may be limited — fall back to a compact panel if SDK has no menu widget",
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T18:41:38.834Z",
-      "updatedAt": "2026-07-28T18:49:49.394Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T19:17:12.416Z",
+      "statusDetail": {
+        "evidence": [
+          "native check",
+          "zig build -Dautomation=true",
+          "automate: badge 16 goal-grouped inbox (NAT/RUN/SKILL/SRV/Other), View menu, ledger collapse value=0.001, terminal focus full-bleed, Esc restores split"
+        ]
+      }
     },
     {
       "id": "QK-NAT-013",
       "title": "ledger collapse — header toggle mirrors Shape",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-NAT-008"
       ],
@@ -1406,15 +1412,21 @@
       "needsDesign": false,
       "needsBreakdown": false,
       "effort": "small — mirror shapeOpen/rightSplit for ledgerOpen/leftSplit",
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T18:41:38.910Z",
-      "updatedAt": "2026-07-28T18:49:49.403Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T19:17:12.464Z",
+      "statusDetail": {
+        "evidence": [
+          "native check",
+          "zig build -Dautomation=true",
+          "automate: badge 16 goal-grouped inbox (NAT/RUN/SKILL/SRV/Other), View menu, ledger collapse value=0.001, terminal focus full-bleed, Esc restores split"
+        ]
+      }
     },
     {
       "id": "QK-NAT-014",
       "title": "header focus modes — full-bleed Ledger / Terminal / Shape",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-NAT-008",
         "QK-NAT-013"
@@ -1449,10 +1461,16 @@
       "needsBreakdown": false,
       "effort": "layout state machine + split fractions + webview park/snap",
       "risk": "webview and pty must survive hide/show without losing session",
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T18:41:38.987Z",
-      "updatedAt": "2026-07-28T18:50:21.766Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T19:17:12.500Z",
+      "statusDetail": {
+        "evidence": [
+          "native check",
+          "zig build -Dautomation=true",
+          "automate: badge 16 goal-grouped inbox (NAT/RUN/SKILL/SRV/Other), View menu, ledger collapse value=0.001, terminal focus full-bleed, Esc restores split"
+        ]
+      }
     },
     {
       "id": "QK-RUN-009",

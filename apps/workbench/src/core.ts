@@ -17,6 +17,8 @@ const PREVIEW_URL = asciiBytes("http://127.0.0.1:47301/shape/");
 
 const HEADER_NATURAL_HEIGHT = 52;
 const LEFT_OPEN = 0.24;
+/** Non-zero park — a literal 0 is easy for resize events to clobber back to the open fraction. */
+const LEFT_CLOSED = 0.001;
 const RIGHT_SHAPE = 0.65;
 
 export type ShellState = "output" | "exit";
@@ -266,11 +268,11 @@ function bytesIncludes(hay: Uint8Array, needle: Uint8Array): boolean {
   return false;
 }
 
+/** ASCII lowercase without `c + 32` — the Zig emitter bitCasts that f64 path to garbage. */
 function asciiLower(bytes: Uint8Array): Uint8Array {
   const out = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i += 1) {
-    const c = bytes[i]!;
-    out[i] = c >= 65 && c <= 90 ? c + 32 : c;
+    out[i] = bytes[i]! | 32;
   }
   return out;
 }
@@ -298,9 +300,9 @@ function statusTone(tag: Uint8Array): StatusTone {
 
 function taskIsActive(status: Uint8Array): boolean {
   const lower = asciiLower(status);
-  if (bytesEq(lower, asciiBytes("completed"))) return false;
+  if (bytesIncludes(lower, asciiBytes("completed"))) return false;
+  if (bytesIncludes(lower, asciiBytes("closed"))) return false;
   if (bytesEq(lower, asciiBytes("done"))) return false;
-  if (bytesEq(lower, asciiBytes("closed"))) return false;
   return true;
 }
 
@@ -309,7 +311,14 @@ function taskIsDone(status: Uint8Array): boolean {
 }
 
 function goalIsProgress(state: Uint8Array): boolean {
-  return bytesIncludes(asciiLower(state), asciiBytes("progress"));
+  const lower = asciiLower(state);
+  if (bytesIncludes(lower, asciiBytes("progress"))) return true;
+  if (bytesIncludes(lower, asciiBytes("not started"))) return false;
+  if (bytesIncludes(lower, asciiBytes("tasks done"))) return false;
+  if (bytesEq(lower, asciiBytes("done"))) return false;
+  if (bytesEq(lower, asciiBytes("closed"))) return false;
+  // Unknown / missing goal labels stay visible under the default view.
+  return true;
 }
 
 function goalIsIdle(state: Uint8Array): boolean {
@@ -463,9 +472,8 @@ function rebuildInbox(
     const gid = goalIds[gi]!;
     const g = findGoal(goals, gid);
     const state = g !== null ? g.status : asciiBytes("in progress");
-    // goalFilter applied below; progress = state contains "progress"
-    if (false && goalFilter === "progress" && !goalIsProgress(state)) continue;
-    if (false && goalFilter === "idle" && !goalIsIdle(state)) continue;
+    if (goalFilter === "progress" && !goalIsProgress(state)) continue;
+    if (goalFilter === "idle" && !goalIsIdle(state)) continue;
     const group = tasksForGoal(filtered, gid);
     if (group.length === 0) continue;
     const sid = headerId(gid);
@@ -555,12 +563,18 @@ function applyLayout(model: Model): Model {
     return { ...model, leftSplit: 1.0, rightSplit: 1.0, ledgerOpen: true };
   }
   if (model.layoutMode === "terminal") {
-    return { ...model, leftSplit: 0, rightSplit: 1.0, ledgerOpen: false, shapeOpen: false };
+    return {
+      ...model,
+      leftSplit: LEFT_CLOSED,
+      rightSplit: 1.0,
+      ledgerOpen: false,
+      shapeOpen: false,
+    };
   }
   if (model.layoutMode === "shape") {
-    return { ...model, leftSplit: 0, rightSplit: 0, ledgerOpen: false, shapeOpen: true };
+    return { ...model, leftSplit: LEFT_CLOSED, rightSplit: 0, ledgerOpen: false, shapeOpen: true };
   }
-  const left = model.ledgerOpen ? LEFT_OPEN : 0;
+  const left = model.ledgerOpen ? LEFT_OPEN : LEFT_CLOSED;
   const right = model.shapeOpen ? RIGHT_SHAPE : 1.0;
   return { ...model, leftSplit: left, rightSplit: right };
 }
@@ -585,7 +599,7 @@ function indexOfFrom(hay: Uint8Array, needle: Uint8Array, from: number): number 
 
 /**
  * Ledger JSON is too brace-noisy for a subset walker (strings contain `{`/`}`).
- * Scan id-keyed records instead; each task/goal window runs until the next id.
+ * Scan id-keyed JSON records instead; each task/goal window runs until the next id.
  */
 function parseGoals(body: Uint8Array): readonly GoalRow[] {
   const itemsKey = asciiBytes('"items"');
@@ -625,8 +639,8 @@ function parseGoals(body: Uint8Array): readonly GoalRow[] {
       if (numericSuffix) continue;
     }
     const obj = body.slice(idAt, from);
-    const titleRaw = jsonStringField(obj, asciiBytes('"title"'));
-    const state = jsonStringField(obj, asciiBytes('"state"'));
+    const titleRaw = jsonKeyedString(obj, asciiBytes('"title":"'));
+    const state = jsonKeyedString(obj, asciiBytes('"state":"'));
     const title = titleRaw.length > 0 ? titleRaw : id;
     const label = state.length > 0 ? state : asciiBytes("—");
     out[out.length] = {
@@ -676,9 +690,9 @@ function parseTasks(body: Uint8Array): readonly TaskRow[] {
     }
     if (!numericSuffix) continue;
     const obj = body.slice(idAt, from);
-    const titleRaw = jsonStringField(obj, asciiBytes('"title"'));
-    const status = jsonStringField(obj, asciiBytes('"status"'));
-    const updatedAt = jsonStringField(obj, asciiBytes('"updatedAt"'));
+    const titleRaw = jsonKeyedString(obj, asciiBytes('"title":"'));
+    const status = jsonKeyedString(obj, asciiBytes('"status":"'));
+    const updatedAt = jsonKeyedString(obj, asciiBytes('"updatedAt":"'));
     const title = titleRaw.length > 0 ? titleRaw : id;
     const label = status.length > 0 ? status : asciiBytes("—");
     out[out.length] = {
@@ -693,14 +707,14 @@ function parseTasks(body: Uint8Array): readonly TaskRow[] {
   return out;
 }
 
-function jsonStringField(obj: Uint8Array, key: Uint8Array): Uint8Array {
-  const at = obj.indexOf(key);
+/**
+ * Read a string value after an exact `"key":"` prefix — avoids `"status"` matching
+ * inside `"statusDetail"`.
+ */
+function jsonKeyedString(obj: Uint8Array, keyed: Uint8Array): Uint8Array {
+  const at = obj.indexOf(keyed);
   if (at < 0) return asciiBytes("");
-  let i = at + key.length;
-  while (i < obj.length && (obj[i]! === 32 || obj[i]! === 58)) i += 1;
-  if (i < obj.length && obj[i]! === 110) return asciiBytes("");
-  if (i >= obj.length || obj[i]! !== 34) return asciiBytes("");
-  i += 1;
+  let i = at + keyed.length;
   const start = i;
   while (i < obj.length && obj[i]! !== 34) {
     if (obj[i]! === 92) i += 2;
@@ -781,13 +795,23 @@ export function update(model: Model, msg: Msg): Model | [Model, Cmd<Msg>] {
       }
       return { ...model, outputBytes: model.outputBytes + msg.bytes.length };
     case "leftResized":
-      if (model.layoutMode !== "split" || !model.ledgerOpen) {
-        return { ...model, leftSplit: model.leftSplit };
+      if (model.layoutMode === "ledger") {
+        return { ...model, leftSplit: 1.0 };
+      }
+      if (
+        model.layoutMode === "terminal" ||
+        model.layoutMode === "shape" ||
+        !model.ledgerOpen
+      ) {
+        return { ...model, leftSplit: LEFT_CLOSED };
       }
       return { ...model, leftSplit: msg.fraction };
     case "rightResized":
+      if (model.layoutMode === "shape") {
+        return { ...model, rightSplit: 0 };
+      }
       if (model.layoutMode !== "split" || !model.shapeOpen) {
-        return { ...model, rightSplit: model.rightSplit };
+        return { ...model, rightSplit: 1.0 };
       }
       return { ...model, rightSplit: msg.fraction };
     case "toggleView":
