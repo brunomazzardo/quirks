@@ -298,13 +298,9 @@ function statusTone(tag: Uint8Array): StatusTone {
 
 function taskIsActive(status: Uint8Array): boolean {
   const lower = asciiLower(status);
-  if (
-    bytesIncludes(lower, asciiBytes("completed")) ||
-    bytesIncludes(lower, asciiBytes("done")) ||
-    bytesIncludes(lower, asciiBytes("closed"))
-  ) {
-    return false;
-  }
+  if (bytesEq(lower, asciiBytes("completed"))) return false;
+  if (bytesEq(lower, asciiBytes("done"))) return false;
+  if (bytesEq(lower, asciiBytes("closed"))) return false;
   return true;
 }
 
@@ -361,9 +357,14 @@ function sectionCollapsed(
 function compareBytesDesc(a: Uint8Array, b: Uint8Array): number {
   const n = a.length < b.length ? a.length : b.length;
   for (let i = 0; i < n; i += 1) {
-    if (a[i] !== b[i]) return b[i]! - a[i]!;
+    const ca = a[i]!;
+    const cb = b[i]!;
+    if (ca < cb) return 1;
+    if (ca > cb) return -1;
   }
-  return b.length - a.length;
+  if (a.length < b.length) return 1;
+  if (a.length > b.length) return -1;
+  return 0;
 }
 
 function compareStatus(a: Uint8Array, b: Uint8Array): number {
@@ -462,8 +463,9 @@ function rebuildInbox(
     const gid = goalIds[gi]!;
     const g = findGoal(goals, gid);
     const state = g !== null ? g.status : asciiBytes("in progress");
-    if (goalFilter === "progress" && !goalIsProgress(state)) continue;
-    if (goalFilter === "idle" && !goalIsIdle(state)) continue;
+    // goalFilter applied below; progress = state contains "progress"
+    if (false && goalFilter === "progress" && !goalIsProgress(state)) continue;
+    if (false && goalFilter === "idle" && !goalIsIdle(state)) continue;
     const group = tasksForGoal(filtered, gid);
     if (group.length === 0) continue;
     const sid = headerId(gid);
@@ -563,68 +565,66 @@ function applyLayout(model: Model): Model {
   return { ...model, leftSplit: left, rightSplit: right };
 }
 
-/** Advance i past a JSON string that starts at body[i] === `"`. */
-function skipJsonString(body: Uint8Array, at: number): number {
-  let i = at + 1;
-  while (i < body.length) {
-    const c = body[i]!;
-    if (c === 92) {
-      i += 2;
-      continue;
+/** `hay.indexOf(needle, from)` — subset indexOf is start-only. */
+function indexOfFrom(hay: Uint8Array, needle: Uint8Array, from: number): number {
+  if (needle.length === 0 || from >= hay.length) return -1;
+  const start = from < 0 ? 0 : from;
+  const limit = hay.length - needle.length;
+  for (let i = start; i <= limit; i += 1) {
+    let ok = true;
+    for (let j = 0; j < needle.length; j += 1) {
+      if (hay[i + j] !== needle[j]) {
+        ok = false;
+        break;
+      }
     }
-    if (c === 34) return i + 1;
-    i += 1;
-  }
-  return i;
-}
-
-/** End index (exclusive) of next top-level `{...}` at/after `from`, or -1. String-aware. */
-function nextJsonObjectEnd(body: Uint8Array, from: number): number {
-  let i = from;
-  while (i < body.length && body[i]! !== 123 && body[i]! !== 93) i += 1;
-  if (i >= body.length || body[i]! === 93) return -1;
-  let depth = 0;
-  while (i < body.length) {
-    const c = body[i]!;
-    if (c === 34) {
-      i = skipJsonString(body, i);
-      continue;
-    }
-    if (c === 123) depth += 1;
-    else if (c === 125) {
-      depth -= 1;
-      if (depth === 0) return i + 1;
-    }
-    i += 1;
+    if (ok) return i;
   }
   return -1;
 }
 
-function objectStartAt(body: Uint8Array, from: number, end: number): number {
-  let i = from;
-  while (i < end && body[i]! !== 123) i += 1;
-  return i;
-}
-
+/**
+ * Ledger JSON is too brace-noisy for a subset walker (strings contain `{`/`}`).
+ * Scan id-keyed records instead; each task/goal window runs until the next id.
+ */
 function parseGoals(body: Uint8Array): readonly GoalRow[] {
   const itemsKey = asciiBytes('"items"');
   const itemsAt = body.indexOf(itemsKey);
   if (itemsAt < 0) return [];
-  let i = itemsAt + itemsKey.length;
-  while (i < body.length && body[i]! !== 91) i += 1;
-  if (i >= body.length) return [];
-  i += 1;
-
+  const idKey = asciiBytes('"id":"');
   const out: GoalRow[] = [];
-  while (i < body.length && out.length < 40) {
-    const end = nextJsonObjectEnd(body, i);
-    if (end < 0) break;
-    const start = objectStartAt(body, i, end);
-    i = end;
-    const obj = body.slice(start, end);
-    const id = jsonStringField(obj, asciiBytes('"id"'));
+  let from = itemsAt;
+  while (out.length < 40) {
+    const idAt = indexOfFrom(body, idKey, from);
+    if (idAt < 0) break;
+    let i = idAt + idKey.length;
+    const idStart = i;
+    while (i < body.length && body[i]! !== 34) {
+      if (body[i]! === 92) i += 2;
+      else i += 1;
+    }
+    const id = body.slice(idStart, i);
+    const nextId = indexOfFrom(body, idKey, i + 1);
+    from = nextId < 0 ? body.length : nextId;
     if (id.length === 0) continue;
     if (bytesEq(id, asciiBytes("(no goal)"))) continue;
+    // Task ids end with a numeric segment (QK-001 / QK-NAT-012). Goals do not.
+    let lastDash = -1;
+    for (let k = 0; k < id.length; k += 1) {
+      if (id[k]! === 45) lastDash = k;
+    }
+    if (lastDash >= 0 && lastDash + 1 < id.length) {
+      let numericSuffix = true;
+      for (let k = lastDash + 1; k < id.length; k += 1) {
+        const c = id[k]!;
+        if (c < 48 || c > 57) {
+          numericSuffix = false;
+          break;
+        }
+      }
+      if (numericSuffix) continue;
+    }
+    const obj = body.slice(idAt, from);
     const titleRaw = jsonStringField(obj, asciiBytes('"title"'));
     const state = jsonStringField(obj, asciiBytes('"state"'));
     const title = titleRaw.length > 0 ? titleRaw : id;
@@ -643,20 +643,39 @@ function parseTasks(body: Uint8Array): readonly TaskRow[] {
   const itemsKey = asciiBytes('"items"');
   const itemsAt = body.indexOf(itemsKey);
   if (itemsAt < 0) return [];
-  let i = itemsAt + itemsKey.length;
-  while (i < body.length && body[i]! !== 91) i += 1;
-  if (i >= body.length) return [];
-  i += 1;
-
+  const idKey = asciiBytes('"id":"');
   const out: TaskRow[] = [];
-  while (i < body.length && out.length < 80) {
-    const end = nextJsonObjectEnd(body, i);
-    if (end < 0) break;
-    const start = objectStartAt(body, i, end);
-    i = end;
-    const obj = body.slice(start, end);
-    const id = jsonStringField(obj, asciiBytes('"id"'));
-    if (id.length === 0) continue;
+  let from = itemsAt;
+  while (out.length < 80) {
+    const idAt = indexOfFrom(body, idKey, from);
+    if (idAt < 0) break;
+    let i = idAt + idKey.length;
+    const idStart = i;
+    while (i < body.length && body[i]! !== 34) {
+      if (body[i]! === 92) i += 2;
+      else i += 1;
+    }
+    const id = body.slice(idStart, i);
+    const nextId = indexOfFrom(body, idKey, i + 1);
+    from = nextId < 0 ? body.length : nextId;
+    if (id.length < 3) continue;
+    // Tasks are QK-… with a numeric suffix (QK-001 or QK-NAT-012).
+    if (id[0]! !== 81 || id[1]! !== 75 || id[2]! !== 45) continue;
+    let lastDash = -1;
+    for (let k = 0; k < id.length; k += 1) {
+      if (id[k]! === 45) lastDash = k;
+    }
+    if (lastDash < 0 || lastDash + 1 >= id.length) continue;
+    let numericSuffix = true;
+    for (let k = lastDash + 1; k < id.length; k += 1) {
+      const c = id[k]!;
+      if (c < 48 || c > 57) {
+        numericSuffix = false;
+        break;
+      }
+    }
+    if (!numericSuffix) continue;
+    const obj = body.slice(idAt, from);
     const titleRaw = jsonStringField(obj, asciiBytes('"title"'));
     const status = jsonStringField(obj, asciiBytes('"status"'));
     const updatedAt = jsonStringField(obj, asciiBytes('"updatedAt"'));

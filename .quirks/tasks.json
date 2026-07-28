@@ -480,7 +480,7 @@
     {
       "id": "QK-SKILL-001",
       "title": "design skill (the needs-design flow)",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [],
       "acceptanceCriteria": [],
@@ -488,10 +488,12 @@
       "sourceRefs": [],
       "needsDesign": true,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-27T22:03:02.848Z",
-      "updatedAt": "2026-07-27T22:03:02.848Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T19:04:51.502Z",
+      "statusDetail": {
+        "evidence": "superseded by QK-SKILL-008 (the needs-design flow becomes shape's fourth placement) and QK-SKILL-009 (the visual design skill the operator actually meant). Shaped 2026-07-28: the recorded title 'design skill (the needs-design flow)' did not match intent — 'design' meant visual design. Both halves are now specified; neither needed the flag in the end. See S16."
+      }
     },
     {
       "id": "QK-SKILL-002",
@@ -1412,7 +1414,7 @@
     {
       "id": "QK-NAT-014",
       "title": "header focus modes — full-bleed Ledger / Terminal / Shape",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-NAT-008",
         "QK-NAT-013"
@@ -1447,9 +1449,9 @@
       "needsBreakdown": false,
       "effort": "layout state machine + split fractions + webview park/snap",
       "risk": "webview and pty must survive hide/show without losing session",
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T18:41:38.987Z",
-      "updatedAt": "2026-07-28T18:41:38.987Z",
+      "updatedAt": "2026-07-28T18:50:21.766Z",
       "statusDetail": {}
     },
     {
@@ -1537,6 +1539,93 @@
       "revision": 1,
       "createdAt": "2026-07-28T18:49:23.317Z",
       "updatedAt": "2026-07-28T18:49:23.317Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SKILL-008",
+      "title": "shape gains a fourth placement: refine one flagged task",
+      "status": "open",
+      "dependsOn": [
+        "QK-SRV-007"
+      ],
+      "deliverables": [
+        "a fourth placement in shape's orient step — refine one flagged task, alongside new intent / growth / split",
+        "terminal state is quirks task update <id> --deliverable --criterion --verify --no-needs-design, not propose",
+        "orientation for this placement: the task itself, its goal's why, its sourceRefs and their diffs, and sibling tasks already completed",
+        "the bar, made explicit: an agent could claim this task and begin without asking a question — the same standard the ground rules impose from the other side",
+        "exits that are not 'designed': too big hands to breakdown (QK-SKILL-007); a why that outgrows a sentence becomes docs/specs/ with --source pointed at it",
+        "state that design has ONE caller, the operator — unlike breakdown's two (S15). The execution path is never interactive, so an executor that finds a task unknowable blocks it with a reason and it surfaces in NEEDS YOU"
+      ],
+      "acceptanceCriteria": [
+        "clearing needs-design is refused unless the task ends with at least one deliverable — QK-SRV-007 enforces the floor",
+        "shape's step 3 no longer delegates to a 'design skill' that does not exist",
+        "the operator-only asymmetry is stated in the skill, so it is not assumed to work like breakdown",
+        "an executor that finds a task unknowable blocks it rather than conversing — nothing on the execution path prompts"
+      ],
+      "verification": [
+        "quirks task show on a task the placement resolved lists deliverables, criteria and verification, with needsDesign cleared",
+        "grep shape/SKILL.md for the dangling 'design skill' delegation — it must be gone"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "512de7f1ba0276373930ed34d1103973667b287e"
+        },
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "512de7f1ba0276373930ed34d1103973667b287e"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "revision": 1,
+      "createdAt": "2026-07-28T19:01:47.399Z",
+      "updatedAt": "2026-07-28T19:01:47.399Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-SKILL-009",
+      "title": "visual design skill — explore alternatives, mapped from the project's own patterns",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "a decision aid, not a build guide: explore visual alternatives and refine existing UI, presented through the companion with the recommended option leading (shape 5b — never a flat menu)",
+        "'map existing patterns' is its opening move — a per-stack procedure for finding the project's real style source: tailwind config, CSS custom properties, existing component files, native theme constants",
+        "greenfield fallback: when nothing is found, propose from principles and references rather than inventing a project pattern",
+        "reference frontend-design and dataviz rather than restating taste — this skill runs in the operator's session, so those are available (unlike a brief bound for codex, S12)",
+        "derive facts every session; do NOT maintain a design-system document. A doc claiming 'our scale is 4/8/16' is a claim about code, and claims about code rot — DECISIONS.md says as much about itself",
+        "record chosen directions as decisions, the durable half: code shows what won and never what was rejected or why",
+        "serve two surfaces whose taste is shared and mechanism is not — native widget trees (1,024 nodes per view) and HTML"
+      ],
+      "acceptanceCriteria": [
+        "run against THIS repo, the mapping finds the companion's real custom properties (--ember, --lamp, --lamp-ink among 29 in frame-template.html) and the workbench theme in core.ts — and varies within them rather than proposing generic defaults",
+        "run against a directory with no style source, it proposes from principles and never fabricates a project pattern",
+        "alternatives are genuinely distinct directions with the recommended one marked, never a flat menu",
+        "no design-system document is created or maintained; every fact is derived at session time",
+        "it does not restate what frontend-design and dataviz already cover"
+      ],
+      "verification": [
+        "run the mapping against .claude/skills/shape/scripts/frame-template.html and confirm the tokens reported are the real ones",
+        "run the mapping against an empty directory and confirm it proposes from principles instead of inventing patterns"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/FOUNDING.md",
+          "pinnedCommit": "512de7f1ba0276373930ed34d1103973667b287e"
+        },
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "512de7f1ba0276373930ed34d1103973667b287e"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "effort": "standard",
+      "risk": "taste is judgment: a derived pattern must stay a fact offered to the operator, never harden into a rule they never chose",
+      "revision": 1,
+      "createdAt": "2026-07-28T19:04:51.252Z",
+      "updatedAt": "2026-07-28T19:04:51.252Z",
       "statusDetail": {}
     }
   ]
