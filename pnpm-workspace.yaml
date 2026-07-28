@@ -1,0 +1,33 @@
+packages:
+  - apps/*
+  # The Native SDK workbench is frozen legacy until QK-WB-008 deletes it;
+  # it keeps its bun-installed node_modules and never joins the workspace.
+  - "!apps/workbench"
+  - packages/*
+
+# pnpm 11: true = allowed to run build scripts (t3code's allowBuilds subset —
+# electron and node-pty arrive with QK-WB / QK-MONO-003).
+allowBuilds:
+  electron: true
+  esbuild: true
+  node-pty: true
+
+catalog:
+  "@types/node": 24.12.4
+  "@typescript/native-preview": 7.0.0-dev.20260604.1
+  typescript: ~6.0.3
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.2
+  vite-plus: 0.2.2
+
+overrides:
+  "@types/node": "catalog:"
+  vite: "catalog:"
+
+packageExtensions:
+  vite-plus@*:
+    dependencies:
+      vite: "catalog:"
+
+peerDependencyRules:
+  allowAny:
+    - vite

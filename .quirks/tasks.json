@@ -1653,7 +1653,7 @@
     {
       "id": "QK-MONO-001",
       "title": "workspace scaffold — pnpm 11 + vite-plus + tsgo + oxlint, t3code layout",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [],
       "deliverables": [
         "pnpm-workspace.yaml with catalog and allowBuilds, tsconfig.base.json, root scripts mirroring t3code",
@@ -1673,10 +1673,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:04.682Z",
-      "updatedAt": "2026-07-28T20:27:04.682Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T20:48:47.782Z",
+      "statusDetail": {
+        "claimedBy": "claude",
+        "evidence": "pnpm install (pnpm 11.10.0 via packageManager auto-switch) + pnpm typecheck + pnpm lint + pnpm test all green: 5 workspace shells (quirks-server, @quirks/web, @quirks/desktop, @quirks/contracts, @quirks/shared) on vite-plus 0.2.2 / tsgo / oxlint; apps/workbench excluded from workspace; .quirks, docs, legacy src excluded from lint+fmt; bun run src/main.ts goal list still works"
+      }
     },
     {
       "id": "QK-MONO-002",
