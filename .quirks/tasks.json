@@ -373,7 +373,7 @@
     {
       "id": "QK-RUN-005",
       "title": "parent agent per task + failure policy",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-RUN-001",
         "QK-RUN-002",
@@ -391,10 +391,13 @@
       "sourceRefs": [],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.561Z",
-      "updatedAt": "2026-07-27T22:03:02.561Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T13:10:09.528Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "Parent loop + failure policy. decideFailure: failed task blocks dependents (not the run); park-on-issue phase boundary (no landing → release, verified landing → hold, never unassign); autonomous continues. runParent: claim → implementer → optional reviewer on a DIFFERENT model (enforced) → quote-verified complete, or continuation brief into the same worktree on honest partial. executeRun walks the approved run; POST /v1/runs/:id/execute; --yes executes unless --approve-only. Suite 94/94, tsc clean."
+      }
     },
     {
       "id": "QK-RUN-006",
@@ -624,6 +627,36 @@
       "revision": 1,
       "createdAt": "2026-07-27T22:03:03.163Z",
       "updatedAt": "2026-07-27T22:03:03.163Z",
+      "statusDetail": {}
+    },
+    {
+      "id": "QK-NAT-005",
+      "title": "the workbench terminal rides the single-terminal workaround (index-0 engine key)",
+      "status": "open",
+      "dependsOn": [
+        "QK-NAT-001"
+      ],
+      "deliverables": [
+        "core.ts + app.native adopt the documented binding: shellKey = 0x5453505400000000 (proven-i64 const, never Msg-fed), pty=\"{shellKey}\", no scrollback binding",
+        "a guard comment at the constant: first-and-only pty, ABI-not-API, re-verify on every SDK bump"
+      ],
+      "acceptanceCriteria": [
+        "a real shell echoes in the workbench app on stock SDK 0.6.1 — no fork, no patch",
+        "native automate snapshot shows the terminal widget's label carrying live viewport text (the SDK-bump smoke)"
+      ],
+      "verification": [],
+      "sourceRefs": [
+        {
+          "path": "docs/upstream/native-terminal-gap/single-terminal-workaround.md",
+          "pinnedCommit": "a4ddf0349622e24f0da57008cee07913701420a6"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "risk": "rides an internal constant (ts_core_host.zig pty_key_base) and a 1-terminal ceiling — QK-NAT-002's single center pane fits, a second pane does not; collapses to deleting the constant when the upstream issue lands",
+      "revision": 1,
+      "createdAt": "2026-07-28T13:06:28.926Z",
+      "updatedAt": "2026-07-28T13:06:28.926Z",
       "statusDetail": {}
     }
   ]

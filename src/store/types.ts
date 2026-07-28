@@ -108,10 +108,37 @@ export interface Run {
   /** Task ids in execution (dependency) order. */
   taskIds: string[];
   plan: RunPlanEntry[];
+  /** Filled once execution starts (QK-RUN-005). */
+  tasks?: RunTaskRecord[];
   revision: number;
   createdAt: string;
   updatedAt: string;
   approvedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export type RunTaskOutcome =
+  | "pending"
+  | "running"
+  | "accepted"
+  | "partial"
+  | "failed"
+  | "blocked"
+  | "held"
+  | "released";
+
+export interface RunTaskRecord {
+  taskId: string;
+  outcome: RunTaskOutcome;
+  landingCommit: string | null;
+  worktree: string | null;
+  reason?: string;
+  implementerModel?: string;
+  reviewerModel?: string;
+  continuationPath?: string;
+  evidenceQuote?: string;
+  verdict?: "accept" | "revise" | "indeterminate";
 }
 
 export interface RunsFile {

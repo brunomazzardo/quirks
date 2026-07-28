@@ -164,7 +164,7 @@ describe("quirks CLI", () => {
     expect(dryBody.plan.taskIds).toEqual([a.id, b.id]);
 
     const started = run(
-      cwd, "run", "--goal", "QK-RN", "--name", "pipe check", "--yes", "--mode", "autonomous",
+      cwd, "run", "--goal", "QK-RN", "--name", "pipe check", "--yes", "--approve-only", "--mode", "autonomous",
     );
     expect(started.code).toBe(0);
     const body = JSON.parse(started.stdout);

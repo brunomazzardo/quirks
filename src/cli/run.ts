@@ -69,6 +69,8 @@ export async function runStart(
     mode?: string;
     yes: boolean;
     dryRun: boolean;
+    /** Stop after persisting an approved run — do not dispatch parents. */
+    approveOnly: boolean;
     json: boolean;
   },
 ): Promise<void> {
@@ -96,8 +98,6 @@ export async function runStart(
 
   // Show the plan before approval — the whole approval surface.
   if (opts.json || !process.stdout.isTTY) {
-    // Headless consumers see the plan embedded in the eventual run object;
-    // still refuse to persist without --yes (never prompt on a pipe).
     if (!opts.yes) {
       emitJson(plan);
       throw new CliError(
@@ -116,7 +116,14 @@ export async function runStart(
   }
 
   const result = await request("POST", "/v1/runs", { ...body, yes: true });
-  emitJson(result.run ?? result);
+  const run = result.run ?? result;
+  if (opts.approveOnly) {
+    emitJson(run);
+    return;
+  }
+  // Execute: one parent per task, failure blocks dependents only.
+  const executed = await request("POST", `/v1/runs/${encodeURIComponent(run.id)}/execute`, {});
+  emitJson(executed);
 }
 
 export async function runList(opts: { json: boolean }): Promise<void> {

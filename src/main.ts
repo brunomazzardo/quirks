@@ -158,6 +158,7 @@ run
   .option("--mode <mode>", "autonomous | park-on-issue", "park-on-issue")
   .option("--yes", "approve the plan without prompting (required when not a TTY)", false)
   .option("--dry-run", "assemble every brief without dispatching or persisting", false)
+  .option("--approve-only", "with --yes, persist the approved run but do not execute parents", false)
   .option("--json", "JSON even on a TTY", false)
   .action(runStart);
 

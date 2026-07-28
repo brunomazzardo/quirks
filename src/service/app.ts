@@ -18,6 +18,8 @@ import {
   releaseTask,
 } from "../ops/tasks.ts";
 import { assemblePlan, getRun, listRuns, startRun } from "../ops/runs.ts";
+import { executeRun } from "../run/parent.ts";
+import { defaultParentHooks } from "../run/hooks.ts";
 import type { RunMode } from "../store/types.ts";
 
 /** Paginate a list route: ?offset=&limit= (native-app budgets force it — the
@@ -170,6 +172,27 @@ export function createApp(store: Store): Hono {
   });
 
   app.get("/v1/runs/:id", (c) => c.json(getRun(store, c.req.param("id"))));
+
+  app.post("/v1/runs/:id/execute", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      implementerModel?: string;
+      reviewerModel?: string;
+      review?: boolean;
+      timeoutMs?: number;
+    };
+    const hooks = defaultParentHooks({
+      ...(body.implementerModel
+        ? { implementer: { runner: "claude" as const, model: body.implementerModel } }
+        : {}),
+      ...(body.reviewerModel
+        ? { reviewer: { runner: "claude" as const, model: body.reviewerModel } }
+        : {}),
+      ...(body.review !== undefined ? { review: body.review } : {}),
+      ...(body.timeoutMs !== undefined ? { timeoutMs: body.timeoutMs } : {}),
+    });
+    const result = await executeRun(store, c.req.param("id"), hooks);
+    return c.json(result.run);
+  });
 
   return app;
 }
