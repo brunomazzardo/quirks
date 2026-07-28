@@ -160,6 +160,12 @@ export function ShapePane() {
       </header>
       <div className="relative flex min-h-0 flex-1 flex-col">
         {status === "up" ? (
+          // The framed page is the local daemon's own companion — the same
+          // trust domain as this app. It needs scripts + its own origin for
+          // SSE and choice posts, and that sandbox combo is escapable by
+          // design (the rule below is right about that), so a sandbox here
+          // would be theater rather than a boundary.
+          // oxlint-disable-next-line react/iframe-missing-sandbox
           <iframe
             key={`${shapeUrl}#${token}`}
             src={shapeUrl}
