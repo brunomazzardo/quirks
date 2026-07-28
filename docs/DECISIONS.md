@@ -118,8 +118,6 @@ not vigilance** — each belongs as an acceptance criterion on the component tha
 
 ## Known open, not yet decided
 
-- **Harness liveness** — where "is codex working" comes from at runtime, and how often it
-  refreshes. In v1 that fact was prose in a checked-in doc with a hardcoded date.
 - **The setup flow** — skills live in this repo for now (decided 2026-07-27); later the CLI
   gets a setup command that installs them and everything else a new repo needs. Needs design.
   **Ledger: `QK-001`** — the first open question tracked by the product instead of this file.
@@ -129,6 +127,14 @@ not vigilance** — each belongs as an acceptance criterion on the component tha
   delegation from an agent deciding on its own.
 - ~~**Task ids**~~ — **resolved 2026-07-27 (S1):** the prefix *is* the goal id; goal-less
   tasks are bare numbers under the plain `QK-` namespace.
+- ~~**Harness liveness**~~ — **resolved 2026-07-28 (`QK-HARN-001`):** liveness is **derived from
+  the run record, never a live probe.** Every dispatch persists its runner, model, timestamp,
+  exit code, and the runner's own failure text (`RunDispatchRecord`), so the newest dispatch per
+  runner *is* the answer — a quota refusal arrives dated and attributable instead of as prose.
+  It therefore refreshes exactly when a run dispatches, which costs nothing. `quirks harness
+  --probe` is the explicit opt-in for a real `--version` round trip before an overnight run.
+  Availability has **three** states, not two: a harness nobody has dispatched is `unproven`,
+  never `yes`.
 
 ## The chicken and egg
 

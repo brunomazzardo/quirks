@@ -158,17 +158,44 @@ actually does something in it.
 Two views, both built on data the system already computes and never shows:
 
 **Harness availability.** Whether `claude`, `codex`, and `cursor` are each present, authorized,
-and answering — a sanity check before an overnight run leans on them. `hosts/{claude,codex,
-cursor}/discover.mjs` already probe this. `RoutableProfile` already carries `healthy` and
-`remainingAllocation`.
+and answering — a sanity check before an overnight run leans on them.
+
+> **Corrected 2026-07-28 while building `QK-HARN-001`.** This paragraph originally claimed
+> `hosts/{claude,codex,cursor}/discover.mjs` "already probe this" and that `RoutableProfile`
+> "already carries `healthy` and `remainingAllocation`". Both were wrong, and each sent the
+> port at the wrong file:
+> - Those three `discover.mjs` files are **skill-id discovery** (`discoverClaudeSkills({layoutRoot})`
+>   and siblings). They contain no availability probe. v1's real probes were in
+>   **`src/smoke/host-runner.ts`** — `resolveExecutable` (PATH + `~/.local/bin` + `~/bin`, `X_OK`)
+>   and `probeVersion` (`--version`, first line). `probeVersion` ended in
+>   `catch { return "unknown" }`, collapsing not-found, `EACCES`, non-zero exit, and a hung
+>   binary into one benign string — the carried-defect class in `DECISIONS.md`, so it was
+>   **rewritten rather than ported**.
+> - `RoutableProfile` carried those two *fields*, but nothing ever computed them: they were read
+>   from a hand-written `~/.config/quirks/profiles.json`. Refreshing quota state was aspiration,
+>   not existing code — which is why "where liveness comes from" was still an open question here.
+>
+> v1 source is only on the **`origin/v1`** branch of `~/code/quirks` (`git show origin/v1:<path>`);
+> that checkout's working tree is post-reboot and nearly empty.
 
 **Model and tier table.** Which model and effort each judgment tier resolves to
 (`mechanical → standard → high → principal`), and therefore what an overnight run will dispatch
 to. `requiredTierForRole` already decides this; it is simply invisible today.
 
+> **Also corrected.** `requiredTierForRole` (v1 `src/campaign/routing.ts`) decides the *tier*,
+> not the model — no tier→model table existed anywhere in v1. Real per-runner model ids came from
+> `docs/evidence/runner-boundary-probe.md`, not from source. The independence rule worth porting
+> alongside it is `deriveModelFamily` / `selectIndependentReviewer` (v1
+> `src/prompt/model-selection.ts`), which refuses to label a same-family fallback independent.
+
 Both are live in the native app and available as `quirks harness`. This also retires a real
-smell: `CLAUDE.md` currently carries *"codex is usage-limited until Jul 28 2026 2:02 PM"* as
-prose in a checked-in document. Quota state belongs in a table that refreshes, not in doctrine.
+smell: v1's `CLAUDE.md` carried *"codex is usage-limited until Jul 28 2026 2:02 PM"* as prose in a
+checked-in document. Quota state belongs in a table that refreshes, not in doctrine.
+
+**Resolved 2026-07-28 (`QK-HARN-001`):** liveness is **derived from the run record, never a live
+probe** — each dispatch persists its runner, model, timestamp, exit code, and the runner's own
+failure text, so the newest dispatch per runner *is* the answer and a quota refusal arrives dated.
+`quirks harness --probe` is the explicit opt-in for a real `--version` round trip.
 
 ## The intent model
 
@@ -683,7 +710,9 @@ disagrees:
 4. **QK-RBT-005 — `quirks report`.** Build D14: section ordering, the per-task contract, and
    `--task` depth, over the provenance record. The native run-detail view renders the same data.
 5. **QK-RBT-006 — harness and model tables.** `quirks harness`, backed by the existing
-   discover scripts and routing.
+   discover scripts and routing. *(Corrected 2026-07-28: not the discover scripts — see D7 above.
+   Shipped as `QK-HARN-001`; the probe was rewritten, and the tier table built from
+   `runner-boundary-probe.md` evidence rather than ported.)*
 6. **QK-RBT-007 — doctrine and the judgment skills.** Rewrite `CLAUDE.md`/`AGENTS.md`: drop the
    TDD requirement, the capability language, the approval ceremony, and the hardcoded quota
    prose. Rewrite all six skills against the five-verb CLI. **Author the brief skills D17
