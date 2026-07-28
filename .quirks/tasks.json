@@ -402,7 +402,7 @@
     {
       "id": "QK-RUN-006",
       "title": "resume and durable completion",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-RUN-005"
       ],
@@ -416,10 +416,13 @@
       "sourceRefs": [],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-27T22:03:02.599Z",
-      "updatedAt": "2026-07-27T22:03:02.599Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T13:23:23.461Z",
+      "statusDetail": {
+        "claimedBy": "composer, live session with Bruno",
+        "evidence": "quirks run --resume <id|slug> continues an interrupted run (POST /v1/runs/:id/resume); settled outcomes skipped, pending/released/partial/running retried. Durable completion (QK-CTL-012): finalizeRun refuses status=completed unless every run-task outcome matches the ledger — a lie leaves the run running with no completedAt. Suite green, tsc clean."
+      }
     },
     {
       "id": "QK-REP-001",

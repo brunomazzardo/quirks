@@ -22,6 +22,84 @@ export interface RunExecution extends Run {
   tasks: RunTaskRecord[];
 }
 
+/** Outcomes that mean "already settled — do not re-dispatch on resume". */
+const SETTLED_SKIP = new Set(["accepted", "blocked", "held", "failed"]);
+
+/** Outcomes that resume will attempt again. */
+export function shouldAttemptOnResume(outcome: RunTaskRecord["outcome"]): boolean {
+  return !SETTLED_SKIP.has(outcome);
+}
+
+/**
+ * QK-CTL-012 class: a run reported completed must have actually transitioned
+ * its tasks in the ledger. Returns human-readable mismatches; empty = durable.
+ */
+export function durableCompletionErrors(store: Store, exec: RunExecution): string[] {
+  const errors: string[] = [];
+  for (const rec of exec.tasks) {
+    let task;
+    try {
+      task = getTask(store, rec.taskId);
+    } catch {
+      errors.push(`${rec.taskId}: run record cites a task that is not in the ledger`);
+      continue;
+    }
+    switch (rec.outcome) {
+      case "accepted":
+        if (task.status !== "completed") {
+          errors.push(`${rec.taskId}: run says accepted but ledger is ${task.status}`);
+        }
+        break;
+      case "held":
+      case "blocked":
+      case "failed":
+        if (task.status !== "blocked") {
+          errors.push(`${rec.taskId}: run says ${rec.outcome} but ledger is ${task.status}`);
+        }
+        break;
+      case "released":
+        if (task.status !== "open") {
+          errors.push(`${rec.taskId}: run says released but ledger is ${task.status}`);
+        }
+        break;
+      case "pending":
+      case "running":
+        errors.push(`${rec.taskId}: still ${rec.outcome} — run is not finished`);
+        break;
+      case "partial":
+        // Partial under autonomous keeps outcome "partial" while ledger is blocked.
+        if (task.status !== "blocked" && task.status !== "open" && task.status !== "claimed") {
+          errors.push(`${rec.taskId}: run says partial but ledger is ${task.status}`);
+        }
+        break;
+    }
+  }
+  return errors;
+}
+
+/**
+ * Mark completed only when every task is settled AND the ledger matches.
+ * Otherwise leave status as running and refuse the lie (QK-CTL-012).
+ */
+export function finalizeRun(store: Store, exec: RunExecution): RunExecution {
+  const errors = durableCompletionErrors(store, exec);
+  if (errors.length > 0) {
+    exec.status = "running";
+    exec.updatedAt = new Date().toISOString();
+    // Do not set completedAt — it never finished durably.
+    delete exec.completedAt;
+    saveExecution(store, exec);
+    throw new ConflictError(
+      `refusing to report run ${exec.id} completed — durable completion failed:\n  - ${errors.join("\n  - ")}`,
+    );
+  }
+  exec.status = "completed";
+  exec.completedAt = new Date().toISOString();
+  exec.updatedAt = exec.completedAt;
+  saveExecution(store, exec);
+  return exec;
+}
+
 export interface ParentDispatchRequest {
   role: "implementer" | "reviewer";
   taskId: string;
@@ -231,7 +309,8 @@ export interface ExecuteResult {
   run: RunExecution;
 }
 
-/** Walk an approved/running run in dependency order; failures block dependents only. */
+/** Walk an approved/running run in dependency order; failures block dependents only.
+ *  Resume-safe: settled outcomes are skipped; pending/released/partial/running retry. */
 export async function executeRun(
   store: Store,
   idOrSlug: string,
@@ -248,26 +327,28 @@ export async function executeRun(
   exec.status = "running";
   exec.startedAt = exec.startedAt ?? now;
   exec.updatedAt = now;
+  // A previous incomplete finalize may have left a completedAt — clear it.
+  delete exec.completedAt;
   saveExecution(store, exec);
 
-  const failedIds = new Set<string>();
+  const failedIds = new Set<string>(
+    exec.tasks.filter((t) => ["failed", "blocked", "held", "released"].includes(t.outcome)).map((t) => t.taskId),
+  );
 
   for (const taskId of exec.taskIds) {
     const rec = exec.tasks.find((t) => t.taskId === taskId)!;
-    if (rec.outcome === "blocked" || rec.outcome === "accepted") continue;
+    if (!shouldAttemptOnResume(rec.outcome)) continue;
 
     // If any dependency in this run failed/held/released/blocked, skip.
     const task = getTask(store, taskId);
-    const unmet = task.dependsOn.filter(
-      (d) =>
-        exec.taskIds.includes(d) &&
-        failedIds.has(d),
-    );
+    const unmet = task.dependsOn.filter((d) => exec.taskIds.includes(d) && failedIds.has(d));
     if (unmet.length > 0) {
       rec.outcome = "blocked";
       rec.reason = `blocked by failed dependency: ${unmet.join(", ")}`;
       try {
-        blockTask(store, taskId, { reason: rec.reason });
+        if (task.status === "open" || task.status === "claimed") {
+          blockTask(store, taskId, { reason: rec.reason });
+        }
       } catch {
         /* may already be blocked */
       }
@@ -277,11 +358,19 @@ export async function executeRun(
       continue;
     }
 
+    // Released tasks are open again; partial/running may still be claimed — release first if needed.
+    if (task.status === "claimed" && (rec.outcome === "partial" || rec.outcome === "running")) {
+      try {
+        releaseTask(store, taskId);
+      } catch {
+        /* ok */
+      }
+    }
+
     const { record } = await runParent(store, exec, taskId, hooks);
     Object.assign(rec, record);
     if (record.outcome !== "accepted") {
       failedIds.add(taskId);
-      // Apply dependent blocking now so later iterations see it.
       const decision = decideFailure({
         mode: exec.mode as RunMode,
         failedId: taskId,
@@ -292,11 +381,14 @@ export async function executeRun(
       for (const dep of decision.blockDependents) {
         failedIds.add(dep);
         const depRec = exec.tasks.find((t) => t.taskId === dep);
-        if (depRec && depRec.outcome === "pending") {
+        if (depRec && shouldAttemptOnResume(depRec.outcome)) {
           depRec.outcome = "blocked";
           depRec.reason = `blocked by ${taskId}`;
           try {
-            blockTask(store, dep, { reason: depRec.reason });
+            const depTask = getTask(store, dep);
+            if (depTask.status === "open" || depTask.status === "claimed") {
+              blockTask(store, dep, { reason: depRec.reason });
+            }
           } catch {
             /* ok */
           }
@@ -307,9 +399,28 @@ export async function executeRun(
     saveExecution(store, exec);
   }
 
-  exec.status = "completed";
-  exec.completedAt = new Date().toISOString();
-  exec.updatedAt = exec.completedAt;
-  saveExecution(store, exec);
+  // Durable completion — never report completed on a lie (QK-CTL-012).
+  finalizeRun(store, exec);
   return { run: exec };
+}
+
+/** `quirks run --resume <name|id>` — same execute path, picks up where it stopped. */
+export async function resumeRun(
+  store: Store,
+  idOrSlug: string,
+  hooks: ParentHooks,
+): Promise<ExecuteResult> {
+  const loaded = loadRuns(store).find((r) => r.id === idOrSlug || r.slug === idOrSlug);
+  if (!loaded) throw new NotFoundError(`no run ${idOrSlug} — quirks run list shows what exists`);
+  if (loaded.status === "completed") {
+    throw new ConflictError(`run ${loaded.id} is already completed — nothing to resume`);
+  }
+  if (loaded.status === "abandoned") {
+    throw new ConflictError(`run ${loaded.id} is abandoned — nothing to resume`);
+  }
+  if (loaded.status === "planned") {
+    throw new ConflictError(`run ${loaded.id} is only planned — approve it with quirks run --yes first`);
+  }
+  // approved or running — executeRun handles both.
+  return executeRun(store, loaded.id, hooks);
 }

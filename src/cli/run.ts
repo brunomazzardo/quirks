@@ -69,11 +69,18 @@ export async function runStart(
     mode?: string;
     yes: boolean;
     dryRun: boolean;
-    /** Stop after persisting an approved run — do not dispatch parents. */
     approveOnly: boolean;
+    resume?: string;
     json: boolean;
   },
 ): Promise<void> {
+  if (opts.resume) {
+    // No plan/approval — pick up an interrupted run by id or slug.
+    const executed = await request("POST", `/v1/runs/${encodeURIComponent(opts.resume)}/resume`, {});
+    emitJson(executed);
+    return;
+  }
+
   if (!opts.name) throw new CliError("--name is required");
 
   const body = {
@@ -121,7 +128,6 @@ export async function runStart(
     emitJson(run);
     return;
   }
-  // Execute: one parent per task, failure blocks dependents only.
   const executed = await request("POST", `/v1/runs/${encodeURIComponent(run.id)}/execute`, {});
   emitJson(executed);
 }

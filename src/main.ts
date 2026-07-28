@@ -159,6 +159,7 @@ run
   .option("--yes", "approve the plan without prompting (required when not a TTY)", false)
   .option("--dry-run", "assemble every brief without dispatching or persisting", false)
   .option("--approve-only", "with --yes, persist the approved run but do not execute parents", false)
+  .option("--resume <id-or-slug>", "continue an interrupted run (no new approval)")
   .option("--json", "JSON even on a TTY", false)
   .action(runStart);
 
