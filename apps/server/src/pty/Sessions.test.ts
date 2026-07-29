@@ -24,7 +24,7 @@ const decoder = new TextDecoder();
  *  exercises the finalizer. */
 const withSessions = <A>(
   body: (sessions: PtySessionsShape, root: string) => Promise<A>,
-  options: { readonly replayLimit?: number } = {},
+  options: { readonly replayLimit?: number; readonly graceMs?: number } = {},
 ): Promise<A> => {
   const root = tempRoot("quirks-pty-");
   return Effect.runPromise(
@@ -503,6 +503,59 @@ describe("nothing outlives the daemon", () => {
       expect(error._tag).toBe("NotFoundError");
       expect((await Effect.runPromise(sessions.list)).map((s) => s.id)).toEqual([spared.id]);
     });
+  });
+
+  it("a shell that ignores SIGHUP still dies when shutdown beats the grace window", async () => {
+    // The window this closes: `kill` dropped the session from `sessions` AND
+    // `processWide` at request time, so for the 250 ms grace it was invisible to
+    // both backstops — and the escalating SIGKILL timer is `unref`'d, so it
+    // cannot fire during shutdown either. `trap "" HUP` makes the shell ignore
+    // the polite signal, and closing the scope immediately afterwards is the
+    // `/shutdown` that used to leave it running. The loop matters: a bare
+    // `sleep` is a child that does NOT ignore HUP, so the shell would outlive
+    // the signal only to exit the moment its one command died.
+    // The grace window is opened wide so the escalating SIGKILL cannot fire and
+    // rescue the outcome: whatever kills this shell is the backstop, not the
+    // timer. With the real 250 ms window the timer hides the bug entirely,
+    // because a test runner outlives it — the daemon, exiting, does not.
+    let pid = 0;
+    await withSessions(
+      async (sessions) => {
+        const sink = collector();
+        const info = await Effect.runPromise(
+          script(sessions, 'trap "" HUP; echo trapped; while :; do sleep 5; done'),
+        );
+        pid = info.pid;
+
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              yield* sessions.attach(info.id, sink.listener);
+              // Wait for the trap to be INSTALLED, not merely requested —
+              // killing a shell that has not reached its `trap` yet proves
+              // nothing.
+              yield* Effect.promise(() =>
+                waitFor(
+                  () => sink.text.includes("trapped"),
+                  () => JSON.stringify(sink.text),
+                ),
+              );
+            }),
+          ),
+        );
+
+        await Effect.runPromise(sessions.kill(info.id));
+        // Signalled, out of the registry, ignoring SIGHUP — and still running.
+        expect(alive(pid)).toBe(true);
+      },
+      { graceMs: 60_000 },
+    );
+
+    await waitFor(
+      () => !alive(pid),
+      () => `pid ${pid} outlived the daemon`,
+    );
+    expect(alive(pid)).toBe(false);
   });
 
   it("killing something that is already gone is a 404, not a crash", async () => {

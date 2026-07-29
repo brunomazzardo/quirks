@@ -280,6 +280,82 @@ describe("executeRun", () => {
     expect(result.status).toBe("completed");
   });
 
+  // The regression that motivated runner/Verdict.ts. `dispatchRunner` emits only
+  // transport notes, so nothing on the real path ever produced the `quote:` note
+  // the parent used to read — every review resolved to indeterminate and the
+  // default configuration could not complete a single task. These two drive the
+  // path a real reviewer actually takes: a declaration in its own transcript,
+  // and no notes at all.
+  describe("a reviewer that declares its verdict in the transcript", () => {
+    const reviewerSaid = (text: string): string =>
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } });
+
+    const runReview = (transcript: string) =>
+      runOp(
+        tempRoot("quirks-parent-"),
+        Effect.gen(function* () {
+          const t = yield* proposeTask(propose({ title: "declared" }));
+          const started = yield* startRun({
+            name: "declared",
+            taskIds: [t.id],
+            yes: true,
+            mode: "autonomous",
+          });
+          if (started.dryRun) throw new Error("unreachable");
+          const { run } = yield* executeRun(
+            started.run.id,
+            fakeHooks({
+              implementer: { runner: "claude", model: "sonnet" },
+              reviewer: { runner: "claude", model: "opus" },
+              review: true,
+              landingCommit: "abc",
+              dispatch: (req) =>
+                req.role === "implementer"
+                  ? dispatched("impl")
+                  : // No notes — exactly what dispatchRunner returns.
+                    dispatched("rev", { transcript }),
+            }),
+          );
+          return { record: run.tasks[0], status: (yield* getTask(t.id)).status };
+        }),
+      );
+
+    it("completes the task when the evidence is really in its own words", async () => {
+      const result = await runReview(
+        reviewerSaid(
+          [
+            "I ran the suite and read the diff.",
+            "The change is scope-correct and its tests actually exercise it.",
+            "",
+            "QUIRKS-VERDICT: accept",
+            "QUIRKS-EVIDENCE: The change is scope-correct and its tests actually exercise it.",
+          ].join("\n"),
+        ),
+      );
+      expect(result.record?.verdict).toBe("accept");
+      expect(result.record?.outcome).toBe("accepted");
+      expect(result.status).toBe("completed");
+    });
+
+    it("refuses an accept whose evidence appears only on the marker line", async () => {
+      const result = await runReview(
+        reviewerSaid(
+          [
+            "I have real concerns about the error handling.",
+            "QUIRKS-VERDICT: accept",
+            "QUIRKS-EVIDENCE: Everything here is correct and complete.",
+          ].join("\n"),
+        ),
+      );
+      // The declaration line cannot be its own proof, so verification fails it
+      // closed and no evidence is recorded under a "quote-verified" caption.
+      expect(result.record?.verdict).toBe("indeterminate");
+      expect(result.record?.outcome).not.toBe("accepted");
+      expect(result.record?.evidenceQuote).toBeUndefined();
+      expect(result.status).not.toBe("completed");
+    });
+  });
+
   it("a reviewer on the implementer's own model is refused before anything dispatches", async () => {
     const root = tempRoot("quirks-parent-");
     const error = await runOpError(

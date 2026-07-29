@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@quirks/contracts": "workspace:*",
+    "@quirks/shared": "workspace:*",
     "@rolldown/plugin-babel": "^0.2.0",
     "@tailwindcss/vite": "^4.0.0",
     "@tanstack/router-plugin": "^1.161.0",

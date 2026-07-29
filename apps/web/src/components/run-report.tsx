@@ -82,7 +82,7 @@ export function RunReport({ runId }: { runId: string }) {
 
       {failure !== null && (
         <p
-          className="truncate rounded-md bg-muted px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground"
+          className="truncate rounded-md bg-muted px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground transition-opacity duration-200 ease-out starting:opacity-0"
           title={describeCause(failure)}
         >
           showing the last good read — {describeCause(failure)}

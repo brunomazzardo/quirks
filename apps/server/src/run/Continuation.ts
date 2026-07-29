@@ -3,7 +3,8 @@
 
 // Ported verbatim from the bun-era src/run/continuation.ts (QK-MONO-005).
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import { continuationPath } from "../store/LedgerPaths.ts";
 
 export interface ContinuationInput {
   taskId: string;
@@ -14,10 +15,6 @@ export interface ContinuationInput {
   worktree: string;
   /** Optional free-form note from the parent. */
   note?: string;
-}
-
-export function continuationPath(worktree: string, taskId: string): string {
-  return join(worktree, ".quirks", "continuations", `${taskId}.md`);
 }
 
 /** Render + write. Always says "do not redo groundwork". */

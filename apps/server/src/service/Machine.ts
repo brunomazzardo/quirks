@@ -9,26 +9,14 @@
 // The CLI imports this, and must not acquire a path into the store through it —
 // D4 says the CLI's only path to data is HTTP.
 
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { serviceLogPath, stateDir } from "@quirks/shared";
 
-/** Interim per-repo port: a stable hash of the repo root into the dynamic
- *  range, so two repos' services never collide without a registry. The global
- *  multi-repo registry is QK-SRV-005 (future). */
-export function portForRoot(root: string): number {
-  const override = process.env.QUIRKS_PORT;
-  if (override) {
-    const p = Number.parseInt(override, 10);
-    if (Number.isInteger(p) && p > 1023 && p < 65536) return p;
-  }
-  const h = createHash("sha256").update(root).digest();
-  return 45000 + (h.readUInt32BE(0) % 15000);
-}
-
-export function baseFor(port: number): string {
-  return `http://127.0.0.1:${port}`;
-}
+// The derivation moved to @quirks/shared (address.ts) once a third consumer
+// appeared: apps/web's dev proxy had already rewritten it by hand, and the
+// Electron shell needed it to know which origin to load. Re-exported here so
+// every existing caller in this app keeps its import.
+export { baseFor, portForRoot, serviceOriginFor } from "@quirks/shared";
 
 /**
  * Rotate the service log past a size cap: service.log → .1 → .2, oldest dropped.

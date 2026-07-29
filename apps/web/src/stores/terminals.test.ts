@@ -3,7 +3,7 @@
 // especially that more than one tab can be live at once, which is the whole
 // acceptance criterion expressed in the client's own terms.
 
-import { beforeEach, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { nextActiveKey, nextLabel, useTerminalStore, type TerminalTab } from "./terminals";
 
@@ -153,4 +153,37 @@ it("updates to a tab that has gone are dropped, not thrown", () => {
     useTerminalStore.getState().markExited(key, 0);
   }).not.toThrow();
   expect(useTerminalStore.getState().tabs).toEqual([]);
+});
+
+// Adoption is what makes the file header's claim — "closing the page does not
+// close a shell, and reopening it re-attaches" — actually true. Before it, a
+// reload minted a new session and stranded the old one, sixteen times over.
+describe("adopting the daemon's existing sessions", () => {
+  it("gives each live session a tab, and focuses the first", () => {
+    const adopted = useTerminalStore.getState().adoptSessions(["pty_aaa", "pty_bbb"]);
+    const { tabs, activeKey } = useTerminalStore.getState();
+
+    expect(adopted).toBe(2);
+    expect(tabs.map((tab) => tab.sessionId)).toEqual(["pty_aaa", "pty_bbb"]);
+    expect(tabs.map((tab) => tab.label)).toEqual(["1", "2"]);
+    expect(activeKey).toBe(tabs[0]?.key);
+  });
+
+  it("adopts nothing twice — StrictMode runs every effect a second time", () => {
+    useTerminalStore.getState().adoptSessions(["pty_aaa"]);
+    expect(useTerminalStore.getState().adoptSessions(["pty_aaa"])).toBe(0);
+    expect(useTerminalStore.getState().tabs).toHaveLength(1);
+  });
+
+  it("reports zero for an empty daemon, so the caller knows to open a fresh tab", () => {
+    expect(useTerminalStore.getState().adoptSessions([])).toBe(0);
+    expect(useTerminalStore.getState().tabs).toEqual([]);
+  });
+
+  it("leaves the tab you were looking at focused", () => {
+    const mine = useTerminalStore.getState().openTab();
+    useTerminalStore.getState().adoptSessions(["pty_aaa"]);
+    expect(useTerminalStore.getState().activeKey).toBe(mine);
+    expect(useTerminalStore.getState().tabs).toHaveLength(2);
+  });
 });

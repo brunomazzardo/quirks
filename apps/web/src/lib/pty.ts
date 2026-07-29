@@ -2,7 +2,12 @@
 //
 import { serviceBaseUrl } from "~/lib/service";
 
-import type { PtyClientMessage, PtyServerMessage, PtySessionInfo } from "@quirks/contracts";
+import type {
+  PtyClientMessage,
+  PtyListResponse,
+  PtyServerMessage,
+  PtySessionInfo,
+} from "@quirks/contracts";
 
 export type { PtyClientMessage, PtyServerMessage, PtySessionInfo };
 
@@ -52,6 +57,21 @@ export async function createSession(
   });
   if (!response.ok) throw new Error(await readError(response, "POST /v1/pty/sessions"));
   return (await response.json()) as PtySessionInfo;
+}
+
+/**
+ * The sessions the daemon currently holds.
+ *
+ * This route existed from the start and had no caller, which is precisely how a
+ * reload came to leak a shell: the page minted a new session every time and the
+ * previous one stayed alive in the daemon with nothing able to reach it. Sixteen
+ * reloads hit the per-daemon cap and the terminal could not be opened at all
+ * until the daemon restarted.
+ */
+export async function listSessions(signal?: AbortSignal): Promise<readonly PtySessionInfo[]> {
+  const response = await fetch(`${serviceBaseUrl()}/v1/pty/sessions`, signal ? { signal } : {});
+  if (!response.ok) throw new Error(await readError(response, "GET /v1/pty/sessions"));
+  return ((await response.json()) as PtyListResponse).sessions;
 }
 
 /** Best-effort: a tab is closing either way, and a session the daemon has

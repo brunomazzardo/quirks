@@ -15,7 +15,7 @@ import { useCallback, useEffect } from "react";
 
 import { TerminalView } from "~/components/terminal-view";
 import { Button } from "~/components/ui/button";
-import { forgetSession, killSession } from "~/lib/pty";
+import { forgetSession, killSession, listSessions } from "~/lib/pty";
 import { cn } from "~/lib/utils";
 import { useTerminalStore, type TerminalTab } from "~/stores/terminals";
 
@@ -29,8 +29,30 @@ export function TerminalPane() {
   const activate = useTerminalStore((state) => state.activate);
 
   // One terminal is what a terminal pane is for; the "+" is for the second.
+  //
+  // But a shell outlives this page, so ask the daemon what it already has
+  // before minting anything. Without this, every reload created a fresh session
+  // and abandoned the last one — unreachable, because a new page knows none of
+  // the previous ids — until the sixteen-session cap made the pane unopenable
+  // and only a daemon restart could clear it.
   useEffect(() => {
-    if (useTerminalStore.getState().tabs.length === 0) openTab();
+    if (useTerminalStore.getState().tabs.length > 0) return;
+    const abort = new AbortController();
+    listSessions(abort.signal)
+      .then((sessions) => {
+        if (abort.signal.aborted) return;
+        // No second `tabs.length` check: `adoptSessions` dedupes by session id,
+        // so a tab that appeared while the fetch was in flight is adopted
+        // alongside rather than causing the daemon's sessions to be skipped.
+        const live = sessions.filter((session) => !session.exited).map((session) => session.id);
+        if (useTerminalStore.getState().adoptSessions(live) === 0) openTab();
+      })
+      .catch(() => {
+        // The daemon being unreachable is the TerminalView's story to tell —
+        // it owns the pane's error state. Open a tab and let it say so.
+        if (!abort.signal.aborted && useTerminalStore.getState().tabs.length === 0) openTab();
+      });
+    return () => abort.abort();
   }, [openTab]);
 
   const close = useCallback(
@@ -142,7 +164,7 @@ function Tab({ tab, active, onSelect, onClose }: TabProps) {
         onClick={onClose}
         aria-label={`Close terminal ${tab.label}`}
         title="Close terminal"
-        className="rounded p-0.5 text-muted-foreground/60 opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+        className="rounded p-0.5 text-muted-foreground/60 opacity-0 transition-opacity duration-100 hover:bg-background hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
       >
         <X className="size-3" />
       </button>
@@ -182,7 +204,9 @@ function Notice({ tab, onRetry }: { tab: TerminalTab; onRetry: () => void }) {
   if (tab.status !== "failed" && tab.status !== "reconnecting") return null;
   const failed = tab.status === "failed";
   return (
-    <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t bg-card/95 px-3 py-1.5">
+    // Enters from the edge it hugs; the container's overflow-hidden clips the
+    // slide. Exit is an unmount and stays instant — recovery should not wait.
+    <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t bg-card/95 px-3 py-1.5 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-full">
       <p className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
         {failed ? "terminal not reachable" : "reconnecting…"}
         {tab.error !== null && <span className="text-muted-foreground/70"> — {tab.error}</span>}

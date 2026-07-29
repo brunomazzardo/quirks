@@ -104,6 +104,10 @@ export const daemonStatus = (opts: { json: boolean }): Effect.Effect<void> =>
  *  different job, and the pid is the only handle left. The legacy path is read
  *  too so a daemon started before `/shutdown` existed can still be replaced. */
 function recordedPid(root: string): number | null {
+  // Spelled out rather than imported from store/LedgerPaths.ts: D4 makes the
+  // CLI's only path to data HTTP, and Cli.test.ts checks that structurally — a
+  // store import here would fail that test for a good reason. This is a stale
+  // FILE LOCATION, read so an old daemon can still be found and stopped.
   for (const path of [daemonRecordPath(root), join(root, ".quirks", "service", "daemon.json")]) {
     try {
       const record = JSON.parse(readFileSync(path, "utf8")) as { pid?: number; root?: string };

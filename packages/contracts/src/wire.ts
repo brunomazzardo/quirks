@@ -1,12 +1,22 @@
-// The /v1 HTTP surface — request and response shapes as the bun-era service
-// (src/service/app.ts) actually serves them (QK-MONO-002). The Effect service
-// (QK-MONO-003) takes over as the one authority; until then this file mirrors,
-// never leads. Paginated JSON on the wire is D6.
+// The /v1 HTTP surface — the request and response shapes both sides hold.
+//
+// This file began (QK-MONO-002) as a mirror of the bun-era service, "never
+// leads, until the Effect service takes over". It took over in QK-MONO-003, and
+// the request half of this file then sat unimported by anything for the whole of
+// QK-MONO/QK-WB while apps/server re-derived every body shape by hand — so the
+// "type-only contracts across the boundary" property was real for responses and
+// fiction for requests. It leads now: apps/server/src/http/Routes.ts and
+// pty/Routes.ts build their bodies AS these types, so a change here that the
+// server does not follow is a compile error rather than a runtime surprise.
+//
+// Type-only, still and always (D3a): no runtime values cross this boundary.
+// Paginated JSON on the wire is D6.
 
 import type {
   Goal,
   Run,
   RunMode,
+  RunnerKind,
   RunPlanEntry,
   Task,
 } from "./domain.ts";
@@ -194,6 +204,16 @@ export interface TaskBrief {
   operatorNotes: string;
   /** sha256:… of the instruction files the agent would hold at this moment. */
   instructionsHash: string;
+  /**
+   * Present only on a REVIEWER's brief. Without it a reviewer is handed exactly
+   * the brief an implementer gets and is never told which role it holds — which
+   * is why its "verdict" used to be nothing but an exit code. The lines state
+   * the declaration the parent reads back out (runner/Verdict.ts).
+   */
+  review?: {
+    role: "reviewer";
+    instructions: string[];
+  };
 }
 
 export interface RunStartDryResponse {
@@ -215,16 +235,82 @@ export type RunListResponse = Page<Run>;
 export interface RunExecuteBody {
   implementerModel?: string;
   reviewerModel?: string;
+  /**
+   * Which CLI runs the model. Without these the route assumed `claude` for both
+   * roles, so a codex or cursor model posted here was dispatched, recorded, and
+   * reported under the wrong runner — and `quirks harness` reads those records
+   * to answer "did codex ever actually run?".
+   *
+   * Absent still means `claude`, but as a stated default rather than an
+   * inference drawn from a model string nobody parsed.
+   */
+  implementerRunner?: RunnerKind;
+  reviewerRunner?: RunnerKind;
   review?: boolean;
   timeoutMs?: number;
 }
 
 // ---- harness ----
 
-/** GET /v1/harness?probe=true&timeoutMs=… — the row/tier/review web lives in
- *  the ops layer; its wire type is finalized when the honesty machinery ports
- *  (QK-MONO-005). Until then consumers treat the body as opaque. */
-export type HarnessViewResponse = unknown;
+// ---- harness: GET /v1/harness?probe=true&timeoutMs=… ----
+//
+// This was `unknown`, "finalized when the honesty machinery ports
+// (QK-MONO-005)" — which landed. The real shapes had meanwhile been declared a
+// third time in apps/server/src/cli/Harness.ts, whose own comment says it did so
+// only because this type was `unknown` and it would not patch the contract from
+// that side. So the wire shape of a served route lived in the CLI's rendering
+// layer, invisible to the web. It lives here now.
+
+export interface HarnessRow {
+  runner: string;
+  executable: string;
+  presence: string;
+  presenceDetail: string;
+  version: string | null;
+  versionDetail: string;
+  liveness: string;
+  livenessDetail: string;
+  authorized: string;
+  authDetail: string;
+  /** Whether tonight's run can lean on this runner (D7). Three answers, because
+   *  two would lie: a runner nobody has dispatched is not "yes", nor "no". */
+  lean: "yes" | "no" | "unproven";
+  leanDetail: string;
+  /** May a run be ROUTED here? Presence-based, deliberately ignoring a past
+   *  dispatch failure — see `routableFrom` in apps/server/src/ops/Harness.ts. */
+  routable: boolean;
+}
+
+export interface TierRow {
+  tier: string;
+  runners: Record<string, { model: string | null; effort: string | null }>;
+}
+
+export interface ReviewRow {
+  tier: string;
+  requiredTier: string;
+  selection:
+    | {
+        kind: "independent";
+        reviewer: { runner: string; model: string; tier: string };
+        reason: string;
+      }
+    | { kind: "independence-unavailable"; requiredTier: string; reason: string };
+}
+
+export interface HarnessViewResponse {
+  generatedAt: string;
+  /** True when --probe ran `--version` against each present harness. */
+  probed: boolean;
+  harnesses: HarnessRow[];
+  tiers: TierRow[];
+  /** Independent-review availability, assuming a claude implementer. */
+  review: ReviewRow[];
+  /** Runners a run may lean on right now, best first — the operator's answer. */
+  available: RunnerKind[];
+  /** Runners a run would actually route to. Presence-based; see `routableFrom`. */
+  routable: RunnerKind[];
+}
 
 // ---- shape companion ----
 

@@ -44,6 +44,14 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
+
+  /* Motion vocabulary — replaces Tailwind's stock curves, which are too weak
+     to read as intentional. ease-out is for anything entering or answering a
+     press; ease-in-out for movement already on screen. Motion follows the
+     palette's rule: it is meaning (feedback, a state change, a bridge over a
+     jump), never decoration. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 :root {

@@ -18,6 +18,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { shapeSessionDir } from "../store/LedgerPaths.ts";
 
 /** apps/server/src/shape/ → the repo root's shape skill scripts. */
 const SKILL_SCRIPTS = fileURLToPath(
@@ -33,7 +34,7 @@ export interface ShapePaths {
 }
 
 export function shapePaths(root: string): ShapePaths {
-  const sessionDir = join(root, ".quirks", "shape-sessions", "current");
+  const sessionDir = shapeSessionDir(root);
   const stateDir = join(sessionDir, "state");
   return {
     sessionDir,
@@ -142,7 +143,17 @@ function newestScreen(contentDir: string): string | null {
   return files[0]?.path ?? null;
 }
 
-export function renderShapePage(root: string): string {
+/**
+ * The page the Shape pane frames, with the companion helper injected.
+ *
+ * `nonce` is what lets the injected helper run under the page's CSP while a
+ * screen's own executable script does not. A screen is a file on disk, so this
+ * is not a defense against the operator — it bounds what a badly-authored or
+ * pasted-in screen can reach, on an origin that also serves /v1. The proposal
+ * blocks the companion reads are `<script type="application/json">`, which is a
+ * data block the browser never executes and CSP therefore never blocks.
+ */
+export function renderShapePage(root: string, nonce: string): string {
   const { contentDir } = shapePaths(root);
   const screen = newestScreen(contentDir);
   let html: string;
@@ -152,10 +163,33 @@ export function renderShapePage(root: string): string {
   } else {
     html = waitingPage();
   }
-  const injection = "<script>\n" + loadHelper() + "\n</script>";
+  const injection = `<script nonce="${nonce}">\n` + loadHelper() + "\n</script>";
   if (html.includes("</body>")) html = html.replace("</body>", injection + "\n</body>");
   else html += injection;
   return html;
+}
+
+/**
+ * The companion's content policy. `default-src 'none'` then names exactly what
+ * the page legitimately does: run the nonced helper, wear inline styles (every
+ * screen is styled inline), draw same-origin fonts and data: images, and talk
+ * back to its own origin over /shape/event and the SSE stream.
+ *
+ * `frame-ancestors 'self'` says the same thing as the X-Frame-Options header
+ * beside it, for browsers that prefer the newer spelling.
+ */
+export function shapeContentSecurityPolicy(nonce: string): string {
+  return [
+    "default-src 'none'",
+    `script-src 'nonce-${nonce}'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "frame-ancestors 'self'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; ");
 }
 
 export function pushScreen(root: string, name: string, html: string): { path: string } {

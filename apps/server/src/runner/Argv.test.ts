@@ -17,7 +17,7 @@ describe("claude argv", () => {
       sessionId: "s1",
       model: "sonnet",
       effort: "standard",
-      briefPath: "/tmp/brief.md",
+      prompt: "/tmp/brief.md",
       workspace: "/tmp/ws",
       artifactDir: "/tmp/art",
     });
@@ -83,7 +83,7 @@ describe("cursor argv", () => {
     const argv = buildCursorArgv({
       executable: "cursor-agent",
       model: "composer-2.5",
-      briefPath: "/tmp/brief.md",
+      prompt: cursorPromptText("/tmp/brief.md"),
       workspace: "/tmp/ws",
       artifactDir: "/tmp/art",
     });

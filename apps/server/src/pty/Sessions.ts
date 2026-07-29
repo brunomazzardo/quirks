@@ -356,19 +356,41 @@ function newId(): string {
  *
  * `replayLimit` is a parameter rather than a constant read so the bound itself
  * is testable without writing a quarter of a megabyte through a shell.
+ *
+ * `graceMs` is a parameter for the same reason, from the other direction: the
+ * backstops must hold for a shell that is signalled but not yet dead, and with
+ * the real 250 ms window an escalating SIGKILL fires on its own and hides
+ * whether the backstop did anything. Widening the window in a test removes the
+ * rescue and leaves only the guarantee under test.
  */
 export const make = (
-  options: { readonly replayLimit?: number | undefined } = {},
+  options: { readonly replayLimit?: number | undefined; readonly graceMs?: number | undefined } = {},
 ): Effect.Effect<PtySessionsShape, never, Store | Scope.Scope> =>
   Effect.gen(function* () {
     const store = yield* Store;
     const replayLimit = options.replayLimit ?? REPLAY_LIMIT_BYTES;
+    const graceMs = options.graceMs ?? GRACE_MS;
     const sessions = new Map<string, Session>();
 
-    /** Forget an exited session's process-wide registration. Called from the
-     *  exit path and from `kill`, so the backstop set never grows. */
+    /**
+     * Signalled, dropped from the registry, but not yet reaped.
+     *
+     * `kill` takes a session out of `sessions` immediately — a killed shell
+     * should stop showing up in a list at once. But it is still a live process
+     * until the kernel says otherwise, and for the grace window it was visible
+     * to NEITHER backstop: `killAll` walks `sessions` and the exit hook walks
+     * `processWide`, and `kill` had already removed it from both. A shell that
+     * ignores SIGHUP plus a `/shutdown` inside the same 250 ms therefore
+     * outlived the daemon — with the SIGKILL timer `unref`'d, so it could not
+     * fire either. That is the exact opposite of this file's headline promise.
+     */
+    const dying = new Set<Session>();
+
+    /** Deregistration belongs to the EXIT path, not the request that asked for
+     *  it: a process is gone when it is gone. */
     const retire = (session: Session): void => {
       processWide.delete(session);
+      dying.delete(session);
       if (session.killTimer !== null) {
         clearTimeout(session.killTimer);
         session.killTimer = null;
@@ -540,15 +562,17 @@ export const make = (
         if (!session.exited) {
           signalGroup(session.pid, "SIGHUP");
           // A shell that ignores SIGHUP, or a child of it that does, gets the
-          // signal it cannot ignore a moment later.
+          // signal it cannot ignore a moment later. The timer stays `unref`'d so
+          // it cannot hold the process open; `dying` is what makes the shell
+          // still reachable if shutdown beats the grace window.
           const timer = setTimeout(() => {
             if (!session.exited) signalGroup(session.pid, "SIGKILL");
-          }, GRACE_MS);
+          }, graceMs);
           if (typeof timer.unref === "function") timer.unref();
           session.killTimer = timer;
+          dying.add(session);
         }
         sessions.delete(id);
-        processWide.delete(session);
         return infoOf(session);
       });
 
@@ -570,11 +594,14 @@ export const make = (
       });
 
     const killAll = Effect.sync(() => {
-      for (const session of sessions.values()) {
+      // `dying` too: a shell that was killed a moment ago and is still ignoring
+      // SIGHUP must not survive the daemon just because it left the registry.
+      for (const session of [...sessions.values(), ...dying]) {
         if (!session.exited) signalGroup(session.pid, "SIGKILL");
         retire(session);
       }
       sessions.clear();
+      dying.clear();
     });
 
     // The daemon's scope owns this. `/shutdown` opens the latch, `serveDaemon`

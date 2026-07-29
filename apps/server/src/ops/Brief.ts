@@ -18,6 +18,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
 import type { SourceFact, SourceRef, Task, TaskBrief } from "@quirks/contracts";
+import { REVIEW_INSTRUCTIONS } from "../runner/Verdict.ts";
 import { goalIdOfTask } from "../store/Ids.ts";
 import { Ledger, Store } from "../store/Store.ts";
 import type { StoreError } from "../store/JsonFile.ts";
@@ -114,6 +115,19 @@ export interface AssembleBriefOptions {
   /** Worktree path once dispatch creates one; null until then. */
   readonly worktree?: string | null | undefined;
 }
+
+/**
+ * The section that turns an implementer's brief into a REVIEWER's.
+ *
+ * A function, not a shared constant: each brief owns its own arrays, so nothing
+ * downstream can mutate the instructions every later brief would carry. The
+ * parent spreads this onto the brief it already assembled rather than paying for
+ * a second assembly — see run/Parent.ts.
+ */
+export const reviewerBriefSection = (): NonNullable<TaskBrief["review"]> => ({
+  role: "reviewer",
+  instructions: [...REVIEW_INSTRUCTIONS],
+});
 
 export const assembleBrief = (
   task: Task,

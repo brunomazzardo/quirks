@@ -29,10 +29,70 @@ function codexAgentMessage(event: Record<string, unknown>, into: string[]): void
 }
 
 /**
+ * The declaration lines a reviewer ends on (runner/Verdict.ts). They live here
+ * because this is the layer that must NOT see them: `QUIRKS-EVIDENCE: <s>` ends
+ * in a colon, which `STATEMENT_TERMINATORS` counts as a statement boundary, so
+ * an evidence line left in the haystack would verify ITSELF — a reviewer could
+ * accept on any sentence it liked simply by typing it on the marker line, and
+ * quote verification would become a spellcheck. Declarations are machinery; only
+ * the prose around them is the runner's judgment.
+ */
+const DECLARATION_LINE = /^[ \t>*_-]*QUIRKS-(?:VERDICT|EVIDENCE):/i;
+
+/**
+ * The leading run a declaration line may wear before its marker — whitespace and
+ * the markdown a runner tends to decorate with.
+ *
+ * Exported so runner/Verdict.ts builds its PARSERS from the same source this
+ * file builds its FILTER from. Two hand-written copies could drift, and drifting
+ * in the direction of "the parser accepts a prefix the filter does not strip"
+ * silently reopens the hole this filter exists to close: an evidence line that
+ * verifies itself.
+ */
+export const DECLARATION_PREFIX = String.raw`^[ \t>*_-]*QUIRKS-`;
+
+/**
+ * Both views of one transcript, parsed once.
+ *
+ * A transcript can be megabytes and every line is `JSON.parse`d to find the
+ * authored messages, so a reviewed task used to pay for that walk twice — once
+ * for the verdict parser and once for the verification haystack — plus two
+ * full-size joins. They are derived from the same pass here.
+ */
+export function transcriptViews(transcript: string): {
+  readonly authored: string;
+  readonly haystack: string;
+} {
+  const messages = collectAuthored(transcript);
+  return {
+    authored: messages.join(AUTHORED_MESSAGE_SEPARATOR),
+    haystack: messages
+      .map((message) =>
+        message
+          .split(/\r?\n/)
+          .filter((line) => !DECLARATION_LINE.test(line))
+          .join("\n"),
+      )
+      .join(AUTHORED_MESSAGE_SEPARATOR),
+  };
+}
+
+/** Everything the runner itself said, declarations included — the view the
+ *  verdict parser needs, and the only one that should ever include them. */
+export function transcriptAuthoredText(transcript: string): string {
+  return transcriptViews(transcript).authored;
+}
+
+/**
  * Only what the runner itself said — never the brief it read or a tool result.
- * Quoting instructions like "accept the code as it stands" is not a judgment.
+ * Quoting instructions like "accept the code as it stands" is not a judgment,
+ * and neither is a runner's own verdict declaration (see DECLARATION_LINE).
  */
 export function transcriptQuoteHaystack(transcript: string): string {
+  return transcriptViews(transcript).haystack;
+}
+
+function collectAuthored(transcript: string): string[] {
   const authored: string[] = [];
   for (const line of transcript.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -55,7 +115,7 @@ export function transcriptQuoteHaystack(transcript: string): string {
       if (record["type"] === "item.completed") codexAgentMessage(record, authored);
     }
   }
-  return authored.join(AUTHORED_MESSAGE_SEPARATOR);
+  return authored;
 }
 
 const MIN_QUOTE_SIGNIFICANT_CHARS = 12;

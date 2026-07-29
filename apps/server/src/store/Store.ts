@@ -13,13 +13,27 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import type { Goal, GoalsFile, Run, RunsFile, SourceRef, Task, TasksFile } from "@quirks/contracts";
+import type {
+  Goal,
+  GoalsFile,
+  Run,
+  RunMode,
+  RunsFile,
+  SourceRef,
+  Task,
+  TasksFile,
+} from "@quirks/contracts";
 import { loadJsonFile, saveJsonFile, StoreCorruptError, type StoreError } from "./JsonFile.ts";
+import { ledgerDir } from "./LedgerPaths.ts";
 
 const TASK_STATUSES = new Set(["open", "claimed", "blocked", "completed"]);
 const GOAL_STATES = new Set(["active", "done", "abandoned"]);
 const RUN_STATUSES = new Set(["planned", "approved", "running", "completed", "abandoned"]);
-const RUN_MODES = new Set(["autonomous", "park-on-issue"]);
+/** The run modes, exported because the /v1 boundary must refuse anything this
+ *  store would later flag as corrupt — two spellings drift into a route that
+ *  accepts a mode the ledger rejects. */
+export const RUN_MODES: readonly RunMode[] = ["autonomous", "park-on-issue"];
+const RUN_MODE_SET: ReadonlySet<string> = new Set(RUN_MODES);
 
 export interface StoreShape {
   /** The repo root the ledger belongs to. */
@@ -55,7 +69,7 @@ function makeStore(root: string): StoreShape {
   const pinCommit = Effect.sync(() => gitOutput(root, ["rev-parse", "HEAD"]));
   return {
     root,
-    dir: `${root}/.quirks`,
+    dir: ledgerDir(root),
     pinCommit,
     makeSourceRef: (path) => Effect.map(pinCommit, (pinnedCommit) => ({ path, pinnedCommit })),
   };
@@ -146,7 +160,7 @@ const make = Effect.gen(function* () {
       );
     }
     for (const r of file.runs as ReadonlyArray<Run | null | undefined>) {
-      if (typeof r?.id !== "string" || !RUN_STATUSES.has(r.status) || !RUN_MODES.has(r.mode)) {
+      if (typeof r?.id !== "string" || !RUN_STATUSES.has(r.status) || !RUN_MODE_SET.has(r.mode)) {
         return yield* Effect.fail(
           new StoreCorruptError({
             path: runsPath,

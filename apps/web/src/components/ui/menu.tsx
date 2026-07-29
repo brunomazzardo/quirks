@@ -38,7 +38,7 @@ function MenuPopup({
       >
         <MenuPrimitive.Popup
           className={cn(
-            "origin-(--transform-origin) rounded-lg border bg-popover text-popover-foreground shadow-md outline-none",
+            "origin-(--transform-origin) rounded-lg border bg-popover text-popover-foreground shadow-md outline-none transition-[opacity,scale] duration-150 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[ending-style]:duration-100 motion-safe:data-[starting-style]:scale-[0.97] motion-safe:data-[ending-style]:scale-[0.97]",
             className,
           )}
           data-slot="menu-popup"

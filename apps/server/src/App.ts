@@ -15,7 +15,8 @@ import { routes } from "./http/Routes.ts";
 import { rendererRoutes } from "./http/Renderer.ts";
 import { layer as ptyLayer, PtySessions } from "./pty/Sessions.ts";
 import { routes as ptyRoutes } from "./pty/Routes.ts";
-import { json, respond } from "./http/Wire.ts";
+import { routes as shapeRoutes } from "./shape/Routes.ts";
+import { json, originGuard, respond } from "./http/Wire.ts";
 
 export const VERSION = "0.1.0";
 
@@ -103,14 +104,24 @@ export interface AppOptions {
  * middleware from the context at registration time, so a sibling layer's routes
  * carry none of it. Serving a file needs no store, no ledger and no pty
  * registry, and this is what keeps it from acquiring them.
+ *
+ * `originGuard` is global rather than per-route so that the surface is closed by
+ * construction: a route added later is covered without anyone remembering to
+ * cover it, which is the only version of this guarantee worth having.
  */
 export const appLayer = (options: AppOptions = {}) => {
   const storeLayer = options.root === undefined ? layerFromCwd() : layerAt(options.root);
   return Layer.mergeAll(
-    Layer.mergeAll(routes, ptyRoutes, healthRoute(options.instanceId ?? "quirks-service")).pipe(
+    Layer.mergeAll(
+      routes,
+      ptyRoutes,
+      shapeRoutes,
+      healthRoute(options.instanceId ?? "quirks-service"),
+    ).pipe(
       HttpRouter.provideRequest(servicesLayer(storeLayer)),
     ),
     rendererRoutes({ rendererDir: options.rendererDir }),
+    originGuard,
   );
 };
 

@@ -1,7 +1,7 @@
 // Electron main process for the Quirks workbench.
 //
 // Mirrors t3code's apps/desktop/src/main.ts as a wiring root: resolve the
-// environment, register the renderer scheme, create the window, own the app
+// environment, create the window onto the daemon's origin, own the app
 // lifecycle. t3code composes that through ~30 Effect layers because it has
 // services to compose (backend pool, SSH/WSL environments, Clerk, updates,
 // previews, IPC). Quirks has none of them yet — QK-WB-002 hosts apps/web and
@@ -11,7 +11,7 @@
 // Bundled to dist-electron/main.cjs by `vp pack` (see vite.config.ts), which
 // is what package.json "main" points at.
 
-import { existsSync, writeSync } from "node:fs";
+import { writeSync } from "node:fs";
 
 import { app, BrowserWindow } from "electron";
 
@@ -19,14 +19,11 @@ import {
   APP_DISPLAY_NAME,
   APP_ID,
   DEV_SERVER_URL_ENV,
+  LEDGER_ROOT_ENV,
   makeDesktopEnvironment,
   resolveWorkbenchTarget,
   type WorkbenchTarget,
 } from "./app/DesktopEnvironment.ts";
-import {
-  handleDesktopScheme,
-  registerDesktopSchemeAsPrivileged,
-} from "./electron/ElectronProtocol.ts";
 import { createWorkbenchWindow } from "./window/DesktopWindow.ts";
 
 // Replaces t3code's playwright-core smoke harness: when set, the shell reports
@@ -39,6 +36,10 @@ const environment = makeDesktopEnvironment({
   resourcesPath: process.resourcesPath,
   isPackaged: app.isPackaged,
   devServerUrl: process.env[DEV_SERVER_URL_ENV],
+  // Which ledger this window opens. `process.cwd()` is right for a dev launch
+  // and for `pnpm --filter @quirks/desktop start`; a packaged app inherits no
+  // meaningful cwd and needs QUIRKS_ROOT until a ledger picker exists.
+  ledgerRoot: process.env[LEDGER_ROOT_ENV] ?? process.cwd(),
 });
 
 // process.stdout.write is asynchronous, and app.quit()/app.exit() tear the
@@ -69,8 +70,8 @@ function scheduleSmokeExit(window: BrowserWindow, exitAfterMs: number): void {
   }, exitAfterMs).unref();
 }
 
-// Resolved once: the renderer cannot move while the app is running, and the
-// protocol handler must only be registered once per session.
+// Resolved once: the daemon's origin is derived from a repo root that cannot
+// change while the app is running.
 let workbenchTarget: WorkbenchTarget | undefined;
 
 function ensureWorkbenchTarget(): WorkbenchTarget {
@@ -78,13 +79,8 @@ function ensureWorkbenchTarget(): WorkbenchTarget {
     return workbenchTarget;
   }
 
-  const target = resolveWorkbenchTarget(environment, existsSync);
-  if (target._tag === "Renderer") {
-    handleDesktopScheme(target.directory);
-  }
-
-  workbenchTarget = target;
-  return target;
+  workbenchTarget = resolveWorkbenchTarget(environment);
+  return workbenchTarget;
 }
 
 function openWorkbenchWindow(): void {
@@ -100,10 +96,6 @@ function openWorkbenchWindow(): void {
 if (app.requestSingleInstanceLock()) {
   app.setName(APP_DISPLAY_NAME);
   app.setAppUserModelId(APP_ID);
-  // Has to happen before the app is ready, so it cannot live inside the
-  // whenReady handler with the rest of the wiring.
-  registerDesktopSchemeAsPrivileged();
-
   app.on("second-instance", () => {
     const [existing] = BrowserWindow.getAllWindows();
     if (existing === undefined) {

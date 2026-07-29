@@ -12,6 +12,7 @@ import { buildClaudeArgv, mintSessionId } from "../runner/Claude.ts";
 import { buildCodexArgv, codexPromptText } from "../runner/Codex.ts";
 import { buildCursorArgv } from "../runner/Cursor.ts";
 import { dispatchRunner } from "../runner/Dispatch.ts";
+import { reviewPromptText } from "../runner/Verdict.ts";
 import type { DispatchOutcome, RunnerKind } from "../runner/Types.ts";
 import { resolveTier, selectIndependentReviewer, type JudgmentTier } from "../harness/Tiers.ts";
 import { invalid, type ValidationError } from "../ops/Errors.ts";
@@ -100,13 +101,20 @@ function buildArgv(
   sessionId: string,
   effort: string,
 ): readonly string[] {
+  // A REVIEWER's prompt states its role and the declaration it must end on.
+  // Every adapter's prompt used to be role-blind — cursor's even said "complete
+  // it" — so the reviewer's instructions reached it only if it happened to read
+  // a nested field of the brief. See runner/Verdict.ts.
+  const reviewing = req.role === "reviewer";
+  const prompt = reviewing ? reviewPromptText(req.briefPath) : req.briefPath;
+
   if (req.runner === "claude") {
     return buildClaudeArgv({
       executable: "claude",
       sessionId,
       model: req.model,
       effort,
-      briefPath: req.briefPath,
+      prompt,
       workspace: req.worktree,
       artifactDir: req.artifactDir,
     });
@@ -124,13 +132,15 @@ function buildArgv(
       workspace: req.worktree,
       artifactDir: req.artifactDir,
       effort,
-      promptText: codexPromptText(req.briefPath, contents),
+      // The reviewer's contract wins over inlining the brief: codex may inline a
+      // small brief, but the role must be stated either way.
+      promptText: reviewing ? prompt : codexPromptText(req.briefPath, contents),
     });
   }
   return buildCursorArgv({
     executable: "cursor-agent",
     model: req.model,
-    briefPath: req.briefPath,
+    prompt,
     workspace: req.worktree,
     artifactDir: req.artifactDir,
   });

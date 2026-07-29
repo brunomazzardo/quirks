@@ -160,7 +160,7 @@ function ChromeControl({
       type="button"
       // Buttons inside a drag region are otherwise draggable furniture.
       className={cn(
-        "no-drag-region inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card [&_svg]:size-3.5 [&_svg]:shrink-0",
+        "no-drag-region inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-[color,background-color,border-color,scale] duration-150 ease-out outline-none select-none motion-safe:active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card [&_svg]:size-3.5 [&_svg]:shrink-0",
         focused && "border-lamp-line bg-lamp text-lamp-foreground",
         selected && !focused && "border-lamp-line bg-lamp-soft text-foreground [&_svg]:text-lamp",
         !selected &&
@@ -274,7 +274,7 @@ function RunsControl() {
           : `Runs — ${runs.length} recorded${needsYou > 0 ? `, ${needsYou} need you` : ""}`
       }
       className={cn(
-        "no-drag-region inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card [&_svg]:size-3.5 [&_svg]:shrink-0",
+        "no-drag-region inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-[color,background-color,border-color,scale] duration-150 ease-out outline-none select-none motion-safe:active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card [&_svg]:size-3.5 [&_svg]:shrink-0",
         open
           ? "border-lamp-line bg-lamp-soft text-foreground [&_svg]:text-lamp"
           : "border-transparent text-muted-foreground hover:bg-accent hover:text-foreground",

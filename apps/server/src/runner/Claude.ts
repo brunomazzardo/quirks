@@ -37,7 +37,8 @@ export interface ClaudeArgvInput {
   readonly sessionId: string;
   readonly model: string;
   readonly effort: string;
-  readonly briefPath: string;
+  /** The prompt text. Usually the brief's path; a reviewer's states its role. */
+  readonly prompt: string;
   readonly workspace: string;
   readonly artifactDir: string;
 }
@@ -62,7 +63,7 @@ export function buildClaudeArgv(input: ClaudeArgvInput): readonly string[] {
     "--session-id",
     input.sessionId,
     // Prompt before every flag: a variadic flag placed before it would consume it.
-    input.briefPath,
+    input.prompt,
     "--model",
     input.model,
     "--effort",

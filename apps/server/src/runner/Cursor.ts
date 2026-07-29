@@ -7,7 +7,8 @@
 export interface CursorArgvInput {
   readonly executable: string;
   readonly model: string;
-  readonly briefPath: string;
+  /** The prompt text. `cursorPromptText` builds the implementer default. */
+  readonly prompt: string;
   readonly workspace: string;
   readonly artifactDir: string;
 }
@@ -31,6 +32,6 @@ export function buildCursorArgv(input: CursorArgvInput): readonly string[] {
     "--add-dir",
     input.artifactDir,
     "--force",
-    cursorPromptText(input.briefPath),
+    input.prompt,
   ];
 }

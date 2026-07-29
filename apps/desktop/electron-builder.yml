@@ -23,14 +23,11 @@ files:
   - "!node_modules/**"
   - "!**/*.map"
 
-# The renderer is apps/web's build output, which lives outside this package.
-# It lands at Contents/Resources/renderer and is found through
-# process.resourcesPath (see src/app/DesktopEnvironment.ts).
-extraResources:
-  - from: ../web/dist
-    to: renderer
-    filter:
-      - "**/*"
+# No extraResources. The renderer is NOT bundled: the daemon serves the built
+# workbench from its own origin (apps/server/src/http/Renderer.ts) and the shell
+# loads that origin, so a second copy of apps/web/dist inside the .app would be
+# a rival static server whose SPA-fallback rules had to be kept identical to the
+# daemon's by hand. See src/app/DesktopEnvironment.ts's resolveWorkbenchTarget.
 
 # Nothing native is bundled, so there is nothing to rebuild against Electron's ABI.
 npmRebuild: false

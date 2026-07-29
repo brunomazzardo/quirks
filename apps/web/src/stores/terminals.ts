@@ -97,6 +97,9 @@ interface TerminalState {
   readonly activeKey: string | null;
   /** Adds a tab in `starting` and focuses it. Returns its key. */
   openTab: () => string;
+  /** Give the daemon's existing sessions tabs, instead of minting new ones.
+   *  Returns how many were adopted. */
+  adoptSessions: (sessionIds: readonly string[]) => number;
   closeTab: (key: string) => void;
   activate: (key: string) => void;
   /** The daemon answered with a session; this tab now has something to attach to. */
@@ -122,7 +125,7 @@ const patch = (
   change: (tab: TerminalTab) => TerminalTab,
 ): readonly TerminalTab[] => tabs.map((tab) => (tab.key === key ? change(tab) : tab));
 
-export const useTerminalStore = create<TerminalState>((set) => ({
+export const useTerminalStore = create<TerminalState>((set, get) => ({
   tabs: [],
   activeKey: null,
 
@@ -133,6 +136,35 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       activeKey: key,
     }));
     return key;
+  },
+
+  /**
+   * Adopt sessions the daemon already has.
+   *
+   * Sessions outlive the page; tabs do not. Without this the two facts were in
+   * conflict — every reload created another shell and abandoned the last one —
+   * and the header comment above claimed a re-attach that no code performed.
+   * Sessions already on the strip are skipped, so calling this twice (React
+   * StrictMode does) adopts nothing a second time.
+   */
+  adoptSessions: (sessionIds) => {
+    // Read, decide, then write — rather than smuggling the count out of the
+    // `set` callback through a captured `let`, which only works because zustand
+    // happens to apply `set` synchronously.
+    const known = new Set(get().tabs.map((tab) => tab.sessionId));
+    const fresh = sessionIds.filter((id) => !known.has(id));
+    if (fresh.length === 0) return 0;
+
+    set((state) => {
+      const tabs = [...state.tabs];
+      for (const sessionId of fresh) {
+        // "starting" until the socket says otherwise, exactly like a new tab —
+        // the session exists, but this page is not attached to it yet.
+        tabs.push({ ...emptyTab(mintKey(), nextLabel(tabs)), sessionId });
+      }
+      return { tabs, activeKey: state.activeKey ?? tabs[0]?.key ?? null };
+    });
+    return fresh.length;
   },
 
   closeTab: (key) =>

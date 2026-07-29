@@ -63,7 +63,7 @@ export function RunList() {
         <>
           {failure !== null && (
             <p
-              className="truncate rounded-md bg-muted px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground"
+              className="truncate rounded-md bg-muted px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground transition-opacity duration-200 ease-out starting:opacity-0"
               title={describeCause(failure)}
             >
               showing the last good read — {describeCause(failure)}
@@ -168,7 +168,10 @@ function ProgressBar({ progress }: { progress: RunProgress }) {
         count === 0 ? null : (
           <span
             key={label}
-            className={className}
+            // Width, knowingly: the bar is a self-contained 4px flex row, so
+            // the layout cost is negligible, and a segment that glides on a
+            // poll refresh is the state change made visible.
+            className={cn(className, "transition-[width] duration-400 ease-in-out")}
             style={{ width: `${(count / progress.total) * 100}%` }}
           />
         ),

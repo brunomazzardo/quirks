@@ -23,6 +23,7 @@ import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import type { Socket } from "effect/unstable/socket";
+import { body, envRecord, num, str, strList, type Body } from "../http/Body.ts";
 import { json, jsonError, pathParam, respond } from "../http/Wire.ts";
 import { PtySessions, type PtyListener, type PtySessionsShape } from "./Sessions.ts";
 import { ByteRing } from "./Replay.ts";
@@ -34,46 +35,11 @@ import {
   type PtyServerMessage,
 } from "./Wire.ts";
 
-const body = Effect.gen(function* () {
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  return (yield* request.json) as Record<string, unknown> | null;
-});
-
-const str = (source: Record<string, unknown> | null, key: string): string | undefined => {
-  const value = source?.[key];
-  return typeof value === "string" ? value : undefined;
-};
-
-const num = (source: Record<string, unknown> | null, key: string): number | undefined => {
-  const value = source?.[key];
-  return typeof value === "number" ? value : undefined;
-};
-
-/** `args` is only honored as a real array — a caller that sends a string gets
- *  the default shell rather than a single argument nobody meant. */
-const strList = (
-  source: Record<string, unknown> | null,
-  key: string,
-): readonly string[] | undefined => {
-  const value = source?.[key];
-  if (!Array.isArray(value)) return undefined;
-  return value.filter((item): item is string => typeof item === "string");
-};
-
-const envRecord = (
-  source: Record<string, unknown> | null,
-  key: string,
-): Readonly<Record<string, string>> | undefined => {
-  const value = source?.[key];
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const out: Record<string, string> = {};
-  for (const [name, item] of Object.entries(value)) {
-    if (typeof item === "string") out[name] = item;
-  }
-  return out;
-};
-
-const createRequestFrom = (input: Record<string, unknown> | null): PtyCreateRequest => ({
+// The readers live in ../http/Body.ts — this file used to carry its own copy of
+// them. `strList` still means "only honored as a real array": a caller that
+// sends a string for `args` gets the default shell rather than a single
+// argument nobody meant.
+const createRequestFrom = (input: Body): PtyCreateRequest => ({
   shell: str(input, "shell"),
   args: strList(input, "args"),
   cwd: str(input, "cwd"),

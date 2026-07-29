@@ -233,6 +233,7 @@ describe("harness", () => {
         authDetail: "not probed",
         lean: "unproven",
         leanDetail: "installed, but no run has dispatched to it yet",
+        routable: true,
       },
       {
         runner: "codex",
@@ -247,6 +248,7 @@ describe("harness", () => {
         authDetail: "not probed",
         lean: "no",
         leanDetail: "not on PATH",
+        routable: false,
       },
     ],
     tiers: [
@@ -270,6 +272,7 @@ describe("harness", () => {
       },
     ],
     available: [],
+    routable: ["claude"],
   };
 
   it("answers 'lean on it?' first, and says why for every answer that is not yes", () => {

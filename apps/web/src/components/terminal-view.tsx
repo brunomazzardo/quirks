@@ -229,7 +229,16 @@ export function TerminalView({ tabKey, active }: TerminalViewProps) {
         terminal.write(new Uint8Array(event.data as ArrayBuffer));
         return;
       }
-      const message = JSON.parse(event.data) as PtyServerMessage;
+      // A control frame the socket cannot parse is a frame this client does not
+      // understand — not a reason to throw inside a listener and abandon the
+      // rest of this message's handling. The daemon only sends well-formed
+      // frames today, which is exactly why this stays latent until it isn't.
+      let message: PtyServerMessage;
+      try {
+        message = JSON.parse(event.data) as PtyServerMessage;
+      } catch {
+        return;
+      }
       switch (message.type) {
         case "attached": {
           // Reset before the replay lands. Attaching is the only moment
@@ -284,26 +293,37 @@ export function TerminalView({ tabKey, active }: TerminalViewProps) {
       next.addEventListener("error", () => {});
     }
 
-    // Create the session at the size the pane already is, so the first prompt
-    // is drawn at the right width rather than at 80x24 and then reflowed.
-    ensureSession(tabKey, () =>
-      createSession({
-        cols: Math.max(terminal.cols, 1),
-        rows: Math.max(terminal.rows, 1),
-      }),
-    )
-      .then((session) => {
-        if (disposed) return;
-        sessionId = session.id;
-        useTerminalStore.getState().bindSession(tabKey, session.id);
-        connect();
-      })
-      .catch((error: unknown) => {
-        if (disposed) return;
-        useTerminalStore
-          .getState()
-          .setStatus(tabKey, "failed", error instanceof Error ? error.message : String(error));
-      });
+    const attachTo = (id: string): void => {
+      if (disposed) return;
+      sessionId = id;
+      useTerminalStore.getState().bindSession(tabKey, id);
+      connect();
+    };
+
+    // A tab that already carries a session id was ADOPTED: the daemon has held
+    // that shell since before this page loaded, so attach to it rather than
+    // create a second one and strand the first. That stranding is what made a
+    // reload leak a shell, and sixteen reloads brick the pane.
+    const adopted = useTerminalStore.getState().tabs.find((tab) => tab.key === tabKey)?.sessionId;
+    if (adopted !== null && adopted !== undefined) {
+      attachTo(adopted);
+    } else {
+      // Create at the size the pane already is, so the first prompt is drawn at
+      // the right width rather than at 80x24 and then reflowed.
+      ensureSession(tabKey, () =>
+        createSession({
+          cols: Math.max(terminal.cols, 1),
+          rows: Math.max(terminal.rows, 1),
+        }),
+      )
+        .then((session) => attachTo(session.id))
+        .catch((error: unknown) => {
+          if (disposed) return;
+          useTerminalStore
+            .getState()
+            .setStatus(tabKey, "failed", error instanceof Error ? error.message : String(error));
+        });
+    }
 
     // A brand-new tab should be typeable without a click.
     if (active) window.requestAnimationFrame(() => terminal.focus());

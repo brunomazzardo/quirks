@@ -21,7 +21,8 @@ export function toneClass(tone: RunTone): string {
 /**
  * The live mark: a moss dot that breathes.
  *
- * It is the only animation in the workbench, and it earns that by answering
+ * It is the workbench's only looping animation — everything else is a
+ * one-shot transition bridging a state change — and it earns that by answering
  * the one question a polling view owes its reader — "is this still moving, or
  * is it just an old page?". It stops the moment the run reaches a terminal
  * status, because at that point the honest answer changes.

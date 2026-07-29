@@ -13,7 +13,13 @@
 // `ChildProcessSpawner`. An effect that cannot ask for a process cannot start one.
 
 import * as Effect from "effect/Effect";
-import type { RunnerKind, Task } from "@quirks/contracts";
+import type {
+  HarnessViewResponse,
+  RunnerKind,
+  Task,
+  HarnessRow as WireHarnessRow,
+  ReviewRow as WireReviewRow,
+} from "@quirks/contracts";
 import { Ledger } from "../store/Store.ts";
 import type { StoreError } from "../store/JsonFile.ts";
 import {
@@ -48,7 +54,11 @@ import type { ChildProcessSpawner } from "effect/unstable/process";
  *  a harness nobody has dispatched is not "yes", and it is not "no" either. */
 export type Leanable = "yes" | "no" | "unproven";
 
-export interface HarnessRow {
+// These EXTEND the wire types (packages/contracts/src/wire.ts) rather than
+// restating them: every field below narrows a contract field to the server's own
+// union, so a shape that stops matching what /v1/harness promises is a compile
+// error here instead of a surprise in a consumer.
+export interface HarnessRow extends WireHarnessRow {
   runner: RunnerKind;
   executable: string;
   presence: Presence["state"];
@@ -70,14 +80,14 @@ export interface HarnessRow {
   routable: boolean;
 }
 
-export interface ReviewRow {
+export interface ReviewRow extends WireReviewRow {
   /** Implementer tier this row answers for. */
   tier: JudgmentTier;
   requiredTier: JudgmentTier;
   selection: ReviewerSelection;
 }
 
-export interface HarnessView {
+export interface HarnessView extends HarnessViewResponse {
   generatedAt: string;
   /** True when --probe ran `--version` against each present harness. */
   probed: boolean;

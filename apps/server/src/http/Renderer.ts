@@ -5,7 +5,12 @@
 // convenience — it is what makes the page readable at all. The daemon sets no
 // CORS headers (loopback-only tool, by design), so a cross-origin `fetch` to
 // /v1 receives the bytes and then discards them for want of
-// Access-Control-Allow-Origin. apps/web already assumes this: `serviceBaseUrl()`
+// Access-Control-Allow-Origin.
+//
+// READS ONLY, THOUGH. A discarded response still leaves whatever the request
+// did behind it, which is why writes are refused by `originGuard` in
+// ./Wire.ts rather than by the absence of CORS headers.
+// apps/web already assumes this: `serviceBaseUrl()`
 // is `""` and Vite's dev proxy exists only to fake the same property in dev.
 // Serving the renderer here retires the proxy for every non-dev launch.
 //

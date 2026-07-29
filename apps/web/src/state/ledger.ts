@@ -27,7 +27,8 @@ export interface LedgerSnapshot {
  *
  * `?all=true` is deliberate: it is what makes the View menu's "Goals · Idle"
  * and "Goals · All" honest, since done and abandoned goals are omitted from
- * the default listing (src/service/app.ts). The goal-state filter then runs
+ * the default listing (apps/server/src/http/Routes.ts). The goal-state filter
+ * then runs
  * client-side over the full set, exactly as the native workbench filtered over
  * whatever it had fetched.
  */

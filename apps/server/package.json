@@ -20,7 +20,6 @@
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
     "@quirks/contracts": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",

@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/unstable/reactivity";
 import {
-  ChevronDown,
   ChevronRight,
   CircleDot,
   ListChecks,
@@ -394,9 +393,15 @@ function InboxSection({ group, expanded, onToggle, selectedTaskId, onSelect }: I
 }
 
 function Chevron({ open, className }: { open: boolean; className?: string }) {
-  const Icon = open ? ChevronDown : ChevronRight;
   return (
-    <Icon aria-hidden="true" className={cn("size-3.5 shrink-0 text-muted-foreground", className)} />
+    <ChevronRight
+      aria-hidden="true"
+      className={cn(
+        "size-3.5 shrink-0 text-muted-foreground duration-150 ease-out motion-safe:transition-transform",
+        open && "rotate-90",
+        className,
+      )}
+    />
   );
 }
 
@@ -547,7 +552,7 @@ function Placeholder({ failure, waiting, onRetry }: PlaceholderProps) {
 function StaleNotice({ reason }: { reason: string }) {
   return (
     <p
-      className="truncate rounded-md bg-muted px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground"
+      className="truncate rounded-md bg-muted px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground transition-opacity duration-200 ease-out starting:opacity-0"
       title={reason}
     >
       showing the last good read — {reason}

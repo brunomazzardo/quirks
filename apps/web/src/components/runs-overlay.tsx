@@ -43,7 +43,10 @@ export function RunsOverlay({ children }: { children: ReactNode }) {
       aria-modal="true"
       aria-label="Runs"
       data-runs-overlay=""
-      className="absolute inset-0 z-20 flex flex-col bg-background outline-none"
+      // Enter-only: a 200ms rise-and-fade bridges the full-stage cut. Exit
+      // stays instant on purpose — the layer unmounts on Esc, and a
+      // keyboard-initiated close must never wait on an animation.
+      className="absolute inset-0 z-20 flex flex-col bg-background outline-none transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
     >
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3 [&_svg]:size-3.5">
         <CircleDot className="text-muted-foreground" />

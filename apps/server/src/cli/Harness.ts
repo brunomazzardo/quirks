@@ -2,56 +2,17 @@
 // Two views (D7): harness availability, and the tier → model table.
 // A read: table on a TTY, JSON when piped or given --json.
 //
-// The row/tier/review shapes are declared here rather than imported, because
-// `@quirks/contracts` still types `GET /v1/harness` as `unknown`
-// (packages/contracts/src/wire.ts) — flagged for whoever owns the contract, not
-// patched from this side. These declarations mirror `ops/Harness.ts`'s
-// `HarnessView`, and the renderer reads nothing the route does not send.
+// The row/tier/review shapes are the CONTRACT's (packages/contracts/src/wire.ts).
+// They were declared here for a while because that file typed `GET /v1/harness`
+// as `unknown`; it no longer does, so the wire shape of a served route is not
+// defined in a rendering layer the web cannot see.
 
 import * as Effect from "effect/Effect";
+import type { HarnessRow, HarnessViewResponse } from "@quirks/contracts";
 import { request, type ServiceError } from "./Client.ts";
 import { emitRead, table } from "./Output.ts";
 
-interface HarnessRow {
-  runner: string;
-  executable: string;
-  presence: string;
-  presenceDetail: string;
-  version: string | null;
-  versionDetail: string;
-  liveness: string;
-  livenessDetail: string;
-  authorized: string;
-  authDetail: string;
-  lean: "yes" | "no" | "unproven";
-  leanDetail: string;
-}
-
-interface TierRow {
-  tier: string;
-  runners: Record<string, { model: string | null; effort: string | null }>;
-}
-
-interface ReviewRow {
-  tier: string;
-  requiredTier: string;
-  selection:
-    | {
-        kind: "independent";
-        reviewer: { runner: string; model: string; tier: string };
-        reason: string;
-      }
-    | { kind: "independence-unavailable"; requiredTier: string; reason: string };
-}
-
-export interface HarnessView {
-  generatedAt: string;
-  probed: boolean;
-  harnesses: HarnessRow[];
-  tiers: TierRow[];
-  review: ReviewRow[];
-  available: string[];
-}
+export type HarnessView = HarnessViewResponse;
 
 const LEAN_MARK: Readonly<Record<HarnessRow["lean"], string>> = {
   yes: "yes",

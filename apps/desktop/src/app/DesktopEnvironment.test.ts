@@ -1,28 +1,21 @@
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import { serviceOriginFor } from "@quirks/shared";
 
 import {
   APP_DISPLAY_NAME,
   DesktopDevServerUrlError,
-  DesktopRendererMissingError,
   makeDesktopEnvironment,
   parseDevServerUrl,
   resolveWorkbenchTarget,
 } from "./DesktopEnvironment.ts";
-import { DESKTOP_URL } from "./DesktopProtocol.ts";
-
-const packagedInput = {
-  dirname: "/Apps/Quirks Workbench.app/Contents/Resources/app.asar/dist-electron",
-  resourcesPath: "/Apps/Quirks Workbench.app/Contents/Resources",
-  isPackaged: true,
-  devServerUrl: undefined,
-} as const;
 
 const workspaceInput = {
   dirname: "/repo/apps/desktop/dist-electron",
   resourcesPath: "/repo/node_modules/electron/dist/Electron.app/Contents/Resources",
   isPackaged: false,
   devServerUrl: undefined,
+  ledgerRoot: "/repo",
 } as const;
 
 describe("parseDevServerUrl", () => {
@@ -56,51 +49,40 @@ describe("makeDesktopEnvironment", () => {
     ).toBe(true);
   });
 
-  it("prefers the packaged renderer over the workspace one", () => {
-    const environment = makeDesktopEnvironment(packagedInput);
-    expect(environment.rendererDirCandidates[0]).toBe(
-      NodePath.join(packagedInput.resourcesPath, "renderer"),
-    );
+  it("derives the service origin from the ledger root, like every other client", () => {
+    // The same derivation the daemon binds and the CLI dials (@quirks/shared).
+    // A second copy of it here would be a window onto a port nobody is serving.
+    expect(makeDesktopEnvironment(workspaceInput).serviceOrigin).toBe(serviceOriginFor("/repo"));
   });
 
-  it("points the workspace candidate at apps/web/dist", () => {
-    const environment = makeDesktopEnvironment(workspaceInput);
-    expect(environment.rendererDirCandidates[1]).toBe("/repo/apps/web/dist");
+  it("resolves a relative ledger root — the port is a hash of the ABSOLUTE path", () => {
+    const environment = makeDesktopEnvironment({ ...workspaceInput, ledgerRoot: "." });
+    expect(environment.serviceOrigin).toBe(serviceOriginFor(NodePath.resolve(".")));
   });
 });
 
 describe("resolveWorkbenchTarget", () => {
-  it("loads the dev server when one is configured, without touching disk", () => {
+  it("loads the dev server when one is configured", () => {
     const environment = makeDesktopEnvironment({
       ...workspaceInput,
       devServerUrl: "http://localhost:5733",
     });
 
-    expect(
-      resolveWorkbenchTarget(environment, () => {
-        throw new Error("dev mode must not probe the filesystem");
-      }),
-    ).toEqual({ _tag: "DevServer", url: "http://localhost:5733/" });
-  });
-
-  it("falls through to the first renderer directory holding an index.html", () => {
-    const environment = makeDesktopEnvironment(workspaceInput);
-    const target = resolveWorkbenchTarget(
-      environment,
-      (path) => path === "/repo/apps/web/dist/index.html",
-    );
-
-    expect(target).toEqual({
-      _tag: "Renderer",
-      url: DESKTOP_URL,
-      directory: "/repo/apps/web/dist",
+    expect(resolveWorkbenchTarget(environment)).toEqual({
+      _tag: "DevServer",
+      url: "http://localhost:5733/",
     });
   });
 
-  it("names every candidate when no renderer was built", () => {
+  it("otherwise loads the DAEMON'S origin, not a bundled copy of the renderer", () => {
+    // The shell used to serve apps/web itself over `quirks://app`, which put the
+    // page on an origin the service could not answer: `serviceBaseUrl()` is ""
+    // so /v1/goals resolved to index.html, and the pty socket became ws://app/.
+    // Same-origin is the only arrangement in which the workbench works at all.
     const environment = makeDesktopEnvironment(workspaceInput);
-    expect(() => resolveWorkbenchTarget(environment, () => false)).toThrow(
-      DesktopRendererMissingError,
-    );
+    const target = resolveWorkbenchTarget(environment);
+
+    expect(target).toEqual({ _tag: "Service", url: `${serviceOriginFor("/repo")}/` });
+    expect(target.url.startsWith("http://127.0.0.1:")).toBe(true);
   });
 });

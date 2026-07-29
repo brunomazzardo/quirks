@@ -14,7 +14,8 @@ type ConnStatus = "checking" | "up" | "down";
  * Is anything answering at `url`? An ordinary status check, now that it can be.
  *
  * It used to need `mode: "no-cors"`: the companion routes set no CORS headers
- * (loopback-only tool, see src/service/app.ts), so a cross-origin `fetch` in
+ * (loopback-only tool, see apps/server/src/http/Routes.ts), so a cross-origin
+ * `fetch` in
  * "cors" mode rejected whether the service was down OR merely not offering an
  * Access-Control-Allow-Origin, and an opaque response was the only up/down
  * signal available. QK-WB-003 made the base URL same-origin (lib/service.ts)

@@ -14,7 +14,7 @@ import {
   shouldAttemptOnResume,
   type RunExecution,
 } from "./Parent.ts";
-import { completeTask, getTask, proposeTask, type ProposeInput } from "../ops/Tasks.ts";
+import { claimTask, completeTask, getTask, proposeTask, type ProposeInput } from "../ops/Tasks.ts";
 import { startRun } from "../ops/Runs.ts";
 import { Ledger } from "../store/Store.ts";
 import { dispatched, fakeHooks, runOp, runOpError, tempRoot } from "../testing/Harness.ts";
@@ -160,6 +160,59 @@ describe("resumeRun", () => {
     expect(result.run.tasks.find((t) => t.taskId === result.ids.a)?.outcome).toBe("accepted");
     expect(result.run.tasks.find((t) => t.taskId === result.ids.b)?.outcome).toBe("accepted");
     expect(result.bStatus).toBe("completed");
+  });
+
+  it("recovers a task the crash left claimed, and still runs the healthy one behind it", async () => {
+    // The state a real crash leaves: `runParent` claims, dispatches for up to
+    // thirty minutes, and merges its record back only after returning — so the
+    // ledger says `claimed` while the record still says `pending`. `claim()`
+    // refuses anything but `open`, so before the fix the TransitionError escaped
+    // `executeRun`, B was never attempted, and `--resume` 409'd forever.
+    const root = tempRoot("quirks-resume-");
+    const dispatchedTasks: string[] = [];
+    const result = await runOp(
+      root,
+      Effect.gen(function* () {
+        const ledger = yield* Ledger;
+        const a = yield* proposeTask(propose({ title: "crashed mid-dispatch" }));
+        const b = yield* proposeTask(propose({ title: "never got its turn" }));
+        const started = yield* startRun({
+          name: "crashed",
+          taskIds: [a.id, b.id],
+          yes: true,
+          mode: "autonomous",
+        });
+        if (started.dryRun) throw new Error("unreachable");
+
+        yield* claimTask(a.id, { by: `run:${started.run.id}` });
+        const runs = yield* ledger.loadRuns;
+        runs[runs.findIndex((r) => r.id === started.run.id)] = {
+          ...started.run,
+          status: "running",
+          startedAt: new Date().toISOString(),
+          tasks: [
+            { taskId: a.id, outcome: "pending", landingCommit: null, worktree: null },
+            { taskId: b.id, outcome: "pending", landingCommit: null, worktree: null },
+          ],
+        };
+        yield* ledger.saveRuns(runs);
+
+        const { run } = yield* resumeRun(
+          "crashed",
+          fakeHooks({
+            review: false,
+            dispatch: (req) => {
+              dispatchedTasks.push(req.taskId);
+              return dispatched(`ok-${req.taskId}`);
+            },
+          }),
+        );
+        return { run, ids: { a: a.id, b: b.id } };
+      }),
+    );
+
+    expect(dispatchedTasks).toEqual([result.ids.a, result.ids.b]);
+    expect(result.run.status).toBe("completed");
   });
 
   it("resume of an already-completed run is refused", async () => {

@@ -13,17 +13,19 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
-import type { Run, RunDispatchRecord, RunMode, RunTaskRecord, Task } from "@quirks/contracts";
-import { assembleBrief } from "../ops/Brief.ts";
+import type { Run, RunDispatchRecord, RunTaskRecord, Task } from "@quirks/contracts";
+import { assembleBrief, reviewerBriefSection } from "../ops/Brief.ts";
 import { conflict, missing, invalid, type OpError } from "../ops/Errors.ts";
 import { blockTask, claimTask, completeTask, getTask, releaseTask } from "../ops/Tasks.ts";
+import { runArtifactDir } from "../store/LedgerPaths.ts";
 import { Ledger, Store } from "../store/Store.ts";
 import type { StoreError } from "../store/JsonFile.ts";
 import type { TransitionError } from "../store/Transitions.ts";
-import { resolveVerdict, type Verdict } from "../runner/Quote.ts";
+import { resolveVerdict } from "../runner/Quote.ts";
+import { reviewClaim } from "../runner/Verdict.ts";
 import type { DispatchOutcome, RunnerKind } from "../runner/Types.ts";
 import { writeContinuationBrief } from "./Continuation.ts";
-import { decideFailure } from "./FailurePolicy.ts";
+import { decideFailure, type FailureDecision } from "./FailurePolicy.ts";
 
 export type { RunTaskRecord, RunTaskOutcome } from "@quirks/contracts";
 
@@ -189,6 +191,16 @@ export const assertDifferentReviewModel = (
 export interface ParentResult {
   readonly record: RunTaskRecord;
   /** Ledger side effects already applied (claim/complete/block/release). */
+
+  /**
+   * The failure policy's answer, present only when the task failed.
+   *
+   * It is CARRIED rather than recomputed. `decideFailure` used to run twice per
+   * failure — once here and once in `executeRun` — against two different ledger
+   * snapshots that could disagree, with the first answer surviving only as prose
+   * serialized into `record.reason` and never read. One failure, one decision.
+   */
+  readonly decision?: FailureDecision;
 }
 
 /**
@@ -250,8 +262,7 @@ const finishFailure = (
       if (record.outcome !== "partial") record.outcome = "failed";
     }
 
-    record.reason = `${decision.reason} [block: ${decision.blockDependents.join(",") || "none"}]`;
-    return { record };
+    return { record, decision };
   });
 
 /** Drive one task as its parent. */
@@ -266,7 +277,7 @@ export const runParent = (
     const store = yield* Store;
     const task = yield* getTask(taskId);
     const worktree = join(store.root, ".worktrees", run.id, taskId);
-    const artifactDir = join(store.root, ".quirks", "runs", run.id, taskId);
+    const artifactDir = runArtifactDir(store.root, run.id, taskId);
     yield* Effect.sync(() => {
       mkdirSync(worktree, { recursive: true });
       mkdirSync(artifactDir, { recursive: true });
@@ -311,10 +322,24 @@ export const runParent = (
     const reviewer = hooks.reviewer;
     const wantsReview = hooks.review !== false && reviewer !== undefined;
     if (wantsReview) {
+      // A reviewer gets its OWN brief. Handing it the implementer's meant it was
+      // never told which role it held, so the only thing it could express was an
+      // exit code — and an exit code is not a judgment about work.
+      //
+      // Derived from the brief already assembled, not assembled again: the two
+      // differ by one key, and `assembleBrief` shells out to git up to three
+      // times per sourceRef plus a HEAD read and an instructions hash — all
+      // synchronous, so a second pass blocks the daemon for as long as it runs.
+      // It would also let the two briefs snapshot different HEADs.
+      const reviewBrief = { ...brief, review: reviewerBriefSection() };
+      const reviewBriefPath = join(artifactDir, "review-brief.json");
+      yield* Effect.sync(() =>
+        writeFileSync(reviewBriefPath, JSON.stringify(reviewBrief, null, 2)),
+      );
       const revReq: ParentDispatchRequest = {
         role: "reviewer",
         taskId,
-        briefPath,
+        briefPath: reviewBriefPath,
         worktree,
         artifactDir,
         model: reviewer.model,
@@ -324,13 +349,21 @@ export const runParent = (
       const rev = yield* hooks.dispatch(revReq);
       recordDispatch(record, revReq, revAt, rev);
       const transcript = rev.transcript ?? "";
-      const claimed: Verdict =
-        rev.status === "success" ? "accept" : rev.status === "failure" ? "revise" : "indeterminate";
-      // Prefer an explicit quote from the result notes if present; else absence.
-      const quote = rev.notes?.find((n) => n.startsWith("quote:"))?.slice("quote:".length) ?? "";
-      const verdict = resolveVerdict({ claimed, quote, transcript });
+      // What the reviewer CLAIMS (runner/Verdict.ts), then what survives
+      // mechanical verification against the retained transcript. Two steps on
+      // purpose: declaring is how a judgment is stated, verifying is how it is
+      // believed, and absence still fails closed to indeterminate.
+      const claim = reviewClaim({ status: rev.status, transcript, notes: rev.notes });
+      const verdict = resolveVerdict({ ...claim, transcript });
       record.verdict = verdict;
-      record.evidenceQuote = quote;
+      // Record the quote ONLY when verification actually stood it up. The report
+      // captions evidenceQuote as "the runner's own words — quote-verified
+      // against the retained transcript" (D14: the report never paraphrases a
+      // verdict), so persisting a quote the verifier rejected would put
+      // fabricated words under a caption asserting they were checked.
+      if (verdict === claim.claimed && claim.quote.trim().length > 0) {
+        record.evidenceQuote = claim.quote;
+      }
 
       if (verdict !== "accept") {
         // Honest partial: landing exists but review did not accept.
@@ -416,7 +449,6 @@ export const executeRun = (
   hooks: ParentHooks,
 ): Effect.Effect<ExecuteResult, RunError, Ledger | Store> =>
   Effect.gen(function* () {
-    const ledger = yield* Ledger;
     const loaded = yield* runForExecute(idOrSlug);
 
     const exec = ensureExecution(loaded);
@@ -454,26 +486,34 @@ export const executeRun = (
         continue;
       }
 
-      // Released tasks are open again; partial/running may still be claimed — release first if needed.
-      if (task.status === "claimed" && (rec.outcome === "partial" || rec.outcome === "running")) {
+      // Released tasks are open again; anything we still hold must be let go
+      // before it can be claimed again.
+      //
+      // The state this guard missed: `runParent` claims, then dispatches for up
+      // to thirty minutes, and merges the record back only AFTER it returns — so
+      // `running` is never written to disk. A crash mid-dispatch therefore
+      // leaves the ledger task `claimed` while the record still says `pending`,
+      // which the old condition (partial|running) did not cover. `claim()`
+      // refuses anything but `open`, so the error escaped `executeRun` entirely:
+      // every healthy task behind the crashed one was never attempted, and
+      // `--resume` returned the same 409 forever until someone ran
+      // `quirks task release` by hand.
+      //
+      // Only OUR OWN claim is released. Another run holding it is a real
+      // conflict and must stay one — `shouldAttemptOnResume` has already ruled
+      // out the settled outcomes, so this is exactly the stale-claim case.
+      if (task.status === "claimed" && task.statusDetail.claimedBy === `run:${exec.id}`) {
         yield* releaseTask(taskId).pipe(Effect.ignore);
       }
 
       // Dispatch history accumulates across resume — a re-attempt appends, it does
       // not erase the attempt that failed last night.
       const priorDispatches = rec.dispatches ?? [];
-      const { record } = yield* runParent(exec, taskId, hooks);
+      const { record, decision } = yield* runParent(exec, taskId, hooks);
       Object.assign(rec, record);
       rec.dispatches = [...priorDispatches, ...(record.dispatches ?? [])];
-      if (record.outcome !== "accepted") {
+      if (record.outcome !== "accepted" && decision !== undefined) {
         failedIds.add(taskId);
-        const decision = decideFailure({
-          mode: exec.mode as RunMode,
-          failedId: taskId,
-          landingCommit: record.landingCommit,
-          taskIds: exec.taskIds,
-          dependsOn: dependsOnMap(yield* ledger.loadTasks),
-        });
         for (const dep of decision.blockDependents) {
           failedIds.add(dep);
           const depRec = exec.tasks.find((t) => t.taskId === dep);
