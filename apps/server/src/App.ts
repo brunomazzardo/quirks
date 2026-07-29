@@ -1,6 +1,6 @@
-// The service, assembled: the ledger services, the routing seam, and the /v1
-// route surface behind one layer. `toWebHandler` gives tests an in-process
-// `fetch`; `dev.ts` serves the same layer over a socket.
+// The service, assembled: the ledger services, the routing seam, the /v1 route
+// surface, and the built workbench behind one layer. `toWebHandler` gives tests
+// an in-process `fetch`; `dev.ts` serves the same layer over a socket.
 
 import { fileURLToPath } from "node:url";
 import * as Effect from "effect/Effect";
@@ -12,6 +12,7 @@ import { Ledger, layer as ledgerLayer, layerAt, layerFromCwd, Store } from "./st
 import { layerHarness, RunRouting } from "./ops/Routing.ts";
 import { runsInFlight } from "./ops/Runs.ts";
 import { routes } from "./http/Routes.ts";
+import { rendererRoutes } from "./http/Renderer.ts";
 import { layer as ptyLayer, PtySessions } from "./pty/Sessions.ts";
 import { routes as ptyRoutes } from "./pty/Routes.ts";
 import { json, respond } from "./http/Wire.ts";
@@ -85,15 +86,32 @@ export interface AppOptions {
   /** An explicit ledger root. Tests always pass a temp dir. */
   readonly root?: string | undefined;
   readonly instanceId?: string | undefined;
+  /** An explicit renderer build; otherwise QUIRKS_RENDERER_DIR, else apps/web/dist. */
+  readonly rendererDir?: string | undefined;
 }
 
+/**
+ * The whole surface, in one layer.
+ *
+ * ORDER OF PRECEDENCE IS STRUCTURAL, NOT POSITIONAL. `rendererRoutes` registers
+ * one route, `GET /*`, and find-my-way ranks a wildcard below every static and
+ * parametric route — so /v1/*, /shape/*, /health and the pty socket win on their
+ * own paths no matter which layer registered first. The renderer is the
+ * fallback, never the front.
+ *
+ * It sits OUTSIDE `provideRequest` deliberately: the router captures its
+ * middleware from the context at registration time, so a sibling layer's routes
+ * carry none of it. Serving a file needs no store, no ledger and no pty
+ * registry, and this is what keeps it from acquiring them.
+ */
 export const appLayer = (options: AppOptions = {}) => {
   const storeLayer = options.root === undefined ? layerFromCwd() : layerAt(options.root);
   return Layer.mergeAll(
-    routes,
-    ptyRoutes,
-    healthRoute(options.instanceId ?? "quirks-service"),
-  ).pipe(HttpRouter.provideRequest(servicesLayer(storeLayer)));
+    Layer.mergeAll(routes, ptyRoutes, healthRoute(options.instanceId ?? "quirks-service")).pipe(
+      HttpRouter.provideRequest(servicesLayer(storeLayer)),
+    ),
+    rendererRoutes({ rendererDir: options.rendererDir }),
+  );
 };
 
 /** An in-process Fetch handler over the whole surface — how the suite drives it.

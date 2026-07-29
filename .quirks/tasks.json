@@ -2104,7 +2104,7 @@
     {
       "id": "QK-WB-007",
       "title": "run views — live and retrospective (ex QK-NAT-004)",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-WB-003",
         "QK-MONO-005"
@@ -2126,10 +2126,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": true,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T20:27:57.958Z",
-      "updatedAt": "2026-07-28T20:27:57.958Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-29T00:04:12.276Z",
+      "statusDetail": {
+        "claimedBy": "opus-5"
+      }
     },
     {
       "id": "QK-WB-008",
@@ -2165,7 +2167,7 @@
     {
       "id": "QK-WB-009",
       "title": "single-origin serve — the service serves apps/web dist; shape framing SAMEORIGIN",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-MONO-004",
         "QK-WB-001"
@@ -2188,11 +2190,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T22:12:31.486Z",
-      "updatedAt": "2026-07-28T23:37:10.855Z",
+      "updatedAt": "2026-07-29T00:06:20.871Z",
       "statusDetail": {
-        "claimedBy": "opus-5"
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: HttpStaticServer-based renderer layer (GET /* wildcard; precedence proven structural in find-my-way — API prefixes always win; extension-miss 404s plain text, extensionless re-reads index.html per request, API-prefix misses stay JSON 404, absent dist answers 503 build hint), rendererDir: arg > QUIRKS_RENDERER_DIR > apps/web/dist; X-Frame-Options SAMEORIGIN on GET /shape/ (route handler, loopback + same-origin). 16 new tests (335 total). Acceptance proven: headless Chrome at service origin — ledger live rows, terminal shell, shape iframe PAINTS (readable contentDocument, companion content + Connected). Flags to QK-WB-008: stale DENY comments in apps/web (shape-pane, vite.config, service.ts caveat), favicon 404, pty replay test flake (fixed 300ms sleep)"
       }
     }
   ]

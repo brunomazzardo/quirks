@@ -517,7 +517,16 @@ const shapeRoutes = Layer.mergeAll(
           contentType: "text/html; charset=utf-8",
           headers: {
             "Cache-Control": "no-store",
-            "X-Frame-Options": "DENY",
+            // SAMEORIGIN, not DENY (QK-WB-009). DENY was ported verbatim from
+            // the bun era, where the only viewer was the native preview panel —
+            // not a browser frame, so nothing ever obeyed it. The workbench's
+            // Shape pane IS a browser iframe, and DENY refuses framing from
+            // every origin including its own, so the pane stayed blank while the
+            // probe said "up". Now that the service serves the workbench itself
+            // (src/http/Renderer.ts), the page and this companion share one
+            // loopback origin and SAMEORIGIN is exactly the right latitude: the
+            // pane paints, and a page from anywhere else still cannot frame it.
+            "X-Frame-Options": "SAMEORIGIN",
             "Referrer-Policy": "no-referrer",
           },
         });
