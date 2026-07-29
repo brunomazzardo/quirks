@@ -6,21 +6,14 @@
 // `useAtomRefresh` handle for the Refresh affordance — which is the whole
 // surface this pane needs, with no hand-rolled loading/error/retry state.
 //
-// Everything is requested SAME-ORIGIN (lib/service.ts): in dev the Vite proxy
-// forwards /v1 to the daemon. A cross-origin fetch could not read these
-// responses at all — the daemon sets no CORS headers.
+// The fetch itself lives in ./wire.ts, shared with the run views (QK-WB-007):
+// same-origin, same paging walk, same down-signal.
 
-import type { GoalRollup, Page, Task } from "@quirks/contracts";
+import type { GoalRollup, Task } from "@quirks/contracts";
 import * as Effect from "effect/Effect";
 import { Atom } from "effect/unstable/reactivity";
 
-import { serviceBaseUrl } from "~/lib/service";
-
-/** Page size per request. The routes default to 100 (src/service/app.ts). */
-const PAGE_LIMIT = 200;
-
-/** A backstop so a pathological `total` cannot spin the loop forever. */
-const MAX_PAGES = 25;
+import { fetchAll } from "~/state/wire";
 
 /** What the pane reads: one fetch of both lists, so both are of one moment. */
 export interface LedgerSnapshot {
@@ -28,40 +21,6 @@ export interface LedgerSnapshot {
   readonly tasks: readonly Task[];
   readonly fetchedAt: Date;
 }
-
-function asError(cause: unknown): Error {
-  if (cause instanceof Error) return cause;
-  return new Error(String(cause));
-}
-
-const fetchPage = <T>(path: string): Effect.Effect<Page<T>, Error> =>
-  Effect.tryPromise({
-    try: async (signal) => {
-      const response = await fetch(`${serviceBaseUrl()}${path}`, { cache: "no-store", signal });
-      if (!response.ok) {
-        // Through the dev proxy a stopped daemon surfaces as a 5xx from Vite
-        // rather than a rejected fetch, so a bad status is the down-signal.
-        throw new Error(`GET ${path} → HTTP ${response.status}`);
-      }
-      return (await response.json()) as Page<T>;
-    },
-    catch: asError,
-  });
-
-/** Walk `?offset=&limit=` until the reported total is in hand (D6 paginates). */
-const fetchAll = <T>(path: string): Effect.Effect<T[], Error> =>
-  Effect.gen(function* () {
-    const separator = path.includes("?") ? "&" : "?";
-    const items: T[] = [];
-    for (let request = 0; request < MAX_PAGES; request += 1) {
-      const page = yield* fetchPage<T>(
-        `${path}${separator}offset=${items.length}&limit=${PAGE_LIMIT}`,
-      );
-      items.push(...page.items);
-      if (page.items.length === 0 || items.length >= page.total) break;
-    }
-    return items;
-  });
 
 /**
  * Goals and tasks as one snapshot.

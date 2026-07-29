@@ -21,15 +21,18 @@
 // pointer and nothing else; a browser has to answer to more than that.
 
 import { useAtomValue } from "@effect/atom-react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { PanelLeft, PanelRight, SquareTerminal } from "lucide-react";
+import { CircleDot, PanelLeft, PanelRight, SquareTerminal } from "lucide-react";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import type * as React from "react";
 
 import { Badge } from "~/components/ui/badge";
+import { runIsLive, runProgress } from "~/lib/runs";
 import { cn } from "~/lib/utils";
 import { ledgerAtom } from "~/state/ledger";
+import { runsAtom } from "~/state/runs";
 import { paneFocused, paneParked, useLayoutStore, type FocusPane } from "~/stores/layout";
 
 /** Long enough not to fire on a normal click, short enough to feel deliberate. */
@@ -67,6 +70,7 @@ export function Titlebar() {
 
       <div className="ml-auto flex items-center gap-1.5">
         <LedgerStatus />
+        <RunsControl />
 
         <ChromeControl
           pane="ledger"
@@ -233,6 +237,60 @@ function useHoldPress(
       onPress();
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// the way into the run views (QK-WB-007)
+// ---------------------------------------------------------------------------
+
+/**
+ * A fourth control, in the band's own three-tone language: quiet, lit (the
+ * layer is open), and never filled — the run views are not a pane and cannot
+ * take the stage, they cover it.
+ *
+ * It belongs up here for the same reason `LedgerStatus` does: the band survives
+ * every focus mode, so "a run is moving" and "something needs you" stay
+ * readable while the Ledger rail is off the stage entirely. Pressing it toggles
+ * — open from anywhere, and press again to go back to the workbench, which is
+ * the gesture the three controls beside it already teach.
+ */
+function RunsControl() {
+  const navigate = useNavigate();
+  const open = useRouterState({ select: (state) => state.location.pathname.startsWith("/runs") });
+  const result = useAtomValue(runsAtom);
+  const runs = Option.getOrNull(AsyncResult.value(result))?.runs ?? [];
+  const live = runs.some((run) => runIsLive(run.status));
+  const needsYou = runs.reduce((sum, run) => sum + runProgress(run).needsYou, 0);
+
+  return (
+    <button
+      type="button"
+      onClick={() => void navigate({ to: open ? "/" : "/runs" })}
+      aria-pressed={open}
+      data-chrome-control="runs"
+      title={
+        open
+          ? "Runs — click to go back to the workbench"
+          : `Runs — ${runs.length} recorded${needsYou > 0 ? `, ${needsYou} need you` : ""}`
+      }
+      className={cn(
+        "no-drag-region inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card [&_svg]:size-3.5 [&_svg]:shrink-0",
+        open
+          ? "border-lamp-line bg-lamp-soft text-foreground [&_svg]:text-lamp"
+          : "border-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      <CircleDot />
+      Runs
+      {needsYou > 0 && <span className="font-mono text-[10px] text-ember">{needsYou}</span>}
+      {live && (
+        <span
+          aria-hidden="true"
+          className="size-1.5 shrink-0 rounded-full bg-moss motion-safe:animate-pulse"
+        />
+      )}
+    </button>
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -9,50 +9,144 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as WorkbenchRouteImport } from './routes/_workbench'
+import { Route as WorkbenchIndexRouteImport } from './routes/_workbench/index'
+import { Route as WorkbenchRunsRouteImport } from './routes/_workbench/runs'
+import { Route as WorkbenchRunsIndexRouteImport } from './routes/_workbench/runs/index'
+import { Route as WorkbenchRunsRunIdRouteImport } from './routes/_workbench/runs/$runId'
 
-const IndexRoute = IndexRouteImport.update({
+const WorkbenchRoute = WorkbenchRouteImport.update({
+  id: '/_workbench',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WorkbenchIndexRoute = WorkbenchIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => WorkbenchRoute,
+} as any)
+const WorkbenchRunsRoute = WorkbenchRunsRouteImport.update({
+  id: '/runs',
+  path: '/runs',
+  getParentRoute: () => WorkbenchRoute,
+} as any)
+const WorkbenchRunsIndexRoute = WorkbenchRunsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkbenchRunsRoute,
+} as any)
+const WorkbenchRunsRunIdRoute = WorkbenchRunsRunIdRouteImport.update({
+  id: '/$runId',
+  path: '/$runId',
+  getParentRoute: () => WorkbenchRunsRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof WorkbenchIndexRoute
+  '/runs': typeof WorkbenchRunsRouteWithChildren
+  '/runs/$runId': typeof WorkbenchRunsRunIdRoute
+  '/runs/': typeof WorkbenchRunsIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/': typeof WorkbenchIndexRoute
+  '/runs/$runId': typeof WorkbenchRunsRunIdRoute
+  '/runs': typeof WorkbenchRunsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_workbench': typeof WorkbenchRouteWithChildren
+  '/_workbench/runs': typeof WorkbenchRunsRouteWithChildren
+  '/_workbench/': typeof WorkbenchIndexRoute
+  '/_workbench/runs/$runId': typeof WorkbenchRunsRunIdRoute
+  '/_workbench/runs/': typeof WorkbenchRunsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/runs' | '/runs/$runId' | '/runs/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/runs/$runId' | '/runs'
+  id:
+    | '__root__'
+    | '/_workbench'
+    | '/_workbench/runs'
+    | '/_workbench/'
+    | '/_workbench/runs/$runId'
+    | '/_workbench/runs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  WorkbenchRoute: typeof WorkbenchRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_workbench': {
+      id: '/_workbench'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof WorkbenchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_workbench/': {
+      id: '/_workbench/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof WorkbenchIndexRouteImport
+      parentRoute: typeof WorkbenchRoute
+    }
+    '/_workbench/runs': {
+      id: '/_workbench/runs'
+      path: '/runs'
+      fullPath: '/runs'
+      preLoaderRoute: typeof WorkbenchRunsRouteImport
+      parentRoute: typeof WorkbenchRoute
+    }
+    '/_workbench/runs/': {
+      id: '/_workbench/runs/'
+      path: '/'
+      fullPath: '/runs/'
+      preLoaderRoute: typeof WorkbenchRunsIndexRouteImport
+      parentRoute: typeof WorkbenchRunsRoute
+    }
+    '/_workbench/runs/$runId': {
+      id: '/_workbench/runs/$runId'
+      path: '/$runId'
+      fullPath: '/runs/$runId'
+      preLoaderRoute: typeof WorkbenchRunsRunIdRouteImport
+      parentRoute: typeof WorkbenchRunsRoute
     }
   }
 }
 
+interface WorkbenchRunsRouteChildren {
+  WorkbenchRunsRunIdRoute: typeof WorkbenchRunsRunIdRoute
+  WorkbenchRunsIndexRoute: typeof WorkbenchRunsIndexRoute
+}
+
+const WorkbenchRunsRouteChildren: WorkbenchRunsRouteChildren = {
+  WorkbenchRunsRunIdRoute: WorkbenchRunsRunIdRoute,
+  WorkbenchRunsIndexRoute: WorkbenchRunsIndexRoute,
+}
+
+const WorkbenchRunsRouteWithChildren = WorkbenchRunsRoute._addFileChildren(
+  WorkbenchRunsRouteChildren,
+)
+
+interface WorkbenchRouteChildren {
+  WorkbenchRunsRoute: typeof WorkbenchRunsRouteWithChildren
+  WorkbenchIndexRoute: typeof WorkbenchIndexRoute
+}
+
+const WorkbenchRouteChildren: WorkbenchRouteChildren = {
+  WorkbenchRunsRoute: WorkbenchRunsRouteWithChildren,
+  WorkbenchIndexRoute: WorkbenchIndexRoute,
+}
+
+const WorkbenchRouteWithChildren = WorkbenchRoute._addFileChildren(
+  WorkbenchRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  WorkbenchRoute: WorkbenchRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

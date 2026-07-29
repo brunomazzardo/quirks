@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { LedgerPane } from "~/components/ledger-pane";
@@ -6,8 +6,8 @@ import { ShapePane } from "~/components/shape-pane";
 import { TerminalPane } from "~/components/terminal-pane";
 import { paneOnStage, useLayoutStore } from "~/stores/layout";
 
-export const Route = createFileRoute("/")({
-  component: WorkbenchRoute,
+export const Route = createFileRoute("/_workbench")({
+  component: WorkbenchLayout,
 });
 
 /**
@@ -32,36 +32,55 @@ export const Route = createFileRoute("/")({
  * reload on every focus switch. The native workbench solved the same problem
  * the same way — it parked the preview webview at 1×1 rather than destroying
  * it (app.zon) — so this is the port, not a shortcut around one.
+ *
+ * QK-WB-007 is why this is a PATHLESS LAYOUT ROUTE rather than the index route
+ * it used to be. The run views wanted their own URLs (/runs, /runs/$runId), and
+ * a sibling route would have unmounted all three panes on every visit —
+ * breaking the invariant three paragraphs up. As a layout, the stage outlives
+ * every child route: `/` renders nothing over it, and the run routes render an
+ * opaque layer above it while the terminal keeps its scrollback underneath.
  */
-function WorkbenchRoute() {
+function WorkbenchLayout() {
   const focus = useLayoutStore((state) => state.focus);
   const ledgerHidden = useLayoutStore((state) => state.ledgerHidden);
   const shapeHidden = useLayoutStore((state) => state.shapeHidden);
 
+  // The one thing the stage needs to know about its overlay: whether it is
+  // covered. Read off the URL rather than passed down, because the router is
+  // the thing that decides it. `inert` is not decoration — a covered pane that
+  // still answered Tab would hand focus to a terminal nobody can see.
+  const covered = useRouterState({
+    select: (state) => state.location.pathname.startsWith("/runs"),
+  });
+
   const layout = { focus, ledgerHidden, shapeHidden };
 
   return (
-    <div className="flex h-full min-h-0 gap-px bg-border">
-      {/* `paneOnStage`, not `paneVisible`: a collapsed pane still holds its
-          edge tab here, and it is the pane itself that renders the tab. Only
-          a focus mode takes a pane off the stage outright. */}
-      <Slot show={paneOnStage(layout, "ledger")}>
-        <LedgerPane />
-      </Slot>
+    <div className="relative h-full min-h-0">
+      <div className="flex h-full min-h-0 gap-px bg-border" inert={covered}>
+        {/* `paneOnStage`, not `paneVisible`: a collapsed pane still holds its
+            edge tab here, and it is the pane itself that renders the tab. Only
+            a focus mode takes a pane off the stage outright. */}
+        <Slot show={paneOnStage(layout, "ledger")}>
+          <LedgerPane />
+        </Slot>
 
-      {/* The right-hand split. It goes with the Ledger when the Ledger is the
-          full-bleed pane, and otherwise takes whatever the Ledger is not
-          using — including all of it, when the Ledger is off the stage. */}
-      <Slot show={focus !== "ledger"}>
-        <div className="flex min-w-0 flex-[2] gap-px bg-border">
-          <Slot show={paneOnStage(layout, "terminal")}>
-            <TerminalPane />
-          </Slot>
-          <Slot show={paneOnStage(layout, "shape")}>
-            <ShapePane />
-          </Slot>
-        </div>
-      </Slot>
+        {/* The right-hand split. It goes with the Ledger when the Ledger is the
+            full-bleed pane, and otherwise takes whatever the Ledger is not
+            using — including all of it, when the Ledger is off the stage. */}
+        <Slot show={focus !== "ledger"}>
+          <div className="flex min-w-0 flex-[2] gap-px bg-border">
+            <Slot show={paneOnStage(layout, "terminal")}>
+              <TerminalPane />
+            </Slot>
+            <Slot show={paneOnStage(layout, "shape")}>
+              <ShapePane />
+            </Slot>
+          </div>
+        </Slot>
+      </div>
+
+      <Outlet />
     </div>
   );
 }

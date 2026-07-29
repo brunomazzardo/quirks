@@ -1,5 +1,5 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import * as Cause from "effect/Cause";
+import { Link } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/unstable/reactivity";
 import {
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
+import { LivePulse } from "~/components/run-chrome";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
@@ -26,6 +27,8 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "~/components/ui/menu";
+import { describeCause } from "~/lib/failure";
+import { runIsLive, runProgress } from "~/lib/runs";
 import {
   buildInbox,
   DEFAULT_VIEW,
@@ -42,6 +45,7 @@ import {
 } from "~/lib/ledger";
 import { cn } from "~/lib/utils";
 import { ledgerAtom } from "~/state/ledger";
+import { runsAtom } from "~/state/runs";
 import { paneParked, useLayoutStore } from "~/stores/layout";
 
 /**
@@ -99,7 +103,9 @@ export function LedgerPane() {
 
   const taskCount = inboxCount(inbox);
   const dirty = viewDirty(view);
-  const failure = AsyncResult.isFailure(result) ? describe(result.cause) : null;
+  const failure = AsyncResult.isFailure(result)
+    ? describeCause(result.cause, FAILURE_FALLBACK)
+    : null;
 
   // QK-NAT-013 — collapsed, the rail parks to an edge tab and hands its width
   // to the Terminal+Shape pair. Same construction as Shape's tab on the other
@@ -230,16 +236,51 @@ export function LedgerPane() {
 
             {/* NAT-007's "later Runs header stub only" — QK-WB-007 fills it. */}
             <div className="mt-1 border-t pt-1.5">
-              <div className="flex h-8 items-center gap-2 px-2.5">
-                <CircleDot className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="flex-1 text-xs text-muted-foreground">Runs</span>
-                <Badge>soon</Badge>
-              </div>
+              <RunsEntry />
             </div>
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// the Runs entry (QK-WB-007)
+// ---------------------------------------------------------------------------
+
+/**
+ * The rail's way into the run views — the row QK-NAT-007 left as a stub.
+ *
+ * It reads the same cached `runsAtom` the list does, so opening the overlay
+ * costs no second request, and it carries exactly two facts: how many runs
+ * exist, and whether one is moving. A run that has already lost a task marks
+ * itself ember here for the same reason the list and the report do — failures
+ * lead, at every level of this product.
+ */
+function RunsEntry() {
+  const result = useAtomValue(runsAtom);
+  const snapshot = Option.getOrNull(AsyncResult.value(result));
+  const runs = snapshot?.runs ?? [];
+  const live = runs.some((run) => runIsLive(run.status));
+  const needsYou = runs.reduce((sum, run) => sum + runProgress(run).needsYou, 0);
+
+  return (
+    <Link
+      to="/runs"
+      className="flex h-8 items-center gap-2 rounded-md px-2.5 hover:bg-accent"
+      title="every run, live and past"
+    >
+      <CircleDot className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="flex-1 text-xs">Runs</span>
+      {needsYou > 0 && (
+        <span className="font-mono text-[10px] text-ember" title="task records that need you">
+          {needsYou} need you
+        </span>
+      )}
+      {live && <LivePulse />}
+      {snapshot !== null && <Badge>{runs.length}</Badge>}
+    </Link>
   );
 }
 
@@ -514,8 +555,4 @@ function StaleNotice({ reason }: { reason: string }) {
   );
 }
 
-function describe(cause: Cause.Cause<Error>): string {
-  const error = Cause.squash(cause);
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return "the ledger request failed";
-}
+const FAILURE_FALLBACK = "the ledger request failed";

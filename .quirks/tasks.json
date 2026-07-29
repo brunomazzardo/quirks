@@ -2104,7 +2104,7 @@
     {
       "id": "QK-WB-007",
       "title": "run views — live and retrospective (ex QK-NAT-004)",
-      "status": "claimed",
+      "status": "completed",
       "dependsOn": [
         "QK-WB-003",
         "QK-MONO-005"
@@ -2126,11 +2126,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": true,
-      "revision": 2,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:57.958Z",
-      "updatedAt": "2026-07-29T00:04:12.276Z",
+      "updatedAt": "2026-07-29T00:37:57.699Z",
       "statusDetail": {
-        "claimedBy": "opus-5"
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed (ex QK-NAT-004, breakdown reported: domain join, needs-you classifier, tones, pure poll schedule, atoms, routing, views). Stage moved to pathless layout route so EVERY-PANE-STAYS-MOUNTED survives /runs (scrollback marker + zero new pty sessions proven); needs-you-first per D14 with indeterminate failing closed into NEEDS YOU, order stable under polls (byte-identical report test); quotes monospace/unabridged with provenance; poll 2s visible/15s hidden/x2 backoff/stop at terminal — measured from daemon log incl visibilitychange read 2ms after event; live demo on scratch daemon (approved run via real POST, records seeded — NO agent CLI ever dispatched); 104 web tests, whole repo 335 green"
       }
     },
     {
