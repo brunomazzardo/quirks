@@ -108,6 +108,25 @@ function childrenOf(pid: number): number[] {
 const script = (sessions: PtySessionsShape, source: string) =>
   sessions.create({ shell: "/bin/sh", args: ["-c", source] });
 
+/** Poll until the short-lived shell actually finished (and, when asked, left
+ *  bytes in the replay). A fixed 300ms sleep raced real /bin/sh on loaded
+ *  hosts — a 1-in-7 flake caught in QK-WB-009 review. Loud on timeout. */
+const settled = async (
+  sessions: PtySessionsShape,
+  id: string,
+  opts: { replay?: boolean } = {},
+): Promise<void> => {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const info = await Effect.runPromise(sessions.get(id));
+    if (info.exited && (!opts.replay || info.replayBytes > 0)) return;
+    if (Date.now() > deadline) {
+      throw new Error(`session ${id} never settled: ${JSON.stringify(info)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
+
 describe("a session's life", () => {
   it("starts, reports itself, produces output, and exits with its code", async () => {
     await withSessions(async (sessions) => {
@@ -297,7 +316,7 @@ describe("the replay buffer", () => {
       const info = await Effect.runPromise(script(sessions, "echo before-anyone-was-watching"));
       // Nobody is attached while this runs — which is exactly the case the
       // Native terminal could not survive.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await settled(sessions, info.id, { replay: true });
 
       const replayed = await Effect.runPromise(
         Effect.scoped(
@@ -410,7 +429,7 @@ describe("resize", () => {
   it("a resize racing the shell's exit is not a failure the caller can act on", async () => {
     await withSessions(async (sessions) => {
       const info = await Effect.runPromise(script(sessions, "exit 0"));
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await settled(sessions, info.id);
       const resized = await Effect.runPromise(sessions.resize(info.id, 100, 40));
       expect(resized.cols).toBe(100);
     });
@@ -498,7 +517,7 @@ describe("writing", () => {
   it("a write to an exited shell is a no-op, not an error per keystroke", async () => {
     await withSessions(async (sessions) => {
       const info = await Effect.runPromise(script(sessions, "exit 0"));
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await settled(sessions, info.id);
       await Effect.runPromise(sessions.write(info.id, "typed after the end\n"));
     });
   });
