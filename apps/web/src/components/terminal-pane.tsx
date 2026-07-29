@@ -48,15 +48,18 @@ export function TerminalPane() {
   const active = tabs.find((tab) => tab.key === activeKey) ?? null;
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col rounded-lg border bg-card text-card-foreground">
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3 [&_svg]:size-3.5 [&_svg]:text-muted-foreground">
+    // Chrome is `card`, canvas is `background` (QK-NAT-010: the ledger column
+    // sat on surface, the terminal on background). The pane's headers are
+    // chrome; everything below the tab strip is the shell's own screen.
+    <section className="flex min-w-0 flex-1 flex-col bg-background">
+      <header className="flex h-9 shrink-0 items-center gap-2 border-b bg-card px-3 [&_svg]:size-3.5 [&_svg]:text-muted-foreground">
         <SquareTerminal />
         <h2 className="text-xs font-medium tracking-tight">Terminal</h2>
         <StatusDot tab={active} />
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">{TASK_ID}</span>
       </header>
 
-      <div className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b px-1.5">
+      <div className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b bg-card px-1.5">
         {tabs.map((tab) => (
           <Tab
             key={tab.key}
@@ -155,13 +158,16 @@ function StatusDot({ tab }: { tab: TerminalTab | null }) {
     <span
       aria-hidden="true"
       title={`terminal: ${status}`}
+      // Night-ledger's three signals and nothing else: moss passing, the lamp
+      // for the one state that is mid-flight, ember failing. Tailwind's stock
+      // emerald/amber/red were three more hues than the palette admits.
       className={cn(
         "size-1.5 shrink-0 rounded-full",
-        status === "live" && "bg-emerald-500",
+        status === "live" && "bg-moss",
         status === "starting" && "bg-muted-foreground/30",
-        status === "reconnecting" && "bg-amber-500",
+        status === "reconnecting" && "bg-lamp",
         status === "exited" && "bg-muted-foreground/30",
-        status === "failed" && "bg-destructive/50",
+        status === "failed" && "bg-ember",
       )}
     />
   );

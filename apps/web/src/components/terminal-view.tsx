@@ -49,15 +49,32 @@ function fontStack(element: HTMLElement): string {
   return declared.length > 0 ? declared : '"JetBrains Mono", "SF Mono", Menlo, Consolas, monospace';
 }
 
-/** Background, foreground and cursor come from the app's own tokens so the
- *  terminal is part of the pane rather than a black rectangle inside it. The
- *  ANSI palette is fixed per light/dark — programs choose those colors by
- *  number and expect them to look like themselves. */
+/**
+ * Background, foreground and cursor come from the app's own tokens so the
+ * terminal is part of the pane rather than a black rectangle inside it.
+ *
+ * They are read as NAMED TOKENS (`--terminal-*`, declared in src/index.css)
+ * rather than as this element's computed `background-color` and `color`. Those
+ * were never the palette: the mount div paints no background of its own, so
+ * its computed background-color is `rgba(0, 0, 0, 0)` — transparent — and
+ * resolving that through a canvas yields #000000. The terminal was painting
+ * itself black in both themes and only looked deliberate in the dark one.
+ * Naming the tokens also means the geist pass reaches in here (QK-WB-006)
+ * instead of stopping at the pane border: the cursor is the lamp.
+ *
+ * The ANSI palette stays fixed per light/dark — programs choose those colors
+ * by number and expect them to look like themselves, so the theme has no
+ * business restyling them.
+ */
 function themeFor(element: HTMLElement): ITheme {
   const dark = document.documentElement.classList.contains("dark");
   const style = getComputedStyle(element);
-  const background = cssColorToHex(style.backgroundColor, dark ? "#09090b" : "#ffffff");
-  const foreground = cssColorToHex(style.color, dark ? "#e4e4e7" : "#27272a");
+  const token = (name: string, fallback: string): string =>
+    cssColorToHex(style.getPropertyValue(name), fallback);
+
+  const background = token("--terminal-background", dark ? "#09090b" : "#ffffff");
+  const foreground = token("--terminal-foreground", dark ? "#e4e4e7" : "#27272a");
+  const cursor = token("--terminal-cursor", dark ? "#e5a83d" : "#a86f12");
   const ansi = dark
     ? {
         black: "#3f3f46",
@@ -98,8 +115,11 @@ function themeFor(element: HTMLElement): ITheme {
   return {
     background,
     foreground,
-    cursor: foreground,
+    cursor,
     cursorAccent: background,
+    // Kept as literal 8-digit hex rather than a token: a selection has to be
+    // translucent to leave the text under it readable, and `cssColorToHex`
+    // resolves through a canvas pixel, which cannot carry alpha back.
     selectionBackground: dark ? "#3f3f4680" : "#d4d4d880",
     ...ansi,
   };

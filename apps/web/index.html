@@ -7,8 +7,10 @@
     <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
     <script>
       // Resolve the theme before first paint so the shell never flashes light
-      // chrome on a dark system. QK-WB-006 owns the real theme surface; this
-      // only needs to put `.dark` on <html> early enough to matter.
+      // chrome on a dark system. The palette itself lives in src/index.css
+      // (QK-NAT-009: geist neutrals following OS light/dark, plus the
+      // night-ledger lamp); all this has to do is put `.dark` on <html> early
+      // enough to matter, since the whole token set hangs off that class.
       (() => {
         try {
           const stored = window.localStorage.getItem("quirks:theme");

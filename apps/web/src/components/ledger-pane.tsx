@@ -8,6 +8,7 @@ import {
   CircleDot,
   ListChecks,
   ListFilter,
+  PanelLeftClose,
   RefreshCw,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -41,6 +42,7 @@ import {
 } from "~/lib/ledger";
 import { cn } from "~/lib/utils";
 import { ledgerAtom } from "~/state/ledger";
+import { paneParked, useLayoutStore } from "~/stores/layout";
 
 /**
  * The ledger pane (QK-WB-003) — the native workbench's left rail against the
@@ -56,13 +58,16 @@ import { ledgerAtom } from "~/state/ledger";
  *              with per-goal headers and an Other bucket, filtered from a
  *              View menu rather than an always-on chip row.
  *
- * Theme fidelity (geist pack, night-ledger lamp accent) is QK-WB-006's; this
- * stays on the zinc tokens already in src/index.css, so "amber when filters
- * leave default" is here as a primary-tone `filt` badge for now.
+ * QK-WB-006 then added the rail's own collapse (QK-NAT-013) — the mirror of
+ * Shape's, down to the parked edge tab — and spent the lamp accent on the
+ * three things in here that are worth attention: a View menu that has left
+ * its defaults, the selected row, and a task that is actually moving.
  */
 export function LedgerPane() {
   const result = useAtomValue(ledgerAtom);
   const refresh = useAtomRefresh(ledgerAtom);
+  const parked = useLayoutStore((state) => paneParked(state, "ledger"));
+  const toggleLedger = useLayoutStore((state) => state.toggleLedger);
 
   const [view, setView] = useState<LedgerView>(DEFAULT_VIEW);
   const [goalsOpen, setGoalsOpen] = useState(true);
@@ -96,14 +101,34 @@ export function LedgerPane() {
   const dirty = viewDirty(view);
   const failure = AsyncResult.isFailure(result) ? describe(result.cause) : null;
 
+  // QK-NAT-013 — collapsed, the rail parks to an edge tab and hands its width
+  // to the Terminal+Shape pair. Same construction as Shape's tab on the other
+  // edge, because "mirrors Shape's collapse affordance" is the whole task.
+  if (parked) {
+    return (
+      <button
+        type="button"
+        onClick={toggleLedger}
+        aria-label="Show Ledger pane"
+        title="Show Ledger"
+        className="flex w-9 shrink-0 flex-col items-center gap-2 bg-card py-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <ListChecks className="size-3.5" />
+        <span className="rotate-180 font-mono text-[10px] tracking-tight [writing-mode:vertical-rl]">
+          Ledger
+        </span>
+      </button>
+    );
+  }
+
   return (
-    <section className="flex min-w-0 flex-1 flex-col rounded-lg border bg-card text-card-foreground">
+    <section className="flex min-w-0 flex-1 flex-col bg-card text-card-foreground">
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3 [&_svg]:size-3.5 [&_svg]:text-muted-foreground">
         <ListChecks />
         <h2 className="text-xs font-medium tracking-tight">Ledger</h2>
         {snapshot !== null && <Badge>{taskCount}</Badge>}
         {dirty && (
-          <Badge variant="default" title="the View menu has left its defaults">
+          <Badge variant="lamp" title="the View menu has left its defaults">
             filt
           </Badge>
         )}
@@ -128,6 +153,15 @@ export function LedgerPane() {
             }
           >
             <RefreshCw className={cn(result.waiting && "animate-spin")} />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={toggleLedger}
+            aria-label="Collapse Ledger pane"
+            title="Collapse Ledger"
+          >
+            <PanelLeftClose />
           </Button>
         </div>
       </header>
@@ -275,17 +309,24 @@ function InboxSection({ group, expanded, onToggle, selectedTaskId, onSelect }: I
                 type="button"
                 onClick={() => onSelect(task.id)}
                 aria-current={task.id === selectedTaskId}
+                // The selected wash is the companion's `--selected-bg` /
+                // `--selected-border` pair: a lamp glow with the lamp itself
+                // as a rule down the inner edge, so selection reads at a
+                // glance without a filled row shouting over its own text.
                 className={cn(
-                  "flex w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left hover:bg-accent",
-                  task.id === selectedTaskId && "bg-accent",
+                  "flex w-full flex-col gap-0.5 rounded-md border-l-2 border-transparent px-2.5 py-1.5 text-left hover:bg-accent",
+                  task.id === selectedTaskId && "border-l-lamp bg-lamp-soft hover:bg-lamp-soft",
                 )}
               >
                 <span className="flex items-baseline gap-2">
                   <span className="min-w-0 flex-1 truncate text-xs">{task.title}</span>
+                  {/* app.native: `<span mono foreground="accent">` when the
+                      tone is live, muted otherwise. A task that is actually
+                      moving is the one thing on this rail worth the lamp. */}
                   <span
                     className={cn(
                       "shrink-0 font-mono text-[10px]",
-                      task.tone === "live" ? "text-foreground" : "text-muted-foreground",
+                      task.tone === "live" ? "text-lamp" : "text-muted-foreground",
                     )}
                   >
                     {task.status}
@@ -318,9 +359,24 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
   );
 }
 
+/**
+ * A goal's state.
+ *
+ * Neutral on purpose, in both tones. The near-black `default` chip this used
+ * to wear for live goals was the loudest mark on the rail, but the fix is not
+ * to hand it the lamp: nearly every goal in a working ledger is "in progress",
+ * so a lit chip per goal would put four or five amber marks on screen and the
+ * accent would stop meaning anything. The native markup agrees — goal state
+ * rendered as `secondary` badges and muted mono detail text, never the accent.
+ * The lamp is spent where it is scarce: the `filt` badge, the selected row,
+ * and a task whose own status says it is moving.
+ */
 function StatusChip({ label, tone }: { label: string; tone: StatusTone }) {
   return (
-    <Badge variant={tone === "live" ? "default" : "secondary"} className="shrink-0">
+    <Badge
+      variant="secondary"
+      className={cn("shrink-0", tone !== "live" && "text-muted-foreground")}
+    >
       {label}
     </Badge>
   );

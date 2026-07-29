@@ -2062,7 +2062,7 @@
     {
       "id": "QK-WB-006",
       "title": "workbench chrome — focus modes, mirrored collapse, geist theme, titlebar band",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-WB-003",
         "QK-WB-004",
@@ -2093,10 +2093,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:57.848Z",
-      "updatedAt": "2026-07-28T20:27:57.848Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-29T00:04:00.652Z",
+      "statusDetail": {
+        "claimedBy": "opus-5",
+        "evidence": "Opus-implemented, Fable-reviewed: focus modes (split/ledger/terminal/shape, full-bleed, Esc-except-in-terminal, press/hold peek) layered over independent collapse state with pure selectors (paneVisible/Parked/OnStage); ledger collapse mirrors Shape edge-tab (QK-NAT-013); titlebar band 52px + hairlines + drag region (010); lamp #e5a83d dark / #a86f12 light with moss/ember, stock zinc follows OS, prefers-contrast folds accent (009); token-driven xterm theme — fixed latent black-on-black terminal bug. 22 store tests incl exhaustive 3-press no-stranding sweep; 71 web tests; headless smoke 30/30 vs live daemon"
+      }
     },
     {
       "id": "QK-WB-007",
@@ -2162,7 +2165,7 @@
     {
       "id": "QK-WB-009",
       "title": "single-origin serve — the service serves apps/web dist; shape framing SAMEORIGIN",
-      "status": "open",
+      "status": "claimed",
       "dependsOn": [
         "QK-MONO-004",
         "QK-WB-001"
@@ -2185,10 +2188,12 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 2,
       "createdAt": "2026-07-28T22:12:31.486Z",
-      "updatedAt": "2026-07-28T22:12:31.486Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-28T23:37:10.855Z",
+      "statusDetail": {
+        "claimedBy": "opus-5"
+      }
     }
   ]
 }

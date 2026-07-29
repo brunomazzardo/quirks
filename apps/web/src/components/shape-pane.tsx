@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { serviceBaseUrl } from "~/lib/service";
 import { cn } from "~/lib/utils";
-import { useLayoutStore } from "~/stores/layout";
+import { paneParked, useLayoutStore } from "~/stores/layout";
 
 const TASK_ID = "QK-WB-005";
 
@@ -105,7 +105,9 @@ function useShapeLiveness(url: string, enabled: boolean): LiveState {
  * "open in new tab" link is the working path.
  */
 export function ShapePane() {
-  const shapeHidden = useLayoutStore((state) => state.shapeHidden);
+  // Parked, not merely hidden: a focus mode elsewhere takes Shape off the
+  // stage without leaving its edge tab behind (QK-WB-006).
+  const parked = useLayoutStore((state) => paneParked(state, "shape"));
   const toggleShape = useLayoutStore((state) => state.toggleShape);
 
   const base = serviceBaseUrl();
@@ -113,19 +115,19 @@ export function ShapePane() {
   const eventsUrl = `${base}/shape/events-stream`;
 
   const { status, retry, token } = useServiceProbe(shapeUrl);
-  const live = useShapeLiveness(eventsUrl, !shapeHidden);
+  const live = useShapeLiveness(eventsUrl, !parked);
 
-  if (shapeHidden) {
+  if (parked) {
     return (
       <button
         type="button"
         onClick={toggleShape}
         aria-label="Show Shape pane"
         title="Show Shape"
-        className="flex w-9 shrink-0 flex-col items-center gap-2 rounded-lg border bg-card py-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="flex w-9 shrink-0 flex-col items-center gap-2 bg-card py-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >
         <Shapes className="size-3.5" />
-        <span className="[writing-mode:vertical-rl] rotate-180 font-mono text-[10px] tracking-tight">
+        <span className="rotate-180 font-mono text-[10px] tracking-tight [writing-mode:vertical-rl]">
           Shape
         </span>
       </button>
@@ -133,8 +135,8 @@ export function ShapePane() {
   }
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col rounded-lg border bg-card text-card-foreground">
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3 [&_svg]:size-3.5 [&_svg]:text-muted-foreground">
+    <section className="flex min-w-0 flex-1 flex-col bg-background">
+      <header className="flex h-9 shrink-0 items-center gap-2 border-b bg-card px-3 [&_svg]:size-3.5 [&_svg]:text-muted-foreground">
         <Shapes />
         <h2 className="text-xs font-medium tracking-tight">Shape</h2>
         <span
@@ -142,8 +144,8 @@ export function ShapePane() {
           title={`companion stream: ${live}`}
           className={cn(
             "size-1.5 shrink-0 rounded-full",
-            live === "live" && "bg-emerald-500",
-            live === "offline" && "bg-destructive/50",
+            live === "live" && "bg-moss",
+            live === "offline" && "bg-ember",
             live === "idle" && "bg-muted-foreground/30",
           )}
         />

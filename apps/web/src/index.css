@@ -29,6 +29,16 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  /* QK-NAT-009 — the branded channel. `--accent` above is shadcn's hover wash,
+     not a brand colour, so the lamp gets its own family rather than hijacking
+     it and repainting every hover. */
+  --color-lamp: var(--lamp);
+  --color-lamp-foreground: var(--lamp-foreground);
+  --color-lamp-soft: var(--lamp-soft);
+  --color-lamp-line: var(--lamp-line);
+  --color-moss: var(--moss);
+  --color-ember: var(--ember);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -59,6 +69,55 @@
   --input: var(--color-zinc-300);
   --ring: var(--color-zinc-400);
 
+  /* ---------------------------------------------------------------------
+     QK-NAT-009 — geist pack + night-ledger lamp accent.
+
+     The native workbench declared this as two manifest fields (app.zon):
+     `.theme = "geist"`, `.theme_accent = "#e5a83d"`. The pack supplied cool
+     neutrals that follow OS light/dark and the accent branded exactly the
+     selected controls. That is the contract reproduced here: the zinc ramp
+     above IS the geist neutral and is left stock, and the lamp is added
+     beside it as the only hue with a meaning.
+
+     Values come from the shape companion's night-ledger tokens
+     (.claude/skills/shape/scripts/frame-template.html) so the workbench and
+     the companion it frames are lit by the same lamp. Light mode uses the
+     companion's paper-ledger lamp (#a86f12): #e5a83d is a dark-ink amber and
+     fails contrast as text on white.
+
+     Rule carried over from the companion: colour is meaning, never
+     decoration. Lamp marks the one thing under attention (a filter that has
+     left its defaults, the selected row, a live status, the cursor); moss is
+     passing/live; ember is failing. Nothing else gets a hue. */
+  --lamp: #a86f12;
+  --lamp-foreground: #fffdf6;
+  --lamp-soft: color-mix(in srgb, var(--lamp) 10%, transparent);
+  --lamp-line: color-mix(in srgb, var(--lamp) 34%, transparent);
+  --moss: #47752f;
+  --ember: #b04a38;
+
+  /* ---------------------------------------------------------------------
+     QK-NAT-010 — shell chrome.
+
+     `HEADER_NATURAL_HEIGHT = 52` and `max(HEADER_NATURAL_HEIGHT, insets.top)`
+     from core.ts. The native host pushed real traffic-light insets through
+     `chrome_changed`; the browser's equivalent is the Window Controls Overlay
+     env(), which resolves to the fallback (a plain band, no reserved corners)
+     everywhere it does not apply — including the current Electron shell,
+     which still uses a system frame. */
+  --titlebar-height: max(3.25rem, env(titlebar-area-height, 0px));
+  --chrome-leading: env(titlebar-area-x, 0px);
+  --chrome-trailing: max(
+    0px,
+    calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))
+  );
+
+  /* The terminal is part of the pane, not a black rectangle inside it —
+     xterm reads these through `cssColorToHex` (see terminal-view.tsx). */
+  --terminal-background: var(--background);
+  --terminal-foreground: var(--foreground);
+  --terminal-cursor: var(--lamp);
+
   @variant dark {
     color-scheme: dark;
     --background: var(--color-zinc-950);
@@ -80,6 +139,26 @@
     --border: color-mix(in srgb, var(--color-white) 8%, transparent);
     --input: color-mix(in srgb, var(--color-white) 12%, transparent);
     --ring: var(--color-zinc-600);
+
+    /* The lamp proper — `.theme_accent` verbatim. */
+    --lamp: #e5a83d;
+    --lamp-foreground: #1c1503;
+    --lamp-soft: color-mix(in srgb, var(--lamp) 13%, transparent);
+    --lamp-line: color-mix(in srgb, var(--lamp) 34%, transparent);
+    --moss: #8fbf78;
+    --ember: #e08573;
+  }
+}
+
+/* NAT-009: "high-contrast skips the accent per SDK". The browser's signal for
+   the same preference is prefers-contrast, so the lamp folds back into the
+   foreground rather than carrying a mid-tone hue at raised contrast. */
+@media (prefers-contrast: more) {
+  :root {
+    --lamp: var(--foreground);
+    --lamp-foreground: var(--background);
+    --lamp-soft: var(--accent);
+    --lamp-line: var(--foreground);
   }
 }
 
@@ -95,4 +174,17 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
   }
+}
+
+/* NAT-010's `window-drag="true"` on the header row. Inert in a browser tab;
+   live the moment the shell hides its own titlebar. Controls inside the band
+   must opt back out or they become drag handles instead of buttons. */
+@utility drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+@utility no-drag-region {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
