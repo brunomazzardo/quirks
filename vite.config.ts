@@ -15,7 +15,6 @@ export default defineConfig({
       "**/dist/**",
       "**/dist-electron/**",
       "**/.{idea,git,cache,output,temp}/**",
-      "apps/workbench/**",
     ],
     hookTimeout: 60_000,
     testTimeout: 60_000,
@@ -25,7 +24,6 @@ export default defineConfig({
     // stay untouched until QK-MONO-006/007 and QK-WB-008 retire them.
     ignorePatterns: [
       ".quirks/**",
-      "apps/workbench/**",
       "docs/**",
       ".claude/**",
       ".agents/**",
@@ -42,7 +40,6 @@ export default defineConfig({
   lint: {
     ignorePatterns: [
       ".quirks/**",
-      "apps/workbench/**",
       "docs/**",
       ".claude/**",
       ".agents/**",

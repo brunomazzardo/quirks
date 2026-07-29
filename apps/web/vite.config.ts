@@ -62,11 +62,9 @@ const daemonUrl = process.env.QUIRKS_URL?.trim() || `http://127.0.0.1:${portForR
 
 /**
  * Path prefixes the daemon owns. `/v1` is the ledger API; `/shape` is the
- * companion (QK-WB-005) — proxied so its SSE stream and probe are same-origin
- * too. NOTE: /shape/ still answers `X-Frame-Options: DENY`, which the proxy
- * faithfully forwards, so the Shape iframe stays blank until the server lane
- * relaxes that header. Proxying it is still worth it: the probe and the
- * events stream become readable.
+ * companion (QK-WB-005) — proxied so its SSE stream, probe, and iframe are
+ * same-origin. /shape/ answers `X-Frame-Options: SAMEORIGIN` (QK-WB-009), so
+ * the framed companion paints through this proxy.
  *
  * `ws` marks a prefix that must also forward the HTTP Upgrade handshake.
  * `/v1/pty` carries the terminal socket (QK-WB-004): without `ws: true` Vite

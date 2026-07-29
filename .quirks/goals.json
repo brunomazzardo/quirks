@@ -172,10 +172,11 @@
         "run views exist: live and retrospective",
         "apps/workbench (the Native SDK app) is deleted"
       ],
-      "state": "active",
-      "revision": 1,
+      "state": "done",
+      "revision": 2,
       "createdAt": "2026-07-28T20:25:47.007Z",
-      "updatedAt": "2026-07-28T20:25:47.007Z"
+      "updatedAt": "2026-07-29T00:40:42.783Z",
+      "stateReason": "All doneWhen asserted: the Electron workbench launches from workspace scripts with the recorded chrome behaviors (QK-WB-002/006, smoke + 30/30 browser checks); at least two concurrent terminals with working scrollback (QK-WB-004, wire + browser proof — the two gaps that reversed D1); run views live and retrospective exist (QK-WB-007); apps/workbench is deleted (QK-WB-008)"
     }
   ]
 }

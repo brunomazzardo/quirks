@@ -1,12 +1,8 @@
 packages:
   - apps/*
-  # The Native SDK workbench is frozen legacy until QK-WB-008 deletes it;
-  # it keeps its bun-installed node_modules and never joins the workspace.
-  - "!apps/workbench"
   - packages/*
 
-# pnpm 11: true = allowed to run build scripts (t3code's allowBuilds subset —
-# electron and node-pty arrive with QK-WB / QK-MONO-003).
+# pnpm 11: true = allowed to run build scripts (t3code's allowBuilds subset).
 allowBuilds:
   electron: true
   electron-winstaller: false

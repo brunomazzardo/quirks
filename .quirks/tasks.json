@@ -2137,7 +2137,7 @@
     {
       "id": "QK-WB-008",
       "title": "parity pass — assert the QK-WB doneWhen, delete apps/workbench",
-      "status": "open",
+      "status": "completed",
       "dependsOn": [
         "QK-WB-002",
         "QK-WB-006",
@@ -2160,10 +2160,13 @@
       ],
       "needsDesign": false,
       "needsBreakdown": false,
-      "revision": 1,
+      "revision": 3,
       "createdAt": "2026-07-28T20:27:58.035Z",
-      "updatedAt": "2026-07-28T20:27:58.035Z",
-      "statusDetail": {}
+      "updatedAt": "2026-07-29T00:40:42.088Z",
+      "statusDetail": {
+        "claimedBy": "fable-5",
+        "evidence": "Fable-executed parity pass. doneWhen walked: (1) Electron launches from workspace scripts loading the workbench — desktop smoke loaded title Quirks Workbench url quirks://app with the fresh dist (chrome behaviors browser-proven 30/30 in QK-WB-006, all panes + focus modes + mirrored collapse + goal-grouped inbox + View filters + density-A + geist/lamp + titlebar band); (2) two concurrent terminals with scrollback proven at wire and browser level (QK-WB-004); (3) run views live + retrospective landed (QK-WB-007); (4) apps/workbench deleted, workspace/vite refs cleaned. Also: stale DENY comments corrected, lamp favicon added (daemon serves it 200 image/svg+xml), /shape/ SAMEORIGIN confirmed at daemon origin, daemon serves fresh dist live. Recorded verify green: no apps/workbench, 5/5 typecheck, 3 suites (335+104+18), lint clean. Follow-up recorded as goal-less chore: desktop loads daemon origin directly"
+      }
     },
     {
       "id": "QK-WB-009",
@@ -2198,6 +2201,33 @@
         "claimedBy": "opus-5",
         "evidence": "Opus-implemented, Fable-reviewed: HttpStaticServer-based renderer layer (GET /* wildcard; precedence proven structural in find-my-way — API prefixes always win; extension-miss 404s plain text, extensionless re-reads index.html per request, API-prefix misses stay JSON 404, absent dist answers 503 build hint), rendererDir: arg > QUIRKS_RENDERER_DIR > apps/web/dist; X-Frame-Options SAMEORIGIN on GET /shape/ (route handler, loopback + same-origin). 16 new tests (335 total). Acceptance proven: headless Chrome at service origin — ledger live rows, terminal shell, shape iframe PAINTS (readable contentDocument, companion content + Connected). Flags to QK-WB-008: stale DENY comments in apps/web (shape-pane, vite.config, service.ts caveat), favicon 404, pty replay test flake (fixed 300ms sleep)"
       }
+    },
+    {
+      "id": "QK-002",
+      "title": "the desktop shell loads the daemon origin — retire quirks:// for the single-origin endgame",
+      "status": "open",
+      "dependsOn": [],
+      "deliverables": [
+        "apps/desktop resolves the daemon port and loads http://127.0.0.1:<port>/ (autostarting via the CLI seam), making the Electron window same-origin with the API; quirks:// stays only as the no-daemon fallback or is removed"
+      ],
+      "acceptanceCriteria": [
+        "the packaged app opens with live ledger, terminal, and shape panes with no VITE_QUIRKS_URL and no proxy"
+      ],
+      "verification": [
+        "pnpm --filter @quirks/desktop typecheck && pnpm --filter @quirks/desktop test"
+      ],
+      "sourceRefs": [
+        {
+          "path": "docs/DECISIONS.md",
+          "pinnedCommit": "3104881078806fea4936cc5ac78ec38f6bf97e5a"
+        }
+      ],
+      "needsDesign": false,
+      "needsBreakdown": false,
+      "revision": 1,
+      "createdAt": "2026-07-29T00:40:41.377Z",
+      "updatedAt": "2026-07-29T00:40:41.377Z",
+      "statusDetail": {}
     }
   ]
 }

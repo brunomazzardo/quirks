@@ -1,5 +1,0 @@
-.native/
-zig-out/
-.zig-cache/
-zig-pkg/
-node_modules/

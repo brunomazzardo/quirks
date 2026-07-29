@@ -94,15 +94,10 @@ function useShapeLiveness(url: string, enabled: boolean): LiveState {
  * routes/index.tsx, which nests Terminal + Shape together so Terminal is the
  * one that grows, matching the native `rightSplit` behavior.
  *
- * Known limitation: GET /shape/ responds with `X-Frame-Options: DENY`
- * (src/service/app.ts) — a header the native preview panel never had to
- * contend with, since it was not a browser frame. That is unconditional and
- * out of this task's reach (server routes live outside apps/web/src), so a
- * browser will refuse to paint the iframe's contents even while `status` is
- * "up". The same-origin dev proxy added by QK-WB-003 does NOT fix this: it
- * forwards the header verbatim, and DENY refuses framing from any origin,
- * including its own. Relaxing it is the server lane's task; until then the
- * "open in new tab" link is the working path.
+ * Framing: GET /shape/ answers `X-Frame-Options: SAMEORIGIN` (QK-WB-009), so
+ * the iframe paints whenever the page and the companion share an origin —
+ * the daemon origin itself, or the dev server through its /shape proxy. The
+ * "open in new tab" link stays as a convenience, not a workaround.
  */
 export function ShapePane() {
   // Parked, not merely hidden: a focus mode elsewhere takes Shape off the

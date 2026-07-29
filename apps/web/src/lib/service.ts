@@ -23,13 +23,12 @@
 // `VITE_QUIRKS_URL` still wins when set, and is what any build with no Vite
 // dev server in front of it must use.
 //
-// PACKAGED-APP CAVEAT: `vp build` output (and apps/desktop, QK-WB-002) has no
-// dev proxy. With VITE_QUIRKS_URL unset, requests go to the app's own origin
-// and 404 unless the daemon is also what serves the built assets. A packaged
-// build therefore has to either bake VITE_QUIRKS_URL (and then contend with
-// the missing CORS headers — an Electron session can be told to ignore them, a
-// plain browser cannot), or be served single-origin by the daemon. The latter
-// is the intended endgame and is not this task's to build.
+// PACKAGED / NO-PROXY BUILDS: the daemon serves the built assets itself
+// (QK-WB-009), so a page loaded from the daemon origin needs no proxy and no
+// VITE_QUIRKS_URL — same-origin just works. The remaining consumer of
+// VITE_QUIRKS_URL is a renderer served from some OTHER origin (apps/desktop's
+// quirks:// scheme today, until the shell loads the daemon origin directly —
+// tracked as a goal-less ledger chore).
 
 /**
  * Resolve the quirks service's base URL. Never has a trailing slash; `""`
